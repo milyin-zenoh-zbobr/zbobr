@@ -1,11 +1,19 @@
 ## Invoking Agents
 
+Use the `copilot` CLI for named agents. The `/agent` command is available only in Copilot CLI interactive mode.
+
 ### Manager Agent
 Coordinates issue workflow and spawns Workers.
 
-**From CLI:**
+**From Copilot CLI:**
 ```bash
-.github/scripts/agent.sh manager
+copilot --agent manager -i "Process issues using the manager workflow."
+```
+
+**Interactive `/agent` selection:**
+```bash
+copilot
+# then run /agent
 ```
 
 **From GitHub Copilot Chat:**
@@ -20,9 +28,9 @@ Coordinates issue workflow and spawns Workers.
 ### Worker Agent
 Executes a single WORKING issue end-to-end.
 
-**From CLI:**
+**From Copilot CLI:**
 ```bash
-.github/scripts/agent.sh worker <issue_number> <repo> [model]
+copilot --agent worker --model gpt-5.2-codex -i "Fix issue #123 in milyin/copilot."
 ```
 
 **From GitHub Copilot Chat:**
@@ -31,6 +39,8 @@ Executes a single WORKING issue end-to-end.
 ```
 
 **Definition:** [.github/agents/worker.md](.github/agents/worker.md)
+
+**Agent Registry:** [AGENTS.md](AGENTS.md)
 
 ---
 

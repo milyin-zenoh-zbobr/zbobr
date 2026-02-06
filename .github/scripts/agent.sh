@@ -9,24 +9,25 @@ AGENTS_DIR="$SCRIPT_DIR/../agents"
 
 case "$AGENT_TYPE" in
   manager)
-    echo "Launching Manager Agent..."
-    cat "$AGENTS_DIR/manager.md"
+    echo "Launching Manager Agent via Copilot CLI..."
+    PROMPT="${2:-Follow the instructions in .github/agents/manager.md and start processing issues.}"
+    copilot --agent manager -i "$PROMPT"
     ;;
   worker)
-    echo "Launching Worker Agent..."
-    # Worker expects additional arguments: --issue, --repo, --model
+    echo "Launching Worker Agent via Copilot CLI..."
+    # Worker expects issue number and repo to build a default prompt.
     ISSUE="${2:-}"
     REPO="${3:-}"
-    MODEL="${4:-GPT-5-Mini}"
-    
+    MODEL="${4:-gpt-5.2-codex}"
+
     if [[ -z "$ISSUE" || -z "$REPO" ]]; then
-      echo "Error: Worker requires --issue and --repo arguments"
+      echo "Error: Worker requires issue number and repo"
       echo "Usage: $0 worker <issue_number> <repo> [model]"
       exit 1
     fi
-    
-    echo "Worker Agent for Issue #$ISSUE in $REPO (Model: $MODEL)"
-    cat "$AGENTS_DIR/worker.md"
+
+    PROMPT="Fix issue #$ISSUE in $REPO. Follow the instructions in .github/agents/worker.md."
+    copilot --agent worker --model "$MODEL" -i "$PROMPT"
     ;;
   *)
     echo "Unknown agent: $AGENT_TYPE"
