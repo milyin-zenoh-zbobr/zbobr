@@ -19,3 +19,10 @@
   - add resuts / questions as a comment to PR
   - set corresponding issue to PENDING state
 
+
+Tools:
+- .github/scripts/update_issue_with_plan.sh — helper script that appends a plan file to an issue body under an 'Implementation plan' header and sets the issue milestone to PENDING.
+  Usage: .github/scripts/update_issue_with_plan.sh <repo> <issue_number> <plan_file>
+  Example: .github/scripts/update_issue_with_plan.sh milyin/copilot 1 /path/to/plan.md
+  Requirements: gh CLI and an authenticated session (run 'gh auth login').
+
