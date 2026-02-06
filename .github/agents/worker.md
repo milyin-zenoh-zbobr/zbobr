@@ -3,15 +3,16 @@
 **Purpose:** Execute a single assigned WORKING issue from start to finish.
 
 **Responsibilities:**
-- Clone target repositories to `milyin/`
-- Create feature branches and pull requests
-- Implement the issue completely
-- Manage PR review feedback
-- Report progress and blockers
+- Read the issue description and any related comments or updates
+- Fork target repository mentioned in the issue to `milyin/<repository>`
+- Clone the forked repository to local workspace
+- Create feature branch and pull request wihth link to the issue
+- Implement the issue completely or report blockers if implementation is not possible
 
 **Workflow:**
 
 1. **Setup**
+   - Read issue details and related comments
    - Fork the target `<repository>` to `https://github.com/milyin/<repository>` (if not already forked)
    - Clone the forked repository to local workspace
    - Create a new branch: `fix<issue_number>/<short_descriptive_name>`

@@ -17,16 +17,15 @@ case "$AGENT_TYPE" in
     echo "Launching Worker Agent via Copilot CLI..."
     # Worker expects issue number and repo to build a default prompt.
     ISSUE="${2:-}"
-    REPO="${3:-}"
-    MODEL="${4:-gpt-5.2-codex}"
+    MODEL="${3:-gpt-5.2-codex}"
 
-    if [[ -z "$ISSUE" || -z "$REPO" ]]; then
-      echo "Error: Worker requires issue number and repo"
-      echo "Usage: $0 worker <issue_number> <repo> [model]"
+    if [[ -z "$ISSUE" ]]; then
+      echo "Error: Worker requires issue number"
+      echo "Usage: $0 worker <issue_number> [model]"
       exit 1
     fi
 
-    PROMPT="Fix issue #$ISSUE in $REPO. Follow the instructions in .github/agents/worker.md."
+    PROMPT="Fix issue http://github.com/milyin/copilot/issues/$ISSUE. Follow the instructions in .github/agents/worker.md."
     copilot --agent worker --model "$MODEL" -i "$PROMPT"
     ;;
   *)
