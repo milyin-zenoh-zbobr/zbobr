@@ -38,10 +38,14 @@ Take the first available open issue in `milyin/copilot` with milestone `PLANNING
 Take the first available open issue in `milyin/copilot` with milestone `READY`:
 
 - Read issue description and implementation plan
-- Extract model from `model:<name>` label (e.g., `model:gpt-5.2-codex`). Default: `gpt-5.2-codex` if not specified
+- Extract model from labels with `model:` prefix:
+  - Get issue labels using `gh issue view <issue_number> --json labels`
+  - Look for label starting with `model:` (e.g., `model:gpt-5-mini`, `model:claude-sonnet-4.5`)
+  - Extract model name after the colon (e.g., `gpt-5-mini`)
+  - Use `gpt-5-mini` as default if no `model:` label exists
 - Spawn a Worker agent:
   ```bash
-  .github/scripts/run_worker.sh --issue <issue_number> --model <model_name>
+  .github/scripts/worker.sh --issue <issue_number> --model <model_name>
   ```
 - Set milestone to `WORKING`
 - **Exit — do not perform implementation**
@@ -53,5 +57,5 @@ Take the first available open issue in `milyin/copilot` with milestone `READY`:
 
 **Available Tools:**
 - `.github/scripts/update_issue_with_plan.sh`
-- `.github/scripts/run_worker.sh`
+- `.github/scripts/worker.sh`
 - Standard GitHub CLI (`gh`) tools

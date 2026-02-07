@@ -22,7 +22,7 @@ This repository manages a multi-agent workflow:
 copilot --agent manager -i "Process issues using the manager workflow."
 
 # Start Worker for specific issue
-copilot --agent worker --model gpt-5.2-codex -i "Fix issue #123 in milyin/copilot."
+copilot --agent worker --model gpt-5-mini -i "Fix issue #123 in milyin/copilot."
 ```
 
 ## Workflow

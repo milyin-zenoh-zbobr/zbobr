@@ -5,7 +5,7 @@ set -e
 
 # Parse arguments
 ISSUE=""
-MODEL="gpt-5.2-codex"
+MODEL="gpt-5-mini"
 
 while [[ $# -gt 0 ]]; do
   case $1 in

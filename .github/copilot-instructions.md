@@ -30,7 +30,7 @@ Executes a single WORKING issue end-to-end.
 
 **From Copilot CLI:**
 ```bash
-copilot --agent worker --model gpt-5.2-codex -i "Fix issue #123 in milyin/copilot."
+copilot --agent worker --model gpt-5-mini -i "Fix issue #123 in milyin/copilot."
 ```
 
 **From GitHub Copilot Chat:**
@@ -53,8 +53,8 @@ Both Manager and Worker agents can use these tools:
   - Example: `.github/scripts/update_issue_with_plan.sh milyin/copilot 1 /path/to/plan.md`
   - Requirements: `gh` CLI and authenticated session (`gh auth login`)
 
-- **run_worker.sh** — Spawns a Worker agent to handle a READY issue (used by Manager).
-  - Usage: `.github/scripts/run_worker.sh --issue <issue_number> --model <model_name>`
+- **worker.sh** — Spawns a Worker agent to handle a READY issue (used by Manager).
+  - Usage: `.github/scripts/worker.sh --issue <issue_number> --model <model_name>`
   - Purpose: Initiates a Worker agent to implement the issue
   - Requirements: `gh` CLI and authenticated session
 

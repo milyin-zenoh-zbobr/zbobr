@@ -17,7 +17,7 @@ case "$AGENT_TYPE" in
     echo "Launching Worker Agent via Copilot CLI..."
     # Worker expects issue number and repo to build a default prompt.
     ISSUE="${2:-}"
-    MODEL="${3:-gpt-5.2-codex}"
+    MODEL="${3:-gpt-5-mini}"
 
     if [[ -z "$ISSUE" ]]; then
       echo "Error: Worker requires issue number"
