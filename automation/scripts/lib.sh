@@ -212,3 +212,70 @@ set_fork_owner() {
   local owner="$1"
   set_config "fork_owner" "$owner"
 }
+# Get milestone number by title
+# Usage: get_milestone_number "milestone_title"
+get_milestone_number() {
+  local title="$1"
+  
+  gh api "repos/$REPO/milestones" --jq ".[] | select(.title==\"$title\") | .number"
+}
+
+# Get issue milestone
+# Usage: get_issue_milestone "issue_number"
+get_issue_milestone() {
+  local issue_number="$1"
+  
+  gh issue view "$issue_number" --repo "$REPO" --json milestone --jq '.milestone.title // ""'
+}
+
+# Set issue milestone
+# Usage: set_issue_milestone "issue_number" "milestone_title"
+set_issue_milestone() {
+  local issue_number="$1"
+  local milestone_title="$2"
+  
+  local milestone_number=$(get_milestone_number "$milestone_title")
+  
+  if [[ -z "$milestone_number" ]]; then
+    echo "Error: Milestone '$milestone_title' not found in $REPO" >&2
+    return 1
+  fi
+  
+  gh api "repos/$REPO/issues/$issue_number" -X PATCH -f milestone="$milestone_number" >/dev/null
+}
+
+# Add label to issue
+# Usage: add_issue_label "issue_number" "label"
+add_issue_label() {
+  local issue_number="$1"
+  local label="$2"
+  
+  gh issue edit "$issue_number" --repo "$REPO" --add-label "$label"
+}
+
+# Remove label from issue
+# Usage: remove_issue_label "issue_number" "label"
+remove_issue_label() {
+  local issue_number="$1"
+  local label="$2"
+  
+  gh issue edit "$issue_number" --repo "$REPO" --remove-label "$label"
+}
+
+# Check if issue has label
+# Usage: has_issue_label "issue_number" "label"
+# Returns: 0 if label exists, 1 if not
+has_issue_label() {
+  local issue_number="$1"
+  local label="$2"
+  
+  local labels=$(get_issue_labels "$issue_number")
+  
+  for existing_label in $labels; do
+    if [[ "$existing_label" == "$label" ]]; then
+      return 0
+    fi
+  done
+  
+  return 1
+}
