@@ -70,7 +70,7 @@ get_cost_color() {
 echo "Processing labels..."
 
 # Get existing labels
-mapfile -t existing_labels < <(get_repo_labels)
+mapfile -t existing_labels < <(get_labels)
 
 # Build desired labels list: all model:* labels + done label
 declare -a desired_labels=()
@@ -97,7 +97,7 @@ if [[ ${#labels_to_delete[@]} -gt 0 ]]; then
     for label in "${labels_to_delete[@]}"; do
         if [[ "$label" =~ ^model: ]] || [[ "$label" == "done" ]]; then
             echo "  - $label"
-            delete_repo_label "$label"
+            delete_label "$label"
         fi
     done
 else
@@ -114,10 +114,10 @@ if [[ ${#labels_to_create[@]} -gt 0 ]]; then
             color=$(get_cost_color "$cost")
             description="Use $model model ($cost cost)"
             echo "  + $label ($cost)"
-            create_repo_label "$label" "$color" "$description"
+            create_label "$label" "$color" "$description"
         elif [[ "$label" == "done" ]]; then
             echo "  + $label"
-            create_repo_label "$label" "5319e7" "Issue implementation completed"
+            create_label "$label" "5319e7" "Issue implementation completed"
         fi
     done
 else
@@ -130,7 +130,7 @@ echo
 echo "Processing milestones..."
 
 # Get existing milestones
-mapfile -t existing_milestones < <(get_repo_milestones)
+mapfile -t existing_milestones < <(get_milestones)
 
 # Desired milestones
 declare -a desired_milestones=(
@@ -150,7 +150,7 @@ if [[ ${#milestones_to_delete[@]} -gt 0 ]]; then
     echo "Deleting extra milestones:"
     for milestone in "${milestones_to_delete[@]}"; do
         echo "  - $milestone"
-        delete_repo_milestone "$milestone"
+        delete_milestone "$milestone"
     done
 else
     echo "No extra milestones to delete"
@@ -178,7 +178,7 @@ if [[ ${#milestones_to_create[@]} -gt 0 ]]; then
                 ;;
         esac
         echo "  + $milestone"
-        create_repo_milestone "$milestone" "$description"
+        create_milestone "$milestone" "$description"
     done
 else
     echo "No missing milestones to create"

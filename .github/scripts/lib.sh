@@ -44,20 +44,20 @@ reconcile_lists() {
 }
 
 # Get all labels in a repository
-# Usage: get_repo_labels
-get_repo_labels() {
+# Usage: get_labels
+get_labels() {
   gh label list --repo "$REPO" --json name --jq '.[].name'
 }
 
 # Get all milestones in a repository
-# Usage: get_repo_milestones
-get_repo_milestones() {
+# Usage: get_milestones
+get_milestones() {
   gh api "repos/$REPO/milestones" --jq '.[].title'
 }
 
 # Create a label in a repository
-# Usage: create_repo_label "name" "color" "description"
-create_repo_label() {
+# Usage: create_label "name" "color" "description"
+create_label() {
   local name="$1"
   local color="$2"
   local description="$3"
@@ -66,16 +66,16 @@ create_repo_label() {
 }
 
 # Delete a label from a repository
-# Usage: delete_repo_label "name"
-delete_repo_label() {
+# Usage: delete_label "name"
+delete_label() {
   local name="$1"
   
   gh label delete "$name" --repo "$REPO" --yes
 }
 
 # Create a milestone in a repository
-# Usage: create_repo_milestone "title" "description"
-create_repo_milestone() {
+# Usage: create_milestone "title" "description"
+create_milestone() {
   local title="$1"
   local description="$2"
   
@@ -83,8 +83,8 @@ create_repo_milestone() {
 }
 
 # Delete a milestone from a repository
-# Usage: delete_repo_milestone "title"
-delete_repo_milestone() {
+# Usage: delete_milestone "title"
+delete_milestone() {
   local title="$1"
   
   local milestone_number=$(gh api "repos/$REPO/milestones" --jq ".[] | select(.title==\"$title\") | .number")
