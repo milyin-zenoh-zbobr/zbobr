@@ -10,61 +10,18 @@ echo
 
 # Get available models from copilot CLI
 get_available_models() {
-    copilot --help | grep -A 100 "Available models:" | tail -n +2 | grep "^  " | awk '{print $1}' || true
+    local help_text
+    local choices_line
+    help_text=$(copilot help 2>/dev/null || copilot --help 2>/dev/null || true)
+    choices_line=$(echo "$help_text" | grep -E "--model <model>" | head -n 1 || true)
+    echo "$choices_line" \
+        | sed -E 's/.*choices: //; s/[)]$//; s/"//g' \
+        | tr ',' '\n' \
+        | sed -E 's/^ *//; s/ *$//' \
+        | grep -E '.+' || true
 }
 
-# Extract model cost tier based on help text description
-get_model_cost() {
-    local model=$1
-    local description
-    description=$(copilot --help | grep -A 100 "Available models:" | grep "^  $model " | sed "s/^  $model  *//")
-    
-    case "$description" in
-        *"(free)"*|*"Free"*)
-            echo "free"
-            ;;
-        *"(low cost)"*|*"Low cost"*|*"inexpensive"*)
-            echo "low"
-            ;;
-        *"(moderate cost)"*|*"Moderate cost"*|*"balanced"*)
-            echo "moderate"
-            ;;
-        *"(higher cost)"*|*"Higher cost"*|*"expensive"*)
-            echo "higher"
-            ;;
-        *"(highest cost)"*|*"Highest cost"*|*"premium"*|*"most capable"*)
-            echo "high"
-            ;;
-        *)
-            echo "moderate"
-            ;;
-    esac
-}
-
-# Get color for cost tier
-get_cost_color() {
-    local cost=$1
-    case "$cost" in
-        free)
-            echo "0e8a16"  # Green
-            ;;
-        low)
-            echo "bfd4f2"  # Light Blue
-            ;;
-        moderate)
-            echo "fbca04"  # Yellow
-            ;;
-        higher)
-            echo "d93f0b"  # Orange
-            ;;
-        high)
-            echo "b60205"  # Red
-            ;;
-        *)
-            echo "fbca04"  # Default to Yellow
-            ;;
-    esac
-}
+MODEL_LABEL_COLOR="bfd4f2"
 
 # Process labels
 echo "Processing labels..."
@@ -110,11 +67,9 @@ if [[ ${#labels_to_create[@]} -gt 0 ]]; then
     for label in "${labels_to_create[@]}"; do
         if [[ "$label" =~ ^model:(.*)$ ]]; then
             model="${BASH_REMATCH[1]}"
-            cost=$(get_model_cost "$model")
-            color=$(get_cost_color "$cost")
-            description="Use $model model ($cost cost)"
-            echo "  + $label ($cost)"
-            create_label "$label" "$color" "$description"
+            description="Use $model model"
+            echo "  + $label"
+            create_label "$label" "$MODEL_LABEL_COLOR" "$description"
         elif [[ "$label" == "done" ]]; then
             echo "  + $label"
             create_label "$label" "5319e7" "Issue implementation completed"
