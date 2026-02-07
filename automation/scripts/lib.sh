@@ -327,6 +327,19 @@ set_issue_done() {
   if [[ "$done" == "true" ]]; then
     set_issue_milestone "$issue_number" "PENDING"
     add_issue_label "$issue_number" "done"
+
+    # Cleanup git directories in issue workspace
+    local workdir
+    workdir="$(get_issue_workdir "$issue_number")"
+    if [[ -d "$workdir" ]]; then
+      echo "Cleaning up git directories in $workdir..." >&2
+      find "$workdir" -type d -name ".git" | while read -r gitdir; do
+        local repodir="${gitdir%/.git}"
+        echo "  Running git clean -fdx in $repodir" >&2
+        git -C "$repodir" clean -fdx
+      done
+    fi
+
     echo "Issue #$issue_number marked as done" >&2
   else
     # Remove done label if present (ignore error if not present)
