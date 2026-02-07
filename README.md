@@ -31,6 +31,12 @@ copilot --agent manager -i "Process issues using the manager workflow."
 copilot --agent worker --model gpt-5-mini -i "Fix issue #123 in milyin/copilot."
 ```
 
+**Run Manager in a loop:**
+```bash
+# Poll for PLANNING or READY issues and run Manager when found
+.github/scripts/manager_loop.sh --interval 60
+```
+
 ## Workflow
 
 1. Create issues in `milyin/copilot` with milestone `PLANNING`
