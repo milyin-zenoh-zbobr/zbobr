@@ -232,6 +232,21 @@ get_issue_model() {
   echo "$default_model"
 }
 
+# Complete planning phase for an issue
+# Usage: complete_planning <issue_number>
+# Sets milestone to PENDING (waiting for human approval)
+complete_planning() {
+  local issue_number="$1"
+
+  if [[ -z "$issue_number" ]]; then
+    echo "Error: complete_planning requires issue_number" >&2
+    return 1
+  fi
+
+  set_issue_milestone "$issue_number" "PENDING"
+  echo "Issue #$issue_number: planning complete, awaiting approval" >&2
+}
+
 # Set issue done status
 # Usage: set_issue_done <issue_number> <true|false>
 # - true: sets milestone to PENDING and adds 'done' label
@@ -258,6 +273,7 @@ set_issue_done() {
 
 # Spawn a Worker agent to handle an issue
 # Usage: spawn_worker <issue_number> [model]
+# Sets milestone to WORKING and spawns worker in background
 # Returns: Worker PID
 spawn_worker() {
   local issue_number="$1"
@@ -267,6 +283,9 @@ spawn_worker() {
     echo "Error: spawn_worker requires issue_number" >&2
     return 1
   fi
+
+  # Set milestone to WORKING
+  set_issue_milestone "$issue_number" "WORKING"
 
   local prompt="Fix issue https://github.com/$ZBOBR_DOMAIN_REPO/issues/$issue_number. Follow the instructions in automation/agents/worker.md."
 
@@ -350,6 +369,7 @@ clone_target() {
 export_manager_functions() {
   # High-level API
   export -f get_issue_model
+  export -f complete_planning
   export -f spawn_worker
 
   # Internal dependencies (needed by exported functions)

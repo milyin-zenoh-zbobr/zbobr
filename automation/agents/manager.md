@@ -15,23 +15,18 @@ These bash functions are available from any directory:
 
 | Function | Usage | Description |
 |----------|-------|-------------|
-| `get_issue_model` | `get_issue_model <issue>` | Get AI model from `model:xxx` label (or default) |
-| `spawn_worker` | `spawn_worker <issue> [model]` | Spawn a Worker agent (returns PID) |
-
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `ZBOBR_DOMAIN_REPO` | Domain project repository (e.g., `owner/repo`) |
+| `get_issue_model` | `get_issue_model <issue>` | Get AI model from `model:xxx` label |
+| `complete_planning` | `complete_planning <issue>` | Mark planning done (sets PENDING) |
+| `spawn_worker` | `spawn_worker <issue> [model]` | Spawn Worker (sets WORKING, returns PID) |
 
 ---
 
 ## Stages
 
-1. **PLANNING**: Manager researches and creates implementation plan → sets to `PENDING`
-2. **PENDING**: Human reviews and approves → sets to `READY`
-3. **READY**: Manager spawns Worker → sets to `WORKING`
-4. **WORKING**: Worker implements → sets to `PENDING` + adds `done` label
+1. **PLANNING**: Manager researches and creates implementation plan
+2. **PENDING**: Human reviews and approves (manual)
+3. **READY**: Manager spawns Worker
+4. **WORKING**: Worker implements → sets PENDING + adds `done` label
 
 ---
 
@@ -45,10 +40,11 @@ For each open issue with milestone `PLANNING`:
 2. Investigate and identify target repository from `repositories.md`
 3. Create implementation plan in issue description
 4. Ask clarifying questions if needed
-5. Set milestone to `PENDING`:
-   ```bash
-   gh issue edit <number> --repo "$ZBOBR_DOMAIN_REPO" --milestone PENDING
-   ```
+5. Mark planning complete:
+
+```bash
+complete_planning <issue_number>
+```
 
 ### 2. Process READY Issues
 
@@ -56,14 +52,12 @@ For each open issue with milestone `READY`:
 
 1. Read issue and implementation plan
 2. Spawn a Worker agent:
-   ```bash
-   spawn_worker <issue_number>
-   ```
-3. Set milestone to `WORKING`:
-   ```bash
-   gh issue edit <number> --repo "$ZBOBR_DOMAIN_REPO" --milestone WORKING
-   ```
-4. **Exit — do not perform implementation**
+
+```bash
+spawn_worker <issue_number>
+```
+
+3. **Exit — do not perform implementation**
 
 ---
 
