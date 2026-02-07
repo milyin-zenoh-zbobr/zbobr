@@ -103,6 +103,7 @@ milyin/copilot/ (Orchestrator)
 │   ├── domain-instructions.md
 │   └── domain-repositories.md
 ├── AGENTS.md               # Agent registry
+├── REPOSITORIES.md         # Example/documentation (not used by orchestrator)
 └── README.md               # This file
 
 YoroolGui/copilot-zenoh/ (Domain Project - created by setup.sh)
@@ -171,6 +172,8 @@ Edit `<domain-project>/repositories.md` to list which repos the domain manages:
 ```
 
 Edit `<domain-project>/instructions.md` for domain-specific guidance.
+
+**See [REPOSITORIES.md](REPOSITORIES.md) for a complete real-world example (Zenoh project).**
 
 ### Fork Owner Configuration
 
