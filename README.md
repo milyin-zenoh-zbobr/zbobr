@@ -40,13 +40,15 @@ The orchestrator is domain-agnostic and can manage any set of repositories throu
 ```bash
 # Example: Set up Zenoh domain project
 automation/scripts/setup.sh \
-  --domain-project YoroolGui/copilot-zenoh
+  --domain-project YoroolGui/copilot-zenoh \
+  --fork-owner YoroolGui
 ```
 
 This will:
 - Create the domain project repo (if needed)
 - Set up labels and milestones
 - Initialize template files (instructions.md, repositories.md)
+- Create `.zbobr.env` with fork owner configuration
 
 **Configure target repositories:**
 
@@ -129,7 +131,8 @@ YoroolGui/copilot-zenoh/ (Domain Project - created by setup.sh)
 ```bash
 # Create domain project for Apache Kafka ecosystem
 automation/scripts/setup.sh \
-  --domain-project myorg/copilot-kafka
+  --domain-project myorg/copilot-kafka \
+  --fork-owner myorg
 ```
 
 ### Run Manager in background
@@ -155,6 +158,7 @@ copilot --agent worker --model gpt-5 -i "Fix issue #42 in domain project."
 # See what would be created without making changes
 automation/scripts/setup.sh \
   --domain-project YoroolGui/copilot-zenoh \
+  --fork-owner YoroolGui \
   --dry-run
 ```
 

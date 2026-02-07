@@ -4,14 +4,18 @@ set -euo pipefail
 # Parse arguments
 DRY_RUN=false
 DOMAIN_PROJECT=""
+FORK_OWNER=""
 
 print_usage() {
-    echo "Usage: $0 [--dry-run|-n] [--domain-project org/copilot-domain] [--repo owner/repo]"
+    echo "Usage: $0 --domain-project <org/repo> --fork-owner <user-or-org> [--dry-run|-n]"
+    echo ""
+    echo "Required:"
+    echo "  --domain-project     Domain project repo (e.g., YoroolGui/copilot-zenoh)"
+    echo "  --fork-owner         Where to create forks (user or org)"
     echo ""
     echo "Options:"
-    echo "  --dry-run            Show what would be done without making changes"
-    echo "  --domain-project     Domain project repo (e.g., YoroolGui/copilot-zenoh)"
-    echo "  --repo               Repository to setup (for backward compatibility, same as --domain-project)"
+    echo "  --dry-run, -n        Show what would be done without making changes"
+    echo "  --repo               Alias for --domain-project (backward compatibility)"
 }
 
 # Bash 3-compatible array reader (macOS default bash)
@@ -34,6 +38,10 @@ while [[ $# -gt 0 ]]; do
             DOMAIN_PROJECT="$2"
             shift 2
             ;;
+        --fork-owner)
+            FORK_OWNER="$2"
+            shift 2
+            ;;
         --repo)
             DOMAIN_PROJECT="$2"
             shift 2
@@ -50,73 +58,103 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Validate required arguments
+if [[ -z "$DOMAIN_PROJECT" ]]; then
+    echo "Error: --domain-project is required"
+    print_usage
+    exit 1
+fi
+
+if [[ -z "$FORK_OWNER" ]]; then
+    echo "Error: --fork-owner is required"
+    print_usage
+    exit 1
+fi
+
 # Define SCRIPT_DIR early for template path calculation
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Set REPO to domain project for lib.sh sourcing
-if [[ -n "$DOMAIN_PROJECT" ]]; then
-    REPO="$DOMAIN_PROJECT"
-    export REPO
+REPO="$DOMAIN_PROJECT"
+export REPO
+
+# Initialize domain project
+echo "Domain Project: $DOMAIN_PROJECT"
+echo "Fork Owner: $FORK_OWNER"
+echo
+
+echo "Checking if domain project exists..."
+
+if ! gh repo view "$DOMAIN_PROJECT" >/dev/null 2>&1; then
+    echo "Domain project does not exist. Creating..."
+    if [[ "$DRY_RUN" == true ]]; then
+        echo "DRY RUN: gh repo create $DOMAIN_PROJECT --public --initialize"
+    else
+        gh repo create "$DOMAIN_PROJECT" --public --initialize
+        echo "Created domain project: $DOMAIN_PROJECT"
+        echo "Waiting for repository to initialize..."
+        sleep 2
+    fi
 else
-    # Default to orchestrator repo
-    REPO="${REPO:-milyin/copilot}"
-    export REPO
+    echo "Domain project exists."
 fi
 
-# Initialize domain project if specified
-if [[ -n "$DOMAIN_PROJECT" ]]; then
-    echo "Domain Project: $DOMAIN_PROJECT"
-    echo "Checking if domain project exists..."
-    
-    if ! gh repo view "$DOMAIN_PROJECT" >/dev/null 2>&1; then
-        echo "Domain project does not exist. Creating..."
-        if [[ "$DRY_RUN" == true ]]; then
-            echo "DRY RUN: gh repo create $DOMAIN_PROJECT --public --initialize"
-        else
-            gh repo create "$DOMAIN_PROJECT" --public --initialize
-            echo "Created domain project: $DOMAIN_PROJECT"
-            echo "Waiting for repository to initialize..."
-            sleep 2
-        fi
-    else
-        echo "Domain project exists."
-    fi
-    
-    echo "Initializing domain project files..."
-    ORCHESTRATOR_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
-    TEMPLATES_DIR="$ORCHESTRATOR_DIR/templates"
-    
-    if [[ -d "$TEMPLATES_DIR" ]]; then
-        for template_file in "$TEMPLATES_DIR"/domain-*; do
-            if [[ -f "$template_file" ]]; then
-                target_name="${template_file##*/domain-}"
-                
-                # Check if file already exists
-                if gh api "repos/$DOMAIN_PROJECT/contents/$target_name" >/dev/null 2>&1; then
-                    echo "  ~ $target_name (already exists, skipping)"
-                    continue
-                fi
-                
-                if [[ "$DRY_RUN" == true ]]; then
-                    echo "  DRY RUN: Would create $target_name in $DOMAIN_PROJECT"
-                else
-                    echo "  + Creating $target_name"
-                    # Read template content and encode as base64
-                    content=$(cat "$template_file" | base64)
-                    
-                    # Create file in repository
-                    gh api "repos/$DOMAIN_PROJECT/contents/$target_name" -X PUT \
-                        -f message="Initialize $target_name from template" \
-                        -f content="$content" >/dev/null
-                    
-                    echo "    ✓ Created $target_name"
-                fi
+echo
+echo "Initializing domain project files..."
+ORCHESTRATOR_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
+TEMPLATES_DIR="$ORCHESTRATOR_DIR/templates"
+
+if [[ -d "$TEMPLATES_DIR" ]]; then
+    for template_file in "$TEMPLATES_DIR"/domain-*; do
+        if [[ -f "$template_file" ]]; then
+            target_name="${template_file##*/domain-}"
+
+            # Check if file already exists
+            if gh api "repos/$DOMAIN_PROJECT/contents/$target_name" >/dev/null 2>&1; then
+                echo "  ~ $target_name (already exists, skipping)"
+                continue
             fi
-        done
-    fi
-    
-    echo
+
+            if [[ "$DRY_RUN" == true ]]; then
+                echo "  DRY RUN: Would create $target_name in $DOMAIN_PROJECT"
+            else
+                echo "  + Creating $target_name"
+                # Read template content and encode as base64
+                content=$(cat "$template_file" | base64)
+
+                # Create file in repository
+                gh api "repos/$DOMAIN_PROJECT/contents/$target_name" -X PUT \
+                    -f message="Initialize $target_name from template" \
+                    -f content="$content" >/dev/null
+
+                echo "    ✓ Created $target_name"
+            fi
+        fi
+    done
 fi
+
+# Create .zbobr.env
+echo "Creating .zbobr.env configuration..."
+
+if gh api "repos/$DOMAIN_PROJECT/contents/.zbobr.env" >/dev/null 2>&1; then
+    echo "  ~ .zbobr.env (already exists, skipping)"
+else
+    ENV_CONTENT="# zbobr configuration for this domain project
+ZBOBR_FORK_OWNER=$FORK_OWNER
+# ZBOBR_DEFAULT_MODEL=gpt-5-mini
+"
+    if [[ "$DRY_RUN" == true ]]; then
+        echo "  DRY RUN: Would create .zbobr.env with ZBOBR_FORK_OWNER=$FORK_OWNER"
+    else
+        encoded_content=$(echo -n "$ENV_CONTENT" | base64)
+        gh api "repos/$DOMAIN_PROJECT/contents/.zbobr.env" -X PUT \
+            -f message="Initialize zbobr configuration" \
+            -f content="$encoded_content" >/dev/null
+        echo "  + Created .zbobr.env with ZBOBR_FORK_OWNER=$FORK_OWNER"
+    fi
+fi
+
+echo
 
 # Source common library functions (SCRIPT_DIR already defined above)
 source "$SCRIPT_DIR/lib.sh"
