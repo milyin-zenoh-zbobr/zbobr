@@ -112,7 +112,6 @@ milyin/copilot/ (Orchestrator)
 │   │   ├── agent.sh         # Agent launcher
 │   │   ├── worker.sh        # Worker spawner
 │   │   └── update_issue_with_plan.sh  # Plan updater
-│   └── instructions.md      # How to invoke agents
 ├── templates/
 │   ├── domain-instructions.md
 │   └── domain-repositories.md
@@ -247,7 +246,6 @@ Use labels like `copilot:claude-opus-4.6` on issues to select a specific model.
 
 ## Documentation
 
-- [Automation Instructions](automation/instructions.md) — How to invoke agents
 - [Manager Agent Instructions](automation/agents/manager.md) — Manager workflow
 - [Worker Agent Instructions](automation/agents/worker.md) — Worker workflow
 - [Agent Registry](AGENTS.md) — Agent definitions for `/agent` command
