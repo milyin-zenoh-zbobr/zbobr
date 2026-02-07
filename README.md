@@ -1,30 +1,44 @@
-# Repositories
+# Copilot Agent Workflow
 
-## Main rust zenoh project:
-- https://github.com/eclipse-zenoh/zenoh
+AI-powered issue management system using GitHub Copilot agents to plan, coordinate, and implement fixes for the [Zenoh project ecosystem](REPOSITORIES.md).
 
-## Language bindings of rust zenoh:
-- https://github.com/eclipse-zenoh/zenoh-c
-- https://github.com/eclipse-zenoh/zenoh-cpp
-- https://github.com/eclipse-zenoh/zenoh-python
-- https://github.com/eclipse-zenoh/zenoh-ts
-- https://github.com/eclipse-zenoh/zenoh-java
-- https://github.com/eclipse-zenoh/zenoh-kotlin
-- https://github.com/ZettaScaleLabs/zenoh-csharp
-- https://github.com/ZettaScaleLabs/zenoh-go
+## Overview
 
-## Independent pure-C zenoh implementation:
-- https://github.com/eclipse-zenoh/zenoh-pico
+This repository manages a multi-agent workflow:
 
-## Plugins:
-- https://github.com/eclipse-zenoh/zenoh-plugin-dds
-- https://github.com/eclipse-zenoh/zenoh-plugin-mqtt
-- https://github.com/eclipse-zenoh/zenoh-plugin-webserver
-- https://github.com/eclipse-zenoh/zenoh-plugin-ros2dds
-- https://github.com/eclipse-zenoh/zenoh-plugin-ros1
+- **Manager Agent**: Processes issues through stages (PLANNING → PENDING → READY → WORKING), creates implementation plans, and spawns Worker agents
+- **Worker Agent**: Implements individual issues by forking repos to `milyin/*`, creating PRs, and executing the work
 
-## Backends (plugins for storage manager plugin in the main zenoh repo):
-- https://github.com/eclipse-zenoh/zenoh-backend-filesystem
-- https://github.com/eclipse-zenoh/zenoh-backend-influxdb
-- https://github.com/eclipse-zenoh/zenoh-backend-rocksdb
-- https://github.com/eclipse-zenoh/zenoh-backend-s3
+## Getting Started
+
+**Prerequisites:**
+- GitHub Copilot CLI (`copilot`)
+- GitHub CLI (`gh`) authenticated
+- Access to `milyin/*` GitHub account
+
+**Launch agents:**
+```bash
+# Start Manager to process issues
+copilot --agent manager -i "Process issues using the manager workflow."
+
+# Start Worker for specific issue
+copilot --agent worker --model gpt-5.2-codex -i "Fix issue #123 in milyin/copilot."
+```
+
+## Workflow
+
+1. Create issues in `milyin/copilot` with milestone `PLANNING`
+2. Manager creates implementation plan → sets milestone `PENDING`
+3. Human reviews and sets milestone to `READY`
+4. Manager spawns Worker → sets milestone `WORKING`
+5. Worker forks target repo to `milyin/*`, creates PR, implements fix
+6. Worker sets milestone to `PENDING` + adds `done` label when complete
+7. Human reviews PR and merges
+
+See [.github/copilot-instructions.md](.github/copilot-instructions.md) for detailed documentation.
+
+## Target Repositories
+
+This workflow manages issues related to the Zenoh ecosystem. See [REPOSITORIES.md](REPOSITORIES.md) for the full list of target repositories.
+
+**Important:** All issue and PR management happens in `milyin/copilot`. Agents never directly modify other repositories—they only create forks and PRs.

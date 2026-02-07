@@ -53,8 +53,8 @@ Both Manager and Worker agents can use these tools:
   - Example: `.github/scripts/update_issue_with_plan.sh milyin/copilot 1 /path/to/plan.md`
   - Requirements: `gh` CLI and authenticated session (`gh auth login`)
 
-- **run_worker_script** — Spawns a Worker agent to handle a READY issue (used by Manager).
-  - Usage: `gh copilot run-worker --issue <issue_number> --repo <repo> --model <model_name>`
+- **run_worker.sh** — Spawns a Worker agent to handle a READY issue (used by Manager).
+  - Usage: `.github/scripts/run_worker.sh --issue <issue_number> --model <model_name>`
   - Purpose: Initiates a Worker agent to implement the issue
   - Requirements: `gh` CLI and authenticated session
 

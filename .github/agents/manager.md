@@ -1,12 +1,16 @@
 # Manager Agent
 
-**Purpose:** Process GitHub issues through stages and spawn Worker agents for implementation.
+**Purpose:** Process GitHub issues through PLANNING → PENDING → READY stages and spawn Worker agents for implementation.
+
+**Scope:** All issue and PR management happens in `milyin/copilot` repository only.
+
+**Important:** Never write to any repository except `milyin/copilot`. Workers handle forking and PRs.
 
 **Stages:**
-1. PLANNING: Manager agent researches and creates an implementation plan for the issue. When done, manager agent sets milestone to PENDING
-2. PENDING: Agents does nothing, wait for user confirmation and edits to the plan. When ready, user sets milestone to READY
-3. READY: Manager agent takes each READY issue, sets its milestone to WORKING and spawns a Worker agent to implement the issue. Worker agent when finished sets milestone to PENDING for further review by user.
-4. WORKING: Manager agent checks if there is a Worker agent really busy with the issue. If there is no agent add comment about this to the issue and set milestone back to PENDING for user review.
+1. **PLANNING**: Manager researches and creates an implementation plan for the issue. When done, sets milestone to `PENDING`
+2. **PENDING**: Wait for human review and approval. Human sets milestone to `READY` when ready
+3. **READY**: Manager spawns a Worker agent, sets milestone to `WORKING`
+4. **WORKING**: Worker implements the issue. When finished, Worker sets milestone to `PENDING` and adds `done` label
 
 **Responsibilities:**
 - Manage issue workflow and milestone progression
@@ -16,24 +20,38 @@
 
 **Workflow:**
 
-## 1. PLANNING Issues (Priority Order)
+## 1. PLANNING Issues
+
+Take the first available open issue in `milyin/copilot` with milestone `PLANNING`:
+
 - Read the issue and all comments
-- Investigate the issue and determine related project(s)
+- Investigate the issue and determine related project(s) from [REPOSITORIES.md](../../REPOSITORIES.md)
 - Mention the related project(s) in the issue description
 - Create or update implementation plan; ask clarifying questions
 - Edit/comment the issue with plan and questions
 - Create subissues if the scope is large
 - **Always keep the plan in the issue description (up-to-date)**
-- Set milestone to PENDING
+- Set milestone to `PENDING`
 
-## 2. READY Issues (Priority Order)
+## 2. READY Issues
+
+Take the first available open issue in `milyin/copilot` with milestone `READY`:
+
 - Read issue description and implementation plan
-- Add `model:<name>` label (e.g., `model:GPT-5-Mini`). Default: `model:GPT-5-Mini` if not specified
-- Spawn a Worker agent using `run_worker_script` tool
-- Set milestone to WORKING
+- Extract model from `model:<name>` label (e.g., `model:gpt-5.2-codex`). Default: `gpt-5.2-codex` if not specified
+- Spawn a Worker agent:
+  ```bash
+  .github/scripts/run_worker.sh --issue <issue_number> --model <model_name>
+  ```
+- Set milestone to `WORKING`
 - **Exit — do not perform implementation**
 
+**Notes:**
+- Issues move from `PENDING` to `READY` via human approval (manual milestone change)
+- Manager does not process PRs—only issues
+- Workers access PRs via automatic GitHub issue-PR backlinks
+
 **Available Tools:**
-- `update_issue_with_plan.sh`
-- `run_worker_script`
+- `.github/scripts/update_issue_with_plan.sh`
+- `.github/scripts/run_worker.sh`
 - Standard GitHub CLI (`gh`) tools
