@@ -81,6 +81,8 @@ if [[ -n "$DOMAIN_PROJECT" ]]; then
         else
             gh repo create "$DOMAIN_PROJECT" --public --initialize
             echo "Created domain project: $DOMAIN_PROJECT"
+            echo "Waiting for repository to initialize..."
+            sleep 2
         fi
     else
         echo "Domain project exists."
@@ -94,7 +96,27 @@ if [[ -n "$DOMAIN_PROJECT" ]]; then
         for template_file in "$TEMPLATES_DIR"/domain-*; do
             if [[ -f "$template_file" ]]; then
                 target_name="${template_file##*/domain-}"
-                echo "  Would create $target_name in $DOMAIN_PROJECT"
+                
+                # Check if file already exists
+                if gh api "repos/$DOMAIN_PROJECT/contents/$target_name" >/dev/null 2>&1; then
+                    echo "  ~ $target_name (already exists, skipping)"
+                    continue
+                fi
+                
+                if [[ "$DRY_RUN" == true ]]; then
+                    echo "  DRY RUN: Would create $target_name in $DOMAIN_PROJECT"
+                else
+                    echo "  + Creating $target_name"
+                    # Read template content and encode as base64
+                    content=$(cat "$template_file" | base64)
+                    
+                    # Create file in repository
+                    gh api "repos/$DOMAIN_PROJECT/contents/$target_name" -X PUT \
+                        -f message="Initialize $target_name from template" \
+                        -f content="$content" >/dev/null
+                    
+                    echo "    ✓ Created $target_name"
+                fi
             fi
         done
     fi

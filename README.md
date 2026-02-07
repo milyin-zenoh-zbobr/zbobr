@@ -153,6 +153,13 @@ automation/scripts/setup.sh \
 
 ### Domain Project Setup
 
+When you run `setup.sh` with `--domain-project`, it automatically creates:
+- `instructions.md` — Domain-specific guidance for agents (from template)
+- `repositories.md` — List of target repositories (from template)
+- `.copilot-config` — Configuration settings (fork owner, etc.)
+
+**Note:** Existing files are never overwritten. Customize after initial setup.
+
 Edit `<domain-project>/repositories.md` to list which repos the domain manages:
 
 ```markdown
