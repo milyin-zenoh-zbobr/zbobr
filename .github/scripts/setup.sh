@@ -176,6 +176,9 @@ reconcile_lists existing_milestones desired_milestones milestones_to_delete mile
 if [[ ${#milestones_to_delete[@]} -gt 0 ]]; then
     echo "Deleting extra milestones:"
     for milestone in "${milestones_to_delete[@]}"; do
+        if [[ -z "$milestone" ]]; then
+            continue
+        fi
         echo "  - $milestone"
         delete_milestone "$milestone"
     done
@@ -187,6 +190,9 @@ fi
 if [[ ${#milestones_to_create[@]} -gt 0 ]]; then
     echo "Creating missing milestones:"
     for milestone in "${milestones_to_create[@]}"; do
+        if [[ -z "$milestone" ]]; then
+            continue
+        fi
         case "$milestone" in
             PLANNING)
                 description="Issue is being planned by Manager agent"
