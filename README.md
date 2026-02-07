@@ -140,18 +140,25 @@ automation/setup/setup.sh \
 ### Run Manager in background
 
 ```bash
-# Poll every 30 seconds (default is 60)
-automation/scripts/manager_loop.sh --interval 30 &
+# Clone domain project and cd into it
+gh repo clone YoroolGui/copilot-zenoh
+cd copilot-zenoh
+
+# Run manager loop (poll every 30 seconds)
+/path/to/zbobr/automation/scripts/manager_loop.sh --interval 30 &
 ```
 
 ### Manually invoke agents
 
 ```bash
+# From domain project directory:
+cd copilot-zenoh
+
 # Process with Manager
-copilot --agent manager -i "Process issues using the manager workflow."
+/path/to/zbobr/automation/scripts/agent.sh manager
 
 # Implement specific issue
-copilot --agent worker --model gpt-5 -i "Fix issue #42 in domain project."
+/path/to/zbobr/automation/scripts/agent.sh worker 42
 ```
 
 ### Dry-run setup
@@ -195,6 +202,9 @@ Create a `.zbobr.env` file in your domain project to configure zbobr behavior:
 ```bash
 # .zbobr.env - zbobr configuration for this domain project
 
+# Required: This domain project's repository
+ZBOBR_DOMAIN_REPO=YoroolGui/copilot-zenoh
+
 # Required: User or organization where Worker agents create forks
 ZBOBR_FORK_OWNER=YoroolGui
 
@@ -206,12 +216,14 @@ ZBOBR_DEFAULT_MODEL=gpt-5-mini
 
 | Variable | Required | Description |
 |----------|----------|-------------|
+| `ZBOBR_DOMAIN_REPO` | Yes | This domain project's repository |
 | `ZBOBR_FORK_OWNER` | Yes | User or organization for creating forks |
 | `ZBOBR_DEFAULT_MODEL` | No | Default AI model for issues |
 
-Scripts automatically load this configuration:
+Scripts must be run from the domain project directory and automatically load `.zbobr.env`:
 ```bash
-automation/scripts/clone_target.sh <domain_project> <target_repo> <issue_number>
+cd copilot-zenoh  # domain project directory
+/path/to/zbobr/automation/scripts/clone_target.sh zenoh/zenoh 123
 ```
 
 ### Available Models

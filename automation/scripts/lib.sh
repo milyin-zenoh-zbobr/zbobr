@@ -1,9 +1,20 @@
 #!/bin/bash
 # Common library functions for Copilot Agent Workflow scripts
 
-# Default repository (can be overridden by scripts before sourcing)
-: "${REPO:=milyin/copilot}"
-export REPO
+# Load .zbobr.env if ZBOBR_DOMAIN_REPO is not already set
+# (setup.sh sets it before sourcing, domain scripts load from file)
+if [[ -z "$ZBOBR_DOMAIN_REPO" ]]; then
+  if [[ -f ".zbobr.env" ]]; then
+    source ".zbobr.env"
+  else
+    echo "Error: .zbobr.env not found in current directory" >&2
+    echo "Scripts must be run from the domain project directory" >&2
+    exit 1
+  fi
+fi
+export ZBOBR_DOMAIN_REPO
+export ZBOBR_FORK_OWNER
+export ZBOBR_DEFAULT_MODEL
 
 # Universal list reconciliation function (bash 3 compatible)
 # Compares existing vs desired items and determines what to delete and create
@@ -53,13 +64,13 @@ reconcile_lists() {
 # Get all labels in a repository
 # Usage: get_labels
 get_labels() {
-  gh label list --repo "$REPO" --json name --jq '.[].name'
+  gh label list --repo "$ZBOBR_DOMAIN_REPO" --json name --jq '.[].name'
 }
 
 # Get all milestones in a repository
 # Usage: get_milestones
 get_milestones() {
-  gh api "repos/$REPO/milestones" --jq '.[].title'
+  gh api "repos/$ZBOBR_DOMAIN_REPO/milestones" --jq '.[].title'
 }
 
 # Create a label in a repository
@@ -69,7 +80,7 @@ create_label() {
   local color="$2"
   local description="$3"
   
-  gh label create "$name" --description "$description" --color "$color" --repo "$REPO"
+  gh label create "$name" --description "$description" --color "$color" --repo "$ZBOBR_DOMAIN_REPO"
 }
 
 # Delete a label from a repository
@@ -77,7 +88,7 @@ create_label() {
 delete_label() {
   local name="$1"
   
-  gh label delete "$name" --repo "$REPO" --yes
+  gh label delete "$name" --repo "$ZBOBR_DOMAIN_REPO" --yes
 }
 
 # Update a label in a repository
@@ -87,7 +98,7 @@ update_label() {
   local color="$2"
   local description="$3"
 
-  gh label edit "$name" --description "$description" --color "$color" --repo "$REPO"
+  gh label edit "$name" --description "$description" --color "$color" --repo "$ZBOBR_DOMAIN_REPO"
 }
 
 # Create a milestone in a repository
@@ -96,7 +107,7 @@ create_milestone() {
   local title="$1"
   local description="$2"
   
-  gh api "repos/$REPO/milestones" -f title="$title" -f description="$description" -f state="open"
+  gh api "repos/$ZBOBR_DOMAIN_REPO/milestones" -f title="$title" -f description="$description" -f state="open"
 }
 
 # Delete a milestone from a repository
@@ -104,9 +115,9 @@ create_milestone() {
 delete_milestone() {
   local title="$1"
   
-  local milestone_number=$(gh api "repos/$REPO/milestones" --jq ".[] | select(.title==\"$title\") | .number")
+  local milestone_number=$(gh api "repos/$ZBOBR_DOMAIN_REPO/milestones" --jq ".[] | select(.title==\"$title\") | .number")
   if [[ -n "$milestone_number" ]]; then
-    gh api "repos/$REPO/milestones/$milestone_number" -X DELETE
+    gh api "repos/$ZBOBR_DOMAIN_REPO/milestones/$milestone_number" -X DELETE
   fi
 }
 
@@ -115,7 +126,7 @@ delete_milestone() {
 get_issue_labels() {
   local issue_number="$1"
   
-  gh issue view "$issue_number" --repo "$REPO" --json labels --jq '.labels[].name'
+  gh issue view "$issue_number" --repo "$ZBOBR_DOMAIN_REPO" --json labels --jq '.labels[].name'
 }
 
 # Extract model from issue labels (looks for model: prefix)
@@ -140,7 +151,7 @@ extract_model_from_labels() {
 get_milestone_number() {
   local title="$1"
   
-  gh api "repos/$REPO/milestones" --jq ".[] | select(.title==\"$title\") | .number"
+  gh api "repos/$ZBOBR_DOMAIN_REPO/milestones" --jq ".[] | select(.title==\"$title\") | .number"
 }
 
 # Get issue milestone
@@ -148,7 +159,7 @@ get_milestone_number() {
 get_issue_milestone() {
   local issue_number="$1"
   
-  gh issue view "$issue_number" --repo "$REPO" --json milestone --jq '.milestone.title // ""'
+  gh issue view "$issue_number" --repo "$ZBOBR_DOMAIN_REPO" --json milestone --jq '.milestone.title // ""'
 }
 
 # Set issue milestone
@@ -160,11 +171,11 @@ set_issue_milestone() {
   local milestone_number=$(get_milestone_number "$milestone_title")
   
   if [[ -z "$milestone_number" ]]; then
-    echo "Error: Milestone '$milestone_title' not found in $REPO" >&2
+    echo "Error: Milestone '$milestone_title' not found in $ZBOBR_DOMAIN_REPO" >&2
     return 1
   fi
   
-  gh api "repos/$REPO/issues/$issue_number" -X PATCH -f milestone="$milestone_number" >/dev/null
+  gh api "repos/$ZBOBR_DOMAIN_REPO/issues/$issue_number" -X PATCH -f milestone="$milestone_number" >/dev/null
 }
 
 # Add label to issue
@@ -173,7 +184,7 @@ add_issue_label() {
   local issue_number="$1"
   local label="$2"
   
-  gh issue edit "$issue_number" --repo "$REPO" --add-label "$label"
+  gh issue edit "$issue_number" --repo "$ZBOBR_DOMAIN_REPO" --add-label "$label"
 }
 
 # Remove label from issue
@@ -182,7 +193,7 @@ remove_issue_label() {
   local issue_number="$1"
   local label="$2"
   
-  gh issue edit "$issue_number" --repo "$REPO" --remove-label "$label"
+  gh issue edit "$issue_number" --repo "$ZBOBR_DOMAIN_REPO" --remove-label "$label"
 }
 
 # Check if issue has label

@@ -46,26 +46,33 @@ copilot --agent worker --model gpt-5-mini -i "Fix issue #123 in milyin/copilot."
 
 ## Tools
 
-Both Manager and Worker agents can use these tools:
+**Important:** All scripts in `automation/scripts/` must be run from the domain project directory (which contains `.zbobr.env`).
 
-- **update_issue_with_plan.sh** — Appends a plan file to an issue body under an 'Implementation plan' header and sets the issue milestone to PENDING.
-  - Usage: `automation/scripts/update_issue_with_plan.sh <repo> <issue_number> <plan_file>`
-  - Example: `automation/scripts/update_issue_with_plan.sh milyin/copilot 1 /path/to/plan.md`
-  - Requirements: `gh` CLI and authenticated session (`gh auth login`)
+- **update_issue_with_plan.sh** — Appends a plan file to an issue body and sets milestone to PENDING.
+  - Usage: `automation/scripts/update_issue_with_plan.sh <issue_number> <plan_file>`
+  - Example: `automation/scripts/update_issue_with_plan.sh 1 /path/to/plan.md`
+  - Requirements: Run from domain project directory, `gh` CLI authenticated
 
-- **worker.sh** — Spawns a Worker agent to handle a READY issue (used by Manager).
-  - Usage: `automation/scripts/worker.sh --issue <issue_number> --model <model_name> --repo <owner/repo>`
-  - Alternative: `REPO=owner/repo automation/scripts/worker.sh --issue <issue_number> --model <model_name>`
-  - Purpose: Initiates a Worker agent to implement the issue
-  - Requirements: `gh` CLI and authenticated session
+- **worker.sh** — Spawns a Worker agent to handle a READY issue.
+  - Usage: `automation/scripts/worker.sh --issue <issue_number> [--model <model_name>]`
+  - Example: `automation/scripts/worker.sh --issue 42`
+  - Model defaults to `$ZBOBR_DEFAULT_MODEL` or `gpt-5-mini`
+  - Requirements: Run from domain project directory
 
 - **clone_target.sh** — Clones and forks a target repository for issue implementation.
-  - Usage: `automation/scripts/clone_target.sh <domain_project> <target_repo> <issue_number>`
-  - Example: `automation/scripts/clone_target.sh YoroolGui/copilot-zenoh zenoh/zenoh 123`
-  - Purpose: Loads `.zbobr.env` from domain project, clones target repo, creates fork and feature branch
-  - Requirements: Domain project must have `.zbobr.env` with `ZBOBR_FORK_OWNER` defined
+  - Usage: `automation/scripts/clone_target.sh <target_repo> <issue_number>`
+  - Example: `automation/scripts/clone_target.sh zenoh/zenoh 123`
+  - Uses `$ZBOBR_FORK_OWNER` from `.zbobr.env`
+  - Requirements: Run from domain project directory
 
-- **lib.sh** — Common library functions for repository operations and label/milestone management.
-  - Usage: `source automation/scripts/lib.sh`
-  - Default REPO: `milyin/copilot` (can be overridden: `REPO="other/repo" source lib.sh`)
+- **agent.sh** — Agent CLI wrapper for Manager or Worker.
+  - Usage: `automation/scripts/agent.sh manager [prompt]`
+  - Usage: `automation/scripts/agent.sh worker <issue_number> [model]`
+  - Requirements: Run from domain project directory
+
+- **manager_loop.sh** — Runs Manager agent in a loop.
+  - Usage: `automation/scripts/manager_loop.sh [--interval seconds]`
+  - Requirements: Run from domain project directory
+
+- **lib.sh** — Common library functions. Loads `.zbobr.env` automatically.
   - Functions: `reconcile_lists`, `get_labels`, `get_milestones`, `extract_model_from_labels`, `get_milestone_number`, `get_issue_milestone`, `set_issue_milestone`, `add_issue_label`, `remove_issue_label`, `has_issue_label`, etc.

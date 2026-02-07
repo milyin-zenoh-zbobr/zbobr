@@ -1,34 +1,22 @@
 #!/bin/bash
 # Clone and fork a target repository for issue implementation
-# Loads .zbobr.env from the domain project for configuration
+# Must be run from domain project directory (with .zbobr.env)
 
 set -e
 
-DOMAIN_PROJECT="$1"
-TARGET_REPO="$2"
-ISSUE_NUMBER="$3"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib.sh"
 
-if [[ -z "$DOMAIN_PROJECT" ]] || [[ -z "$TARGET_REPO" ]] || [[ -z "$ISSUE_NUMBER" ]]; then
-  echo "Usage: $0 <domain_project> <target_repo> <issue_number>"
-  echo "Example: $0 YoroolGui/copilot-zenoh zenoh/zenoh 123"
+TARGET_REPO="$1"
+ISSUE_NUMBER="$2"
+
+if [[ -z "$TARGET_REPO" ]] || [[ -z "$ISSUE_NUMBER" ]]; then
+  echo "Usage: $0 <target_repo> <issue_number>"
+  echo "Example: $0 zenoh/zenoh 123"
+  echo ""
+  echo "Must be run from domain project directory (with .zbobr.env)"
   exit 1
 fi
-
-REPO_NAME="${TARGET_REPO#*/}"
-WORK_DIR="copilot/projects/$REPO_NAME"
-
-# Load configuration from domain project's .zbobr.env
-echo "Loading configuration from $DOMAIN_PROJECT..."
-ENV_CONTENT=$(gh api "repos/$DOMAIN_PROJECT/contents/.zbobr.env" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-
-if [[ -z "$ENV_CONTENT" ]]; then
-  echo "Error: .zbobr.env not found in $DOMAIN_PROJECT"
-  echo "Domain project must have a .zbobr.env file with ZBOBR_FORK_OWNER defined"
-  exit 1
-fi
-
-# Source the env content
-eval "$ENV_CONTENT"
 
 # Validate required configuration
 if [[ -z "$ZBOBR_FORK_OWNER" ]]; then
@@ -36,9 +24,14 @@ if [[ -z "$ZBOBR_FORK_OWNER" ]]; then
   exit 1
 fi
 
-echo "Configuration loaded:"
+REPO_NAME="${TARGET_REPO#*/}"
+WORK_DIR="copilot/projects/$ZBOBR_DOMAIN_REPO_NAME"
+
+echo "Configuration:"
+echo "  Domain: $ZBOBR_DOMAIN_REPO"
 echo "  ZBOBR_FORK_OWNER: $ZBOBR_FORK_OWNER"
 echo "  ZBOBR_DEFAULT_MODEL: ${ZBOBR_DEFAULT_MODEL:-not set}"
+echo ""
 
 # Create work directory
 mkdir -p "copilot/projects"
@@ -52,7 +45,7 @@ fi
 cd "$WORK_DIR"
 
 # Create fork if it doesn't exist
-FORK_REPO="$ZBOBR_FORK_OWNER/$REPO_NAME"
+FORK_REPO="$ZBOBR_FORK_OWNER/$ZBOBR_DOMAIN_REPO_NAME"
 if ! gh repo view "$FORK_REPO" >/dev/null 2>&1; then
   echo "Creating fork to $ZBOBR_FORK_OWNER..."
   gh repo fork "$TARGET_REPO" --org "$ZBOBR_FORK_OWNER" --clone=false

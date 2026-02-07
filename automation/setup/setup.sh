@@ -74,9 +74,9 @@ fi
 # Define SCRIPT_DIR early for template path calculation
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Set REPO to domain project for lib.sh sourcing
-REPO="$DOMAIN_PROJECT"
-export REPO
+# Set ZBOBR_DOMAIN_REPO for lib.sh functions
+ZBOBR_DOMAIN_REPO="$DOMAIN_PROJECT"
+export ZBOBR_DOMAIN_REPO
 
 # Initialize domain project
 echo "Domain Project: $DOMAIN_PROJECT"
@@ -140,6 +140,7 @@ if gh api "repos/$DOMAIN_PROJECT/contents/.zbobr.env" >/dev/null 2>&1; then
     echo "  ~ .zbobr.env (already exists, skipping)"
 else
     ENV_CONTENT="# zbobr configuration for this domain project
+ZBOBR_DOMAIN_REPO=$DOMAIN_PROJECT
 ZBOBR_FORK_OWNER=$FORK_OWNER
 # ZBOBR_DEFAULT_MODEL=gpt-5-mini
 "
@@ -168,18 +169,18 @@ if [[ "$DRY_RUN" == true ]]; then
     delete_milestone() { echo "DRY RUN: delete_milestone \"$1\""; }
 fi
 
-echo "Setting up repository: $REPO"
+echo "Setting up repository: $ZBOBR_DOMAIN_REPO"
 echo
 
 # Check if repository exists before processing labels/milestones
 REPO_EXISTS=true
-if ! gh repo view "$REPO" >/dev/null 2>&1; then
+if ! gh repo view "$ZBOBR_DOMAIN_REPO" >/dev/null 2>&1; then
     REPO_EXISTS=false
-    echo "Note: Repository $REPO does not exist yet. Skipping label/milestone processing."
+    echo "Note: Repository $ZBOBR_DOMAIN_REPO does not exist yet. Skipping label/milestone processing."
     echo
 fi
 
-if [[ "$REPO_EXISTS" == true ]]; then
+if [[ "$ZBOBR_DOMAIN_REPO_EXISTS" == true ]]; then
 # Get available models from copilot CLI
 get_available_models() {
     local help_text

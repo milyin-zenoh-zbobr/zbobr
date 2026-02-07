@@ -1,22 +1,25 @@
 #!/bin/bash
 # Run Manager agent in a loop when processable milestones exist
+# Must be run from domain project directory (with .zbobr.env)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="${REPO:-milyin/copilot}"
+source "$SCRIPT_DIR/lib.sh"
+
 POLL_SECONDS=60
 
 print_usage() {
-    echo "Usage: $0 [--repo owner/repo] [--interval seconds]"
+    echo "Usage: $0 [--interval seconds]"
+    echo ""
+    echo "Must be run from domain project directory (with .zbobr.env)"
+    echo ""
+    echo "Options:"
+    echo "  --interval           Poll interval in seconds (default: 60)"
 }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --repo)
-            REPO="$2"
-            shift 2
-            ;;
         --interval)
             POLL_SECONDS="$2"
             shift 2
@@ -33,11 +36,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-echo "Manager loop started for $REPO (interval: ${POLL_SECONDS}s)"
+echo "Manager loop started for $ZBOBR_DOMAIN_REPO (interval: ${POLL_SECONDS}s)"
+echo "Configuration: ZBOBR_FORK_OWNER=${ZBOBR_FORK_OWNER:-not set}, ZBOBR_DEFAULT_MODEL=${ZBOBR_DEFAULT_MODEL:-not set}"
 
 has_processable_issues() {
     local count
-    count=$(gh issue list --repo "$REPO" --state open --limit 1 \
+    count=$(gh issue list --repo "$ZBOBR_DOMAIN_REPO" --state open --limit 1 \
         --search "milestone:PLANNING OR milestone:READY" \
         --json number --jq 'length')
     [[ "$count" -gt 0 ]]

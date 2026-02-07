@@ -1,39 +1,50 @@
 #!/bin/bash
 # Agent CLI wrapper — invoke Manager or Worker agents
+# Must be run from domain project directory (with .zbobr.env)
 
 set -e
 
-AGENT_TYPE="${1:-manager}"
-REPO="${REPO:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-AGENTS_DIR="$SCRIPT_DIR/../agents"
+source "$SCRIPT_DIR/lib.sh"
+
+print_usage() {
+  echo "Usage: $0 <agent_type> [prompt]"
+  echo "       $0 worker <issue_number> [model]"
+  echo ""
+  echo "Must be run from domain project directory (with .zbobr.env)"
+  echo ""
+  echo "Agent types: manager, worker"
+}
+
+AGENT_TYPE="${1:-}"
+
+if [[ -z "$AGENT_TYPE" ]] || [[ "$AGENT_TYPE" == "-h" ]] || [[ "$AGENT_TYPE" == "--help" ]]; then
+  print_usage
+  exit 0
+fi
+
+shift
 
 case "$AGENT_TYPE" in
   manager)
     echo "Launching Manager Agent via Copilot CLI..."
-    PROMPT="${2:-Follow the instructions in automation/agents/manager.md and start processing issues.}"
+    echo "Domain: $ZBOBR_DOMAIN_REPO"
+    PROMPT="${1:-Follow the instructions in automation/agents/manager.md and start processing issues.}"
     copilot --agent manager -i "$PROMPT"
     ;;
   worker)
     echo "Launching Worker Agent via Copilot CLI..."
-    # Worker expects issue number and repo to build a default prompt.
-    ISSUE="${2:-}"
-    MODEL="${3:-gpt-5-mini}"
+    echo "Domain: $ZBOBR_DOMAIN_REPO"
+    ISSUE="${1:-}"
+    MODEL="${2:-${ZBOBR_DEFAULT_MODEL:-gpt-5-mini}}"
 
     if [[ -z "$ISSUE" ]]; then
       echo "Error: Worker requires issue number"
       echo "Usage: $0 worker <issue_number> [model]"
-      echo "       Set REPO environment variable for the domain project"
       exit 1
     fi
 
-    if [[ -z "$REPO" ]]; then
-      echo "Error: REPO environment variable must be set"
-      echo "Usage: REPO=owner/repo $0 worker <issue_number> [model]"
-      exit 1
-    fi
-
-    PROMPT="Fix issue https://github.com/$REPO/issues/$ISSUE. Follow the instructions in automation/agents/worker.md."
+    PROMPT="Fix issue https://github.com/$ZBOBR_DOMAIN_REPO/issues/$ISSUE. Follow the instructions in automation/agents/worker.md."
     copilot --agent worker --model "$MODEL" -i "$PROMPT"
     ;;
   *)
