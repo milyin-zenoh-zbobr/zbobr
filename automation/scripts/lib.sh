@@ -22,6 +22,10 @@ export ZBOBR_FORK_OWNER
 export ZBOBR_DEFAULT_MODEL
 export ZBOBR_DOMAIN_DIR
 
+# Set default workspace if not specified
+ZBOBR_WORKSPACE="${ZBOBR_WORKSPACE:-$ZBOBR_DOMAIN_DIR/workspace}"
+export ZBOBR_WORKSPACE
+
 # Universal list reconciliation function (bash 3 compatible)
 # Compares existing vs desired items and determines what to delete and create
 # Usage: reconcile_lists "existing_array" "desired_array" "to_delete_array" "to_create_array"
@@ -208,38 +212,60 @@ has_issue_label() {
 # These functions are exported for agents to use from any directory
 # =============================================================================
 
-# Get the AI model to use for an issue (from model:xxx label)
-# Usage: get_issue_model <issue_number>
-# Returns: Model name (or default if no model label)
-get_issue_model() {
+# Get workspace directory for an issue
+# Usage: get_issue_workdir <issue_number>
+# Returns: Path to issue workspace (e.g., $ZBOBR_WORKSPACE/issue#123)
+get_issue_workdir() {
   local issue_number="$1"
-  local default_model="${ZBOBR_DEFAULT_MODEL:-gpt-5-mini}"
 
   if [[ -z "$issue_number" ]]; then
-    echo "Error: get_issue_model requires issue_number" >&2
+    echo "Error: get_issue_workdir requires issue_number" >&2
     return 1
   fi
 
-  local labels=$(get_issue_labels "$issue_number")
+  echo "$ZBOBR_WORKSPACE/issue#$issue_number"
+}
 
-  for label in $labels; do
-    if [[ "$label" =~ ^model: ]]; then
-      echo "${label#model:}"
-      return
-    fi
-  done
+# Get current issue number from working directory
+# Usage: get_current_issue
+# Returns: Issue number if in issue workspace, empty otherwise
+get_current_issue() {
+  local current_dir="$(pwd)"
 
-  echo "$default_model"
+  # Check if we're in an issue workspace directory
+  if [[ "$current_dir" =~ $ZBOBR_WORKSPACE/issue#([0-9]+) ]]; then
+    echo "${BASH_REMATCH[1]}"
+  elif [[ "$current_dir" =~ issue#([0-9]+) ]]; then
+    echo "${BASH_REMATCH[1]}"
+  else
+    echo ""
+  fi
+}
+
+# Get GitHub issue URL
+# Usage: get_issue_url [issue_number]
+# If no issue_number provided, uses current issue from directory
+# Returns: Full GitHub issue URL
+get_issue_url() {
+  local issue_number="${1:-$(get_current_issue)}"
+
+  if [[ -z "$issue_number" ]]; then
+    echo "Error: get_issue_url requires issue_number or must be in issue workspace" >&2
+    return 1
+  fi
+
+  echo "https://github.com/$ZBOBR_DOMAIN_REPO/issues/$issue_number"
 }
 
 # Complete planning phase for an issue
-# Usage: complete_planning <issue_number>
+# Usage: complete_planning [issue_number]
+# If no issue_number provided, uses current issue from directory
 # Sets milestone to PENDING (waiting for human approval)
 complete_planning() {
-  local issue_number="$1"
+  local issue_number="${1:-$(get_current_issue)}"
 
   if [[ -z "$issue_number" ]]; then
-    echo "Error: complete_planning requires issue_number" >&2
+    echo "Error: complete_planning requires issue_number or must be in issue workspace" >&2
     return 1
   fi
 
@@ -248,15 +274,29 @@ complete_planning() {
 }
 
 # Set issue done status
-# Usage: set_issue_done <issue_number> <true|false>
+# Usage: set_issue_done [issue_number] <true|false>
+# If only one arg provided, uses current issue from directory
 # - true: sets milestone to PENDING and adds 'done' label
 # - false: removes 'done' label (if present)
 set_issue_done() {
-  local issue_number="$1"
-  local done="$2"
+  local issue_number
+  local done
 
-  if [[ -z "$issue_number" ]] || [[ -z "$done" ]]; then
-    echo "Error: set_issue_done requires issue_number and done (true/false)" >&2
+  if [[ $# -eq 1 ]]; then
+    issue_number="$(get_current_issue)"
+    done="$1"
+  else
+    issue_number="$1"
+    done="$2"
+  fi
+
+  if [[ -z "$issue_number" ]]; then
+    echo "Error: set_issue_done requires issue_number or must be in issue workspace" >&2
+    return 1
+  fi
+
+  if [[ -z "$done" ]]; then
+    echo "Error: set_issue_done requires done (true/false)" >&2
     return 1
   fi
 
@@ -271,45 +311,22 @@ set_issue_done() {
   fi
 }
 
-# Spawn a Worker agent to handle an issue
-# Usage: spawn_worker <issue_number> [model]
-# Sets milestone to WORKING and spawns worker in background
-# Returns: Worker PID
-spawn_worker() {
-  local issue_number="$1"
-  local model="${2:-$(get_issue_model "$issue_number")}"
-
-  if [[ -z "$issue_number" ]]; then
-    echo "Error: spawn_worker requires issue_number" >&2
-    return 1
-  fi
-
-  # Set milestone to WORKING
-  set_issue_milestone "$issue_number" "WORKING"
-
-  local prompt="Fix issue https://github.com/$ZBOBR_DOMAIN_REPO/issues/$issue_number. Follow the instructions in automation/agents/worker.md."
-
-  # Export worker functions for the child process
-  export_worker_functions
-
-  echo "Spawning Worker agent for issue #$issue_number with model $model..." >&2
-  echo "Domain dir: $ZBOBR_DOMAIN_DIR" >&2
-  copilot --agent worker --model "$model" -i "$prompt" --allow-all &
-
-  local worker_pid=$!
-  echo "Worker agent started (PID: $worker_pid)" >&2
-  echo "$worker_pid"
-}
-
 # Clone and fork a target repository for issue implementation
-# Usage: clone_target <target_repo> <issue_number>
+# Usage: clone_target <target_repo> [issue_number]
+# If no issue_number provided, uses current issue from directory
+# Clones into current issue workspace
 # Returns: Path to the cloned repository
 clone_target() {
   local target_repo="$1"
-  local issue_number="$2"
+  local issue_number="${2:-$(get_current_issue)}"
 
-  if [[ -z "$target_repo" ]] || [[ -z "$issue_number" ]]; then
-    echo "Error: clone_target requires target_repo and issue_number" >&2
+  if [[ -z "$target_repo" ]]; then
+    echo "Error: clone_target requires target_repo" >&2
+    return 1
+  fi
+
+  if [[ -z "$issue_number" ]]; then
+    echo "Error: clone_target requires issue_number or must be in issue workspace" >&2
     return 1
   fi
 
@@ -319,14 +336,15 @@ clone_target() {
   fi
 
   local repo_name="${target_repo#*/}"
-  local work_dir="$ZBOBR_DOMAIN_DIR/copilot/projects/$repo_name"
+  local issue_workdir="$(get_issue_workdir "$issue_number")"
+  local work_dir="$issue_workdir/$repo_name"
 
-  # Create work directory
-  mkdir -p "$ZBOBR_DOMAIN_DIR/copilot/projects"
+  # Create issue workspace
+  mkdir -p "$issue_workdir"
 
   # Clone target repository if not already cloned
   if [[ ! -d "$work_dir" ]]; then
-    echo "Cloning $target_repo..." >&2
+    echo "Cloning $target_repo into $work_dir..." >&2
     gh repo clone "$target_repo" "$work_dir"
   fi
 
@@ -365,31 +383,29 @@ clone_target() {
 # Call these to make functions available to child processes (copilot agents)
 # =============================================================================
 
-# Export functions needed by Manager agent
-export_manager_functions() {
+# Export functions needed by Planner agent
+export_planner_functions() {
   # High-level API
-  export -f get_issue_model
+  export -f get_issue_workdir
+  export -f get_current_issue
+  export -f get_issue_url
   export -f complete_planning
-  export -f spawn_worker
 
-  # Internal dependencies (needed by exported functions)
-  export -f get_issue_labels
+  # Internal dependencies
   export -f set_issue_milestone
   export -f get_milestone_number
-  export -f add_issue_label
-  export -f remove_issue_label
-  export -f set_issue_done
-  export -f clone_target
-  export -f export_worker_functions
 }
 
 # Export functions needed by Worker agent
 export_worker_functions() {
   # High-level API
+  export -f get_issue_workdir
+  export -f get_current_issue
+  export -f get_issue_url
   export -f set_issue_done
   export -f clone_target
 
-  # Internal dependencies (needed by exported functions)
+  # Internal dependencies
   export -f get_issue_labels
   export -f set_issue_milestone
   export -f get_milestone_number

@@ -1,11 +1,9 @@
 ```chatagent
 # Worker Agent
 
-**Purpose:** Execute a single assigned WORKING issue from start to finish.
+**Purpose:** Implement a GitHub issue according to the approved plan.
 
-**Scope:** All issue and PR management happens in the domain project repository only.
-
-**Important:** Never write to any repository except the domain project. Only create forks and PRs from those forks.
+**Scope:** Clone target repos into workspace, create PRs from forks.
 
 ---
 
@@ -15,9 +13,10 @@ These bash functions are available from any directory:
 
 | Function | Usage | Description |
 |----------|-------|-------------|
-| `set_issue_done` | `set_issue_done <issue> true` | Mark done (sets PENDING + adds `done` label) |
-| `set_issue_done` | `set_issue_done <issue> false` | Clear done (removes `done` label) |
-| `clone_target` | `clone_target <repo> <issue>` | Clone & fork repo, create branch (returns work dir) |
+| `get_issue_url` | `get_issue_url` | Get URL of current issue |
+| `set_issue_done` | `set_issue_done true` | Mark done (PENDING + `done` label) |
+| `set_issue_done` | `set_issue_done false` | Clear done (removes `done` label) |
+| `clone_target` | `clone_target "owner/repo"` | Clone & fork repo, returns work dir |
 
 ---
 
@@ -25,17 +24,17 @@ These bash functions are available from any directory:
 
 ### 1. Setup
 
-1. Read issue details and identify target repository
+1. Read issue details and implementation plan from `get_issue_url`
 2. Clear done status:
 
 ```bash
-set_issue_done <issue_number> false
+set_issue_done false
 ```
 
 3. Clone and fork the target repository:
 
 ```bash
-WORK_DIR=$(clone_target "owner/repo" <issue_number>)
+WORK_DIR=$(clone_target "owner/repo")
 cd "$WORK_DIR"
 ```
 
@@ -43,10 +42,9 @@ cd "$WORK_DIR"
 
 ### 2. Implementation
 
-1. Read PR comments and issue updates
-2. Implement the solution
-3. Commit with clear messages
-4. Push to fork:
+1. Implement according to the plan
+2. Commit with clear messages
+3. Push to fork:
 
 ```bash
 git push fork HEAD
@@ -58,7 +56,7 @@ git push fork HEAD
 2. Mark issue as done:
 
 ```bash
-set_issue_done <issue_number> true
+set_issue_done true
 ```
 
 3. **Never close the issue or PR — leave that to maintainers**
