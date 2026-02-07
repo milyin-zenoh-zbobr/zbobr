@@ -6,15 +6,21 @@
 if [[ -z "$ZBOBR_DOMAIN_REPO" ]]; then
   if [[ -f ".zbobr.env" ]]; then
     source ".zbobr.env"
+    # Remember the domain directory (where .zbobr.env lives)
+    ZBOBR_DOMAIN_DIR="$(pwd)"
   else
     echo "Error: .zbobr.env not found in current directory" >&2
     echo "Scripts must be run from the domain project directory" >&2
     exit 1
   fi
+else
+  # If ZBOBR_DOMAIN_REPO was pre-set, assume we're in domain dir
+  ZBOBR_DOMAIN_DIR="${ZBOBR_DOMAIN_DIR:-$(pwd)}"
 fi
 export ZBOBR_DOMAIN_REPO
 export ZBOBR_FORK_OWNER
 export ZBOBR_DEFAULT_MODEL
+export ZBOBR_DOMAIN_DIR
 
 # Universal list reconciliation function (bash 3 compatible)
 # Compares existing vs desired items and determines what to delete and create
@@ -202,14 +208,146 @@ remove_issue_label() {
 has_issue_label() {
   local issue_number="$1"
   local label="$2"
-  
+
   local labels=$(get_issue_labels "$issue_number")
-  
+
   for existing_label in $labels; do
     if [[ "$existing_label" == "$label" ]]; then
       return 0
     fi
   done
-  
+
   return 1
+}
+
+# =============================================================================
+# WRAPPER FUNCTIONS FOR AGENTS
+# These can be called from any directory when exported
+# =============================================================================
+
+# Spawn a Worker agent to handle an issue
+# Usage: spawn_worker <issue_number> [model]
+# Returns: Worker PID
+spawn_worker() {
+  local issue_number="$1"
+  local model="${2:-${ZBOBR_DEFAULT_MODEL:-gpt-5-mini}}"
+
+  if [[ -z "$issue_number" ]]; then
+    echo "Error: spawn_worker requires issue_number" >&2
+    return 1
+  fi
+
+  local prompt="Fix issue https://github.com/$ZBOBR_DOMAIN_REPO/issues/$issue_number. Follow the instructions in automation/agents/worker.md."
+
+  # Export worker functions for the child process
+  export_worker_functions
+
+  echo "Spawning Worker agent for issue #$issue_number with model $model..." >&2
+  echo "Domain dir: $ZBOBR_DOMAIN_DIR" >&2
+  copilot --agent worker --model "$model" -i "$prompt" --allow-all &
+
+  local worker_pid=$!
+  echo "Worker agent started (PID: $worker_pid)" >&2
+  echo "$worker_pid"
+}
+
+# Clone and fork a target repository for issue implementation
+# Usage: clone_target <target_repo> <issue_number>
+# Returns: Path to the cloned repository
+clone_target() {
+  local target_repo="$1"
+  local issue_number="$2"
+
+  if [[ -z "$target_repo" ]] || [[ -z "$issue_number" ]]; then
+    echo "Error: clone_target requires target_repo and issue_number" >&2
+    return 1
+  fi
+
+  if [[ -z "$ZBOBR_FORK_OWNER" ]]; then
+    echo "Error: ZBOBR_FORK_OWNER not set" >&2
+    return 1
+  fi
+
+  local repo_name="${target_repo#*/}"
+  local work_dir="$ZBOBR_DOMAIN_DIR/copilot/projects/$repo_name"
+
+  # Create work directory
+  mkdir -p "$ZBOBR_DOMAIN_DIR/copilot/projects"
+
+  # Clone target repository if not already cloned
+  if [[ ! -d "$work_dir" ]]; then
+    echo "Cloning $target_repo..." >&2
+    gh repo clone "$target_repo" "$work_dir"
+  fi
+
+  # Create fork if it doesn't exist
+  local fork_repo="$ZBOBR_FORK_OWNER/$repo_name"
+  if ! gh repo view "$fork_repo" >/dev/null 2>&1; then
+    echo "Creating fork to $ZBOBR_FORK_OWNER..." >&2
+    gh repo fork "$target_repo" --org "$ZBOBR_FORK_OWNER" --clone=false
+    sleep 2  # Wait for fork to be ready
+  fi
+
+  # Add fork as remote (run in subshell to preserve cwd)
+  (
+    cd "$work_dir"
+    if ! git remote get-url fork >/dev/null 2>&1; then
+      echo "Adding fork remote..." >&2
+      git remote add fork "https://github.com/$fork_repo.git"
+    fi
+
+    # Create feature branch
+    local branch_name="fix${issue_number}/implementation"
+    if ! git rev-parse --verify "$branch_name" >/dev/null 2>&1; then
+      echo "Creating branch $branch_name..." >&2
+      git checkout -b "$branch_name"
+    else
+      echo "Checking out existing branch $branch_name..." >&2
+      git checkout "$branch_name"
+    fi
+  )
+
+  echo "$work_dir"
+}
+
+# =============================================================================
+# FUNCTION EXPORT HELPERS
+# Call these to make functions available to child processes (copilot agents)
+# =============================================================================
+
+# Export functions needed by Manager agent
+export_manager_functions() {
+  # Issue milestone management
+  export -f get_issue_milestone
+  export -f set_issue_milestone
+  export -f get_milestone_number
+
+  # Issue label management
+  export -f get_issue_labels
+  export -f extract_model_from_labels
+  export -f add_issue_label
+  export -f remove_issue_label
+  export -f has_issue_label
+
+  # Worker spawning (spawn_worker needs export_worker_functions and clone_target)
+  export -f spawn_worker
+  export -f export_worker_functions
+  export -f clone_target
+}
+
+# Export functions needed by Worker agent
+export_worker_functions() {
+  # Issue milestone management
+  export -f get_issue_milestone
+  export -f set_issue_milestone
+  export -f get_milestone_number
+
+  # Issue label management
+  export -f get_issue_labels
+  export -f add_issue_label
+  export -f remove_issue_label
+  export -f has_issue_label
+
+  # Repository setup
+  export -f clone_target
 }

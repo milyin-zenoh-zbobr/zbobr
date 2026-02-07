@@ -29,12 +29,18 @@ case "$AGENT_TYPE" in
   manager)
     echo "Launching Manager Agent via Copilot CLI..."
     echo "Domain: $ZBOBR_DOMAIN_REPO"
+    echo "Domain dir: $ZBOBR_DOMAIN_DIR"
+
+    # Export functions for the agent to use from any directory
+    export_manager_functions
+
     PROMPT="${1:-Follow the instructions in automation/agents/manager.md and start processing issues.}"
     copilot --agent manager -i "$PROMPT"
     ;;
   worker)
     echo "Launching Worker Agent via Copilot CLI..."
     echo "Domain: $ZBOBR_DOMAIN_REPO"
+    echo "Domain dir: $ZBOBR_DOMAIN_DIR"
     ISSUE="${1:-}"
     MODEL="${2:-${ZBOBR_DEFAULT_MODEL:-gpt-5-mini}}"
 
@@ -43,6 +49,9 @@ case "$AGENT_TYPE" in
       echo "Usage: $0 worker <issue_number> [model]"
       exit 1
     fi
+
+    # Export functions for the agent to use from any directory
+    export_worker_functions
 
     PROMPT="Fix issue https://github.com/$ZBOBR_DOMAIN_REPO/issues/$ISSUE. Follow the instructions in automation/agents/worker.md."
     copilot --agent worker --model "$MODEL" -i "$PROMPT"

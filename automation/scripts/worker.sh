@@ -58,9 +58,13 @@ MODEL="${MODEL:-${ZBOBR_DEFAULT_MODEL:-gpt-5-mini}}"
 # Build prompt for Worker
 PROMPT="Fix issue https://github.com/$ZBOBR_DOMAIN_REPO/issues/$ISSUE. Follow the instructions in automation/agents/worker.md."
 
+# Export functions for the agent to use from any directory
+export_worker_functions
+
 # Launch Worker agent in background
 echo "Spawning Worker agent for issue #$ISSUE with model $MODEL..."
 echo "Domain: $ZBOBR_DOMAIN_REPO"
+echo "Domain dir: $ZBOBR_DOMAIN_DIR"
 copilot --agent worker --model "$MODEL" -i "$PROMPT" --allow-all &
 
 WORKER_PID=$!
