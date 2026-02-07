@@ -75,13 +75,11 @@ process_issues() {
     # Check for READY issues
     issue=$(get_first_issue "READY")
     if [[ -n "$issue" ]]; then
-        echo "Found READY issue #$issue - setting WORKING and running Worker agent..."
+        echo "Found READY issue #$issue - spawning Worker..."
 
-        # Set milestone to WORKING before spawning worker
-        set_issue_milestone "$issue" "WORKING"
-
-        "$SCRIPT_DIR/agent.sh" worker "$issue" "$MODEL" || {
-            echo "Worker agent failed for issue #$issue"
+        # worker.sh handles subtask check and sets milestone to WORKING
+        "$SCRIPT_DIR/worker.sh" --issue "$issue" --model "$MODEL" || {
+            echo "Worker failed for issue #$issue"
         }
         return 0
     fi

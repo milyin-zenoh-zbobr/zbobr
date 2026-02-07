@@ -135,8 +135,32 @@ delete_milestone() {
 # Usage: get_issue_labels "issue_number"
 get_issue_labels() {
   local issue_number="$1"
-  
+
   gh issue view "$issue_number" --repo "$ZBOBR_DOMAIN_REPO" --json labels --jq '.labels[].name'
+}
+
+# Get count of subtasks (task list items referencing other issues)
+# Usage: get_issue_subtask_count "issue_number"
+# Returns: Number of subtasks found in issue body
+get_issue_subtask_count() {
+  local issue_number="$1"
+
+  # Get issue body and check for task list items with issue references
+  # Patterns: "- [ ] #123", "- [x] #123", "- [ ] https://github.com/.../issues/123"
+  local body
+  body=$(gh issue view "$issue_number" --repo "$ZBOBR_DOMAIN_REPO" --json body --jq '.body // ""')
+
+  # Count task list items that reference issues
+  echo "$body" | grep -cE '^\s*-\s*\[[ xX]\]\s*(#[0-9]+|https://github\.com/[^/]+/[^/]+/issues/[0-9]+)' 2>/dev/null || echo "0"
+}
+
+# Add comment to issue
+# Usage: add_issue_comment "issue_number" "comment_body"
+add_issue_comment() {
+  local issue_number="$1"
+  local comment="$2"
+
+  gh issue comment "$issue_number" --repo "$ZBOBR_DOMAIN_REPO" --body "$comment"
 }
 
 # Get milestone number by title

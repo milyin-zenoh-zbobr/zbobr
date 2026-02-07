@@ -53,6 +53,25 @@ fi
 
 MODEL="${MODEL:-${ZBOBR_DEFAULT_MODEL:-gpt-5-mini}}"
 
+# Verify issue is in READY state
+CURRENT_MILESTONE=$(get_issue_milestone "$ISSUE")
+if [[ "$CURRENT_MILESTONE" != "READY" ]]; then
+  echo "Error: Issue #$ISSUE is in '$CURRENT_MILESTONE' state, expected 'READY'"
+  exit 1
+fi
+
+# Check if issue has subtasks - parent issues cannot be processed by workers
+SUBTASK_COUNT=$(get_issue_subtask_count "$ISSUE")
+
+if [[ "$SUBTASK_COUNT" -gt 0 ]]; then
+  echo "Error: Issue #$ISSUE has $SUBTASK_COUNT subtask(s) and cannot be processed by a worker."
+  echo "Parent issues with subtasks must have all subtasks completed first."
+  echo "Returning issue from READY to PENDING..."
+  set_issue_milestone "$ISSUE" "PENDING"
+  add_issue_comment "$ISSUE" "⚠️ **Automated message**: This issue has subtasks and cannot be processed directly by a worker agent. Please complete all subtasks first, then move this issue back to READY when ready for final integration."
+  exit 1
+fi
+
 # Set milestone to WORKING
 set_issue_milestone "$ISSUE" "WORKING"
 
