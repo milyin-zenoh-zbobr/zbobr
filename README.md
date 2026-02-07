@@ -16,6 +16,12 @@ This repository manages a multi-agent workflow:
 - GitHub CLI (`gh`) authenticated
 - Access to `milyin/*` GitHub account
 
+**Setup:**
+```bash
+# Run setup script to create labels and milestones (idempotent)
+.github/scripts/setup.sh
+```
+
 **Launch agents:**
 ```bash
 # Start Manager to process issues
@@ -29,11 +35,18 @@ copilot --agent worker --model gpt-5-mini -i "Fix issue #123 in milyin/copilot."
 
 1. Create issues in `milyin/copilot` with milestone `PLANNING`
 2. Manager creates implementation plan → sets milestone `PENDING`
-3. Human reviews and sets milestone to `READY`
+3. Human reviews and sets milestone to `READY` (optionally add `model:*` label to choose AI model)
 4. Manager spawns Worker → sets milestone `WORKING`
 5. Worker forks target repo to `milyin/*`, creates PR, implements fix
 6. Worker sets milestone to `PENDING` + adds `done` label when complete
 7. Human reviews PR and merges
+
+**Available model labels:**
+- `model:gpt-5-mini` (default, free tier)
+- `model:gpt-5`
+- `model:gpt-5.2-codex`
+- `model:claude-sonnet-4.5`
+- `model:claude-opus-4.5`
 
 See [.github/copilot-instructions.md](.github/copilot-instructions.md) for detailed documentation.
 
