@@ -135,23 +135,6 @@ get_issue_labels() {
   gh issue view "$issue_number" --repo "$ZBOBR_DOMAIN_REPO" --json labels --jq '.labels[].name'
 }
 
-# Extract model from issue labels (looks for model: prefix)
-# Usage: extract_model_from_labels "issue_number" "default_model"
-extract_model_from_labels() {
-  local issue_number="$1"
-  local default_model="${2:-gpt-5-mini}"
-  
-  local labels=$(get_issue_labels "$issue_number")
-  
-  for label in $labels; do
-    if [[ "$label" =~ ^model: ]]; then
-      echo "${label#model:}"
-      return
-    fi
-  done
-  
-  echo "$default_model"
-}
 # Get milestone number by title
 # Usage: get_milestone_number "milestone_title"
 get_milestone_number() {
@@ -221,16 +204,64 @@ has_issue_label() {
 }
 
 # =============================================================================
-# WRAPPER FUNCTIONS FOR AGENTS
-# These can be called from any directory when exported
+# HIGH-LEVEL AGENT API
+# These functions are exported for agents to use from any directory
 # =============================================================================
+
+# Get the AI model to use for an issue (from model:xxx label)
+# Usage: get_issue_model <issue_number>
+# Returns: Model name (or default if no model label)
+get_issue_model() {
+  local issue_number="$1"
+  local default_model="${ZBOBR_DEFAULT_MODEL:-gpt-5-mini}"
+
+  if [[ -z "$issue_number" ]]; then
+    echo "Error: get_issue_model requires issue_number" >&2
+    return 1
+  fi
+
+  local labels=$(get_issue_labels "$issue_number")
+
+  for label in $labels; do
+    if [[ "$label" =~ ^model: ]]; then
+      echo "${label#model:}"
+      return
+    fi
+  done
+
+  echo "$default_model"
+}
+
+# Set issue done status
+# Usage: set_issue_done <issue_number> <true|false>
+# - true: sets milestone to PENDING and adds 'done' label
+# - false: removes 'done' label (if present)
+set_issue_done() {
+  local issue_number="$1"
+  local done="$2"
+
+  if [[ -z "$issue_number" ]] || [[ -z "$done" ]]; then
+    echo "Error: set_issue_done requires issue_number and done (true/false)" >&2
+    return 1
+  fi
+
+  if [[ "$done" == "true" ]]; then
+    set_issue_milestone "$issue_number" "PENDING"
+    add_issue_label "$issue_number" "done"
+    echo "Issue #$issue_number marked as done" >&2
+  else
+    # Remove done label if present (ignore error if not present)
+    remove_issue_label "$issue_number" "done" 2>/dev/null || true
+    echo "Issue #$issue_number: done label removed" >&2
+  fi
+}
 
 # Spawn a Worker agent to handle an issue
 # Usage: spawn_worker <issue_number> [model]
 # Returns: Worker PID
 spawn_worker() {
   local issue_number="$1"
-  local model="${2:-${ZBOBR_DEFAULT_MODEL:-gpt-5-mini}}"
+  local model="${2:-$(get_issue_model "$issue_number")}"
 
   if [[ -z "$issue_number" ]]; then
     echo "Error: spawn_worker requires issue_number" >&2
@@ -317,37 +348,31 @@ clone_target() {
 
 # Export functions needed by Manager agent
 export_manager_functions() {
-  # Issue milestone management
-  export -f get_issue_milestone
+  # High-level API
+  export -f get_issue_model
+  export -f spawn_worker
+
+  # Internal dependencies (needed by exported functions)
+  export -f get_issue_labels
   export -f set_issue_milestone
   export -f get_milestone_number
-
-  # Issue label management
-  export -f get_issue_labels
-  export -f extract_model_from_labels
   export -f add_issue_label
   export -f remove_issue_label
-  export -f has_issue_label
-
-  # Worker spawning (spawn_worker needs export_worker_functions and clone_target)
-  export -f spawn_worker
-  export -f export_worker_functions
+  export -f set_issue_done
   export -f clone_target
+  export -f export_worker_functions
 }
 
 # Export functions needed by Worker agent
 export_worker_functions() {
-  # Issue milestone management
-  export -f get_issue_milestone
+  # High-level API
+  export -f set_issue_done
+  export -f clone_target
+
+  # Internal dependencies (needed by exported functions)
+  export -f get_issue_labels
   export -f set_issue_milestone
   export -f get_milestone_number
-
-  # Issue label management
-  export -f get_issue_labels
   export -f add_issue_label
   export -f remove_issue_label
-  export -f has_issue_label
-
-  # Repository setup
-  export -f clone_target
 }
