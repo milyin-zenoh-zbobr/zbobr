@@ -26,6 +26,7 @@ The orchestrator is domain-agnostic and can manage any set of repositories throu
 
 3. **Fork Owner**
    - Where Workers create temporary forks during implementation
+   - Configured in domain project's `.zbobr.env` file
    - Can be a user (e.g., `milyin`) or organization (e.g., `YoroolGui`)
 
 ## Quick Start
@@ -39,14 +40,23 @@ The orchestrator is domain-agnostic and can manage any set of repositories throu
 ```bash
 # Example: Set up Zenoh domain project
 automation/scripts/setup.sh \
-  --domain-project YoroolGui/copilot-zenoh \
-  --fork-owner YoroolGui
+  --domain-project YoroolGui/copilot-zenoh
 ```
 
 This will:
 - Create the domain project repo (if needed)
 - Set up labels and milestones
 - Initialize template files (instructions.md, repositories.md)
+
+**Configure target repositories:**
+
+Add a `.zbobr.env` file to each target repository:
+```bash
+# .zbobr.env - zbobr configuration
+ZBOBR_DOMAIN_REPO=YoroolGui/copilot-zenoh
+ZBOBR_FORK_OWNER=YoroolGui
+ZBOBR_DEFAULT_MODEL=gpt-5-mini
+```
 
 **Launch the orchestrator:**
 ```bash
@@ -107,7 +117,7 @@ milyin/copilot/ (Orchestrator)
 └── README.md               # This file
 
 YoroolGui/copilot-zenoh/ (Domain Project - created by setup.sh)
-├── .copilot-config        # Configuration (fork_owner, etc.)
+├── .zbobr.env             # zbobr configuration (fork owner, default model)
 ├── instructions.md        # Domain-specific guidance
 └── repositories.md        # Target repos (zenoh projects)
 ```
@@ -119,8 +129,7 @@ YoroolGui/copilot-zenoh/ (Domain Project - created by setup.sh)
 ```bash
 # Create domain project for Apache Kafka ecosystem
 automation/scripts/setup.sh \
-  --domain-project myorg/copilot-kafka \
-  --fork-owner myorg
+  --domain-project myorg/copilot-kafka
 ```
 
 ### Run Manager in background
@@ -146,7 +155,6 @@ copilot --agent worker --model gpt-5 -i "Fix issue #42 in domain project."
 # See what would be created without making changes
 automation/scripts/setup.sh \
   --domain-project YoroolGui/copilot-zenoh \
-  --fork-owner YoroolGui \
   --dry-run
 ```
 
@@ -157,7 +165,6 @@ automation/scripts/setup.sh \
 When you run `setup.sh` with `--domain-project`, it automatically creates:
 - `instructions.md` — Domain-specific guidance for agents (from template)
 - `repositories.md` — List of target repositories (from template)
-- `.copilot-config` — Configuration settings (fork owner, etc.)
 
 **Note:** Existing files are never overwritten. Customize after initial setup.
 
@@ -175,20 +182,30 @@ Edit `<domain-project>/instructions.md` for domain-specific guidance.
 
 **See [REPOSITORIES.md](REPOSITORIES.md) for a complete real-world example (Zenoh project).**
 
-### Fork Owner Configuration
+### Domain Project Environment
 
-The fork owner (where Worker agents create temporary forks) is stored in the domain project's `.copilot-config` file. This is automatically created when running:
+Create a `.zbobr.env` file in your domain project to configure zbobr behavior:
 
 ```bash
-automation/scripts/setup.sh \
-  --domain-project org/copilot-domain \
-  --fork-owner org-or-user
+# .zbobr.env - zbobr configuration for this domain project
+
+# Required: User or organization where Worker agents create forks
+ZBOBR_FORK_OWNER=YoroolGui
+
+# Optional: Default AI model for issues without model: label
+ZBOBR_DEFAULT_MODEL=gpt-5-mini
 ```
 
-Agents can read this configuration:
+**Variables:**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ZBOBR_FORK_OWNER` | Yes | User or organization for creating forks |
+| `ZBOBR_DEFAULT_MODEL` | No | Default AI model for issues |
+
+Scripts automatically load this configuration:
 ```bash
-source automation/scripts/lib.sh
-FORK_OWNER=$(get_fork_owner)
+automation/scripts/clone_target.sh <domain_project> <target_repo> <issue_number>
 ```
 
 ### Available Models

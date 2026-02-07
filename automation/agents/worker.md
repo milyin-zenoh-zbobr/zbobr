@@ -21,15 +21,13 @@
 ## 1. Setup
 
 - Read issue details and related comments from the domain project
-- Get fork owner from configuration:
-  ```bash
-  source automation/scripts/lib.sh
-  FORK_OWNER=$(get_fork_owner)
-  ```
+- Identify the target repository from the issue
 - Remove `done` label from the issue (if present)
-- Fork the target `<repository>` to `$FORK_OWNER` (if not already forked)
-- Clone the forked repository to `copilot/projects/<repository>/`
-- Create a new branch: `fix<issue_number>/<short_descriptive_name>`
+- Clone and fork the target repository using:
+  ```bash
+  automation/scripts/clone_target.sh <domain_project> <target_repo> <issue_number>
+  ```
+  This creates `copilot/projects/<repo-name>/` with a feature branch and fork configured
 - Create a PR in the forked repository back to the original repository's default branch
 - Add link to the issue in PR description
 
