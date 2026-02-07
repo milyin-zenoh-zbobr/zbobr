@@ -5,42 +5,49 @@
 : "${REPO:=milyin/copilot}"
 export REPO
 
-# Universal list reconciliation function
+# Universal list reconciliation function (bash 3 compatible)
 # Compares existing vs desired items and determines what to delete and create
 # Usage: reconcile_lists "existing_array" "desired_array" "to_delete_array" "to_create_array"
 reconcile_lists() {
-  local -n existing_ref=$1
-  local -n desired_ref=$2
-  local -n to_delete_ref=$3
-  local -n to_create_ref=$4
-  
-  # Start with all existing items marked for deletion
-  to_delete_ref=("${existing_ref[@]}")
-  
-  # Start with all desired items marked for creation
-  to_create_ref=("${desired_ref[@]}")
-  
-  # Find intersection and remove from both lists
-  local -A existing_map
-  for item in "${existing_ref[@]}"; do
-    existing_map["$item"]=1
-  done
-  
-  local -a new_to_create=()
-  for item in "${desired_ref[@]}"; do
-    if [[ -n "${existing_map[$item]}" ]]; then
-      # Item exists in both - remove from to_delete
-      local -a new_to_delete=()
-      for del_item in "${to_delete_ref[@]}"; do
-        [[ "$del_item" != "$item" ]] && new_to_delete+=("$del_item")
-      done
-      to_delete_ref=("${new_to_delete[@]}")
-    else
-      # Item doesn't exist - keep in to_create
-      new_to_create+=("$item")
+  local existing_name=$1
+  local desired_name=$2
+  local delete_name=$3
+  local create_name=$4
+
+  eval "local -a existing=(\"\${${existing_name}[@]}\")"
+  eval "local -a desired=(\"\${${desired_name}[@]}\")"
+
+  local -a to_delete=()
+  local -a to_create=()
+
+  for item in "${existing[@]}"; do
+    local found=false
+    for wanted in "${desired[@]}"; do
+      if [[ "$item" == "$wanted" ]]; then
+        found=true
+        break
+      fi
+    done
+    if [[ "$found" == false ]]; then
+      to_delete+=("$item")
     fi
   done
-  to_create_ref=("${new_to_create[@]}")
+
+  for item in "${desired[@]}"; do
+    local found=false
+    for have in "${existing[@]}"; do
+      if [[ "$item" == "$have" ]]; then
+        found=true
+        break
+      fi
+    done
+    if [[ "$found" == false ]]; then
+      to_create+=("$item")
+    fi
+  done
+
+  eval "$delete_name=(\"\${to_delete[@]-}\")"
+  eval "$create_name=(\"\${to_create[@]-}\")"
 }
 
 # Get all labels in a repository
@@ -71,6 +78,16 @@ delete_label() {
   local name="$1"
   
   gh label delete "$name" --repo "$REPO" --yes
+}
+
+# Update a label in a repository
+# Usage: update_label "name" "color" "description"
+update_label() {
+  local name="$1"
+  local color="$2"
+  local description="$3"
+
+  gh label edit "$name" --description "$description" --color "$color" --repo "$REPO"
 }
 
 # Create a milestone in a repository

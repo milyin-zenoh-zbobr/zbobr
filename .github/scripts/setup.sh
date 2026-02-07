@@ -8,6 +8,16 @@ print_usage() {
     echo "Usage: $0 [--dry-run|-n] [--repo owner/repo]"
 }
 
+# Bash 3-compatible array reader (macOS default bash)
+read_lines() {
+    local var_name="$1"
+    local line
+    eval "$var_name=()"
+    while IFS= read -r line; do
+        eval "$var_name+=(\"$line\")"
+    done
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run|-n)
@@ -39,6 +49,7 @@ if [[ "$DRY_RUN" == true ]]; then
     echo "Dry-run mode enabled. No changes will be applied."
     create_label() { echo "DRY RUN: create_label \"$1\" \"$2\" \"$3\""; }
     delete_label() { echo "DRY RUN: delete_label \"$1\""; }
+    update_label() { echo "DRY RUN: update_label \"$1\" \"$2\" \"$3\""; }
     create_milestone() { echo "DRY RUN: create_milestone \"$1\" \"$2\""; }
     delete_milestone() { echo "DRY RUN: delete_milestone \"$1\""; }
 fi
@@ -49,11 +60,19 @@ echo
 # Get available models from copilot CLI
 get_available_models() {
     local help_text
-    local choices_line
+    local choices_block
     help_text=$(copilot help 2>/dev/null || copilot --help 2>/dev/null || true)
-    choices_line=$(echo "$help_text" | grep -E "--model <model>" | head -n 1 || true)
-    echo "$choices_line" \
-        | sed -E 's/.*choices: //; s/[)]$//; s/"//g' \
+    choices_block=$(echo "$help_text" | awk '
+        /--model <model>/ {flag=1}
+        flag {print}
+        flag && /\)/ {exit}
+    ')
+    if [[ -z "$choices_block" ]]; then
+        return 0
+    fi
+    echo "$choices_block" \
+        | tr '\n' ' ' \
+        | sed -E 's/.*choices: *//; s/\).*//; s/"//g' \
         | tr ',' '\n' \
         | sed -E 's/^ *//; s/ *$//' \
         | grep -E '.+' || true
@@ -65,14 +84,15 @@ MODEL_LABEL_COLOR="bfd4f2"
 echo "Processing labels..."
 
 # Get existing labels
-mapfile -t existing_labels < <(get_labels)
+read_lines existing_labels < <(get_labels)
 
 # Build desired labels list: all model:* labels + done label
 declare -a desired_labels=()
 
 # Add model labels
-mapfile -t models < <(get_available_models)
-for model in "${models[@]}"; do
+declare -a models=()
+read_lines models < <(get_available_models)
+for model in "${models[@]:-}"; do
     if [[ -n "$model" ]]; then
         desired_labels+=("model:$model")
     fi
@@ -117,13 +137,27 @@ else
     echo "No missing labels to create"
 fi
 
+# Update existing labels to desired color/description
+echo "Updating existing labels:"
+for label in "${desired_labels[@]}"; do
+    if [[ "$label" =~ ^model:(.*)$ ]]; then
+        model="${BASH_REMATCH[1]}"
+        description="Use $model model"
+        echo "  ~ $label"
+        update_label "$label" "$MODEL_LABEL_COLOR" "$description"
+    elif [[ "$label" == "done" ]]; then
+        echo "  ~ $label"
+        update_label "$label" "5319e7" "Issue implementation completed"
+    fi
+done
+
 echo
 
 # Process milestones
 echo "Processing milestones..."
 
 # Get existing milestones
-mapfile -t existing_milestones < <(get_milestones)
+read_lines existing_milestones < <(get_milestones)
 
 # Desired milestones
 declare -a desired_milestones=(
