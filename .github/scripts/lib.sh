@@ -118,48 +118,20 @@ get_issue_labels() {
   gh issue view "$issue_number" --repo "$REPO" --json labels --jq '.labels[].name'
 }
 
-# Known AI services (add new services here)
-KNOWN_SERVICES="copilot"
-
-# Extract service and model from issue labels (looks for service:model format)
-# Usage: extract_service_model_from_labels "issue_number" "default_service" "default_model"
-# Returns: "service model" (space-separated)
-extract_service_model_from_labels() {
-  local issue_number="$1"
-  local default_service="${2:-copilot}"
-  local default_model="${3:-gpt-5-mini}"
-
-  local labels=$(get_issue_labels "$issue_number")
-
-  for label in $labels; do
-    for service in $KNOWN_SERVICES; do
-      if [[ "$label" =~ ^${service}: ]]; then
-        local model="${label#${service}:}"
-        echo "$service $model"
-        return
-      fi
-    done
-  done
-
-  echo "$default_service $default_model"
-}
-
-# Extract just the model from issue labels (for backward compatibility)
+# Extract model from issue labels (looks for copilot: prefix)
 # Usage: extract_model_from_labels "issue_number" "default_model"
 extract_model_from_labels() {
   local issue_number="$1"
   local default_model="${2:-gpt-5-mini}"
 
-  local result=$(extract_service_model_from_labels "$issue_number" "copilot" "$default_model")
-  echo "${result#* }"  # Return just the model part (after space)
-}
+  local labels=$(get_issue_labels "$issue_number")
 
-# Extract just the service from issue labels
-# Usage: extract_service_from_labels "issue_number" "default_service"
-extract_service_from_labels() {
-  local issue_number="$1"
-  local default_service="${2:-copilot}"
+  for label in $labels; do
+    if [[ "$label" =~ ^copilot: ]]; then
+      echo "${label#copilot:}"
+      return
+    fi
+  done
 
-  local result=$(extract_service_model_from_labels "$issue_number" "$default_service" "")
-  echo "${result%% *}"  # Return just the service part (before space)
+  echo "$default_model"
 }
