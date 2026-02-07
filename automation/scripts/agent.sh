@@ -4,6 +4,7 @@
 set -e
 
 AGENT_TYPE="${1:-manager}"
+REPO="${REPO:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENTS_DIR="$SCRIPT_DIR/../agents"
 
@@ -22,10 +23,17 @@ case "$AGENT_TYPE" in
     if [[ -z "$ISSUE" ]]; then
       echo "Error: Worker requires issue number"
       echo "Usage: $0 worker <issue_number> [model]"
+      echo "       Set REPO environment variable for the domain project"
       exit 1
     fi
 
-    PROMPT="Fix issue http://github.com/milyin/copilot/issues/$ISSUE. Follow the instructions in automation/agents/worker.md."
+    if [[ -z "$REPO" ]]; then
+      echo "Error: REPO environment variable must be set"
+      echo "Usage: REPO=owner/repo $0 worker <issue_number> [model]"
+      exit 1
+    fi
+
+    PROMPT="Fix issue https://github.com/$REPO/issues/$ISSUE. Follow the instructions in automation/agents/worker.md."
     copilot --agent worker --model "$MODEL" -i "$PROMPT"
     ;;
   *)

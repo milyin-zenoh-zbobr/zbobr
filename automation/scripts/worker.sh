@@ -6,6 +6,7 @@ set -e
 # Parse arguments
 ISSUE=""
 MODEL="gpt-5-mini"
+REPO="${REPO:-}"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -17,9 +18,13 @@ while [[ $# -gt 0 ]]; do
       MODEL="$2"
       shift 2
       ;;
+    --repo)
+      REPO="$2"
+      shift 2
+      ;;
     *)
       echo "Unknown argument: $1"
-      echo "Usage: $0 --issue <issue_number> [--model <model_name>]"
+      echo "Usage: $0 --issue <issue_number> [--model <model_name>] [--repo <owner/repo>]"
       exit 1
       ;;
   esac
@@ -28,12 +33,18 @@ done
 # Validate required arguments
 if [[ -z "$ISSUE" ]]; then
   echo "Error: --issue is required"
-  echo "Usage: $0 --issue <issue_number> [--model <model_name>]"
+  echo "Usage: $0 --issue <issue_number> [--model <model_name>] [--repo <owner/repo>]"
+  exit 1
+fi
+
+if [[ -z "$REPO" ]]; then
+  echo "Error: --repo is required or set REPO environment variable"
+  echo "Usage: $0 --issue <issue_number> [--model <model_name>] [--repo <owner/repo>]"
   exit 1
 fi
 
 # Build prompt for Worker
-PROMPT="Fix issue https://github.com/milyin/copilot/issues/$ISSUE. Follow the instructions in automation/agents/worker.md."
+PROMPT="Fix issue https://github.com/$REPO/issues/$ISSUE. Follow the instructions in automation/agents/worker.md."
 
 # Launch Worker agent in background
 echo "Spawning Worker agent for issue #$ISSUE with model $MODEL..."

@@ -54,7 +54,8 @@ Both Manager and Worker agents can use these tools:
   - Requirements: `gh` CLI and authenticated session (`gh auth login`)
 
 - **worker.sh** — Spawns a Worker agent to handle a READY issue (used by Manager).
-  - Usage: `automation/scripts/worker.sh --issue <issue_number> --model <model_name>`
+  - Usage: `automation/scripts/worker.sh --issue <issue_number> --model <model_name> --repo <owner/repo>`
+  - Alternative: `REPO=owner/repo automation/scripts/worker.sh --issue <issue_number> --model <model_name>`
   - Purpose: Initiates a Worker agent to implement the issue
   - Requirements: `gh` CLI and authenticated session
 
