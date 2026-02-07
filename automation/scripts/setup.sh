@@ -112,6 +112,19 @@ if [[ "$DRY_RUN" == true ]]; then
     update_label() { echo "DRY RUN: update_label \"$1\" \"$2\" \"$3\""; }
     create_milestone() { echo "DRY RUN: create_milestone \"$1\" \"$2\""; }
     delete_milestone() { echo "DRY RUN: delete_milestone \"$1\""; }
+    set_fork_owner() { echo "DRY RUN: set_fork_owner \"$1\""; }
+fi
+
+# Store fork owner in domain project configuration if specified
+if [[ -n "$DOMAIN_PROJECT" ]] && [[ -n "$FORK_OWNER" ]]; then
+    echo "Storing fork owner configuration: $FORK_OWNER"
+    if [[ "$DRY_RUN" == true ]]; then
+        echo "DRY RUN: Would store fork_owner=$FORK_OWNER in $DOMAIN_PROJECT/.copilot-config"
+    else
+        set_fork_owner "$FORK_OWNER"
+        echo "Fork owner stored in .copilot-config"
+    fi
+    echo
 fi
 
 echo "Setting up repository: $REPO"

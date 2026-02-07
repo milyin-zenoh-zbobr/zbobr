@@ -106,6 +106,7 @@ milyin/copilot/ (Orchestrator)
 └── README.md               # This file
 
 YoroolGui/copilot-zenoh/ (Domain Project - created by setup.sh)
+├── .copilot-config        # Configuration (fork_owner, etc.)
 ├── instructions.md        # Domain-specific guidance
 └── repositories.md        # Target repos (zenoh projects)
 ```
@@ -163,6 +164,22 @@ Edit `<domain-project>/repositories.md` to list which repos the domain manages:
 ```
 
 Edit `<domain-project>/instructions.md` for domain-specific guidance.
+
+### Fork Owner Configuration
+
+The fork owner (where Worker agents create temporary forks) is stored in the domain project's `.copilot-config` file. This is automatically created when running:
+
+```bash
+automation/scripts/setup.sh \
+  --domain-project org/copilot-domain \
+  --fork-owner org-or-user
+```
+
+Agents can read this configuration:
+```bash
+source automation/scripts/lib.sh
+FORK_OWNER=$(get_fork_owner)
+```
 
 ### Available Models
 

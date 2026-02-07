@@ -62,6 +62,4 @@ Both Manager and Worker agents can use these tools:
 - **lib.sh** — Common library functions for repository operations and label/milestone management.
   - Usage: `source automation/scripts/lib.sh`
   - Default REPO: `milyin/copilot` (can be overridden: `REPO="other/repo" source lib.sh`)
-  - Functions: `reconcile_lists`, `get_labels`, `get_milestones`, `extract_model_from_labels`, etc.
-  - Used by other scripts for consistent repository interactions
-
+  - Functions: `reconcile_lists`, `get_labels`, `get_milestones`, `extract_model_from_labels`, `get_fork_owner`, `set_fork_owner`, `get_config`, `set_config`, etc.
