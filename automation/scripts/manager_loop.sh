@@ -8,22 +8,28 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
 POLL_SECONDS=60
+CLEANUP_SECONDS=600
 MODEL="${ZBOBR_DEFAULT_MODEL:-gpt-5-mini}"
 
 print_usage() {
-    echo "Usage: $0 [--interval seconds] [--model model_name]"
+    echo "Usage: $0 [--interval seconds] [--cleanup-interval seconds] [--model model_name]"
     echo ""
     echo "Must be run from domain project directory (with .zbobr.env)"
     echo ""
     echo "Options:"
-    echo "  --interval    Poll interval in seconds (default: 60)"
-    echo "  --model       AI model to use (default: \$ZBOBR_DEFAULT_MODEL or gpt-5-mini)"
+    echo "  --interval          Poll interval in seconds (default: 60)"
+    echo "  --cleanup-interval  Cleanup interval in seconds (default: 600)"
+    echo "  --model             AI model to use (default: \$ZBOBR_DEFAULT_MODEL or gpt-5-mini)"
 }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --interval)
             POLL_SECONDS="$2"
+            shift 2
+            ;;
+        --cleanup-interval)
+            CLEANUP_SECONDS="$2"
             shift 2
             ;;
         --model)
@@ -43,10 +49,14 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo "Issue processor started for $ZBOBR_DOMAIN_REPO"
-echo "  Interval: ${POLL_SECONDS}s"
+echo "  Poll interval: ${POLL_SECONDS}s"
+echo "  Cleanup interval: ${CLEANUP_SECONDS}s"
 echo "  Model: $MODEL"
 echo "  Workspace: $ZBOBR_WORKSPACE"
 echo ""
+
+# Track last cleanup time
+LAST_CLEANUP=$(date +%s)
 
 # Get first issue with given milestone
 # Usage: get_first_issue <milestone>
@@ -89,6 +99,14 @@ process_issues() {
 }
 
 while true; do
+    # Run cleanup if interval has passed
+    NOW=$(date +%s)
+    if (( NOW - LAST_CLEANUP >= CLEANUP_SECONDS )); then
+        echo "Running workspace cleanup..."
+        "$SCRIPT_DIR/cleanup.sh" || echo "Cleanup failed"
+        LAST_CLEANUP=$NOW
+    fi
+
     if process_issues; then
         echo "Agent completed. Checking for more issues..."
     else
