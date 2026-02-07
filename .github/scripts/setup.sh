@@ -1,9 +1,47 @@
 #!/bin/bash
 set -euo pipefail
 
+# Parse arguments
+DRY_RUN=false
+
+print_usage() {
+    echo "Usage: $0 [--dry-run|-n] [--repo owner/repo]"
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run|-n)
+            DRY_RUN=true
+            shift
+            ;;
+        --repo)
+            REPO="$2"
+            export REPO
+            shift 2
+            ;;
+        -h|--help)
+            print_usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown argument: $1"
+            print_usage
+            exit 1
+            ;;
+    esac
+done
+
 # Source common library functions
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
+
+if [[ "$DRY_RUN" == true ]]; then
+    echo "Dry-run mode enabled. No changes will be applied."
+    create_label() { echo "DRY RUN: create_label \"$1\" \"$2\" \"$3\""; }
+    delete_label() { echo "DRY RUN: delete_label \"$1\""; }
+    create_milestone() { echo "DRY RUN: create_milestone \"$1\" \"$2\""; }
+    delete_milestone() { echo "DRY RUN: delete_milestone \"$1\""; }
+fi
 
 echo "Setting up repository: $REPO"
 echo
