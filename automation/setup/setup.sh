@@ -156,8 +156,8 @@ fi
 
 echo
 
-# Source common library functions (SCRIPT_DIR already defined above)
-source "$SCRIPT_DIR/lib.sh"
+# Source common library functions from scripts directory
+source "$SCRIPT_DIR/../scripts/lib.sh"
 
 if [[ "$DRY_RUN" == true ]]; then
     echo "Dry-run mode enabled. No changes will be applied."

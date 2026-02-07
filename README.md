@@ -22,7 +22,7 @@ The orchestrator is domain-agnostic and can manage any set of repositories throu
    - Task/project-specific configuration repo
    - Example: `YoroolGui/copilot-zenoh`
    - Contains: Target repository list and project-specific guidance
-   - Created per-domain via `automation/scripts/setup.sh --domain-project`
+   - Created per-domain via `automation/setup/setup.sh --domain-project`
 
 3. **Fork Owner**
    - Where Workers create temporary forks during implementation
@@ -39,7 +39,7 @@ The orchestrator is domain-agnostic and can manage any set of repositories throu
 **Setup a domain project:**
 ```bash
 # Example: Set up Zenoh domain project
-automation/scripts/setup.sh \
+automation/setup/setup.sh \
   --domain-project YoroolGui/copilot-zenoh \
   --fork-owner YoroolGui
 ```
@@ -103,9 +103,11 @@ milyin/copilot/ (Orchestrator)
 │   ├── agents/
 │   │   ├── manager.md       # Manager agent instructions
 │   │   └── worker.md        # Worker agent instructions
-│   ├── scripts/
+│   ├── setup/               # Orchestrator-level scripts (zbobr context)
+│   │   └── setup.sh         # Initialize domain projects
+│   ├── scripts/             # Domain-level scripts (use .zbobr.env)
 │   │   ├── lib.sh           # Common functions
-│   │   ├── setup.sh         # Initialize labs/milestones, create domain projects
+│   │   ├── clone_target.sh  # Clone and fork target repos
 │   │   ├── manager_loop.sh  # Run Manager on schedule
 │   │   ├── agent.sh         # Agent launcher
 │   │   ├── worker.sh        # Worker spawner
@@ -130,7 +132,7 @@ YoroolGui/copilot-zenoh/ (Domain Project - created by setup.sh)
 
 ```bash
 # Create domain project for Apache Kafka ecosystem
-automation/scripts/setup.sh \
+automation/setup/setup.sh \
   --domain-project myorg/copilot-kafka \
   --fork-owner myorg
 ```
@@ -156,7 +158,7 @@ copilot --agent worker --model gpt-5 -i "Fix issue #42 in domain project."
 
 ```bash
 # See what would be created without making changes
-automation/scripts/setup.sh \
+automation/setup/setup.sh \
   --domain-project YoroolGui/copilot-zenoh \
   --fork-owner YoroolGui \
   --dry-run
