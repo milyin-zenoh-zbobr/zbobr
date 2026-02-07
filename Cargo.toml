@@ -1,0 +1,3 @@
+[workspace]
+members = ["zbobr-lib", "zbobr"]
+resolver = "2"

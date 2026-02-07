@@ -1,0 +1,16 @@
+[package]
+name = "zbobr"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+zbobr-lib = { path = "../zbobr-lib" }
+rmcp = { version = "0.14", features = ["server", "macros", "transport-streamable-http-server"] }
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+axum = "0.8"
+serde = { version = "1", features = ["derive"] }
+schemars = "1"
+anyhow = "1"
