@@ -41,7 +41,7 @@ Take the first available open issue in `milyin/copilot` with milestone `READY`:
 - Extract model from labels using the helper function:
   ```bash
   source .github/scripts/lib.sh
-  MODEL=$(extract_model_from_labels "milyin/copilot" <issue_number> "gpt-5-mini")
+  MODEL=$(extract_model_from_labels <issue_number> "gpt-5-mini")
   ```
 - Spawn a Worker agent:
   ```bash

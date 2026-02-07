@@ -1,6 +1,10 @@
 #!/bin/bash
 # Common library functions for Copilot Agent Workflow scripts
 
+# Default repository (can be overridden by scripts before sourcing)
+: "${REPO:=milyin/copilot}"
+export REPO
+
 # Universal list reconciliation function
 # Compares existing vs desired items and determines what to delete and create
 # Usage: reconcile_lists "existing_array" "desired_array" "to_delete_array" "to_create_array"
@@ -40,78 +44,70 @@ reconcile_lists() {
 }
 
 # Get all labels in a repository
-# Usage: get_repo_labels "owner/repo"
+# Usage: get_repo_labels
 get_repo_labels() {
-  local repo="$1"
-  gh label list --repo "$repo" --json name --jq '.[].name'
+  gh label list --repo "$REPO" --json name --jq '.[].name'
 }
 
 # Get all milestones in a repository
-# Usage: get_repo_milestones "owner/repo"
+# Usage: get_repo_milestones
 get_repo_milestones() {
-  local repo="$1"
-  gh api "repos/$repo/milestones" --jq '.[].title'
+  gh api "repos/$REPO/milestones" --jq '.[].title'
 }
 
 # Create a label in a repository
-# Usage: create_repo_label "owner/repo" "name" "description" "color"
+# Usage: create_repo_label "name" "color" "description"
 create_repo_label() {
-  local repo="$1"
-  local name="$2"
+  local name="$1"
+  local color="$2"
   local description="$3"
-  local color="$4"
   
-  gh label create "$name" --description "$description" --color "$color" --repo "$repo"
+  gh label create "$name" --description "$description" --color "$color" --repo "$REPO"
 }
 
 # Delete a label from a repository
-# Usage: delete_repo_label "owner/repo" "name"
+# Usage: delete_repo_label "name"
 delete_repo_label() {
-  local repo="$1"
-  local name="$2"
+  local name="$1"
   
-  gh label delete "$name" --repo "$repo" --yes
+  gh label delete "$name" --repo "$REPO" --yes
 }
 
 # Create a milestone in a repository
-# Usage: create_repo_milestone "owner/repo" "title" "description"
+# Usage: create_repo_milestone "title" "description"
 create_repo_milestone() {
-  local repo="$1"
-  local title="$2"
-  local description="$3"
+  local title="$1"
+  local description="$2"
   
-  gh api "repos/$repo/milestones" -f title="$title" -f description="$description" -f state="open" > /dev/null
+  gh api "repos/$REPO/milestones" -f title="$title" -f description="$description" -f state="open"
 }
 
 # Delete a milestone from a repository
-# Usage: delete_repo_milestone "owner/repo" "title"
+# Usage: delete_repo_milestone "title"
 delete_repo_milestone() {
-  local repo="$1"
-  local title="$2"
+  local title="$1"
   
-  local milestone_number=$(gh api "repos/$repo/milestones" --jq ".[] | select(.title==\"$title\") | .number")
+  local milestone_number=$(gh api "repos/$REPO/milestones" --jq ".[] | select(.title==\"$title\") | .number")
   if [[ -n "$milestone_number" ]]; then
-    gh api "repos/$repo/milestones/$milestone_number" -X DELETE > /dev/null
+    gh api "repos/$REPO/milestones/$milestone_number" -X DELETE
   fi
 }
 
 # Get issue labels
-# Usage: get_issue_labels "owner/repo" "issue_number"
+# Usage: get_issue_labels "issue_number"
 get_issue_labels() {
-  local repo="$1"
-  local issue_number="$2"
+  local issue_number="$1"
   
-  gh issue view "$issue_number" --repo "$repo" --json labels --jq '.labels[].name'
+  gh issue view "$issue_number" --repo "$REPO" --json labels --jq '.labels[].name'
 }
 
 # Extract model from issue labels (looks for model: prefix)
-# Usage: extract_model_from_labels "owner/repo" "issue_number" "default_model"
+# Usage: extract_model_from_labels "issue_number" "default_model"
 extract_model_from_labels() {
-  local repo="$1"
-  local issue_number="$2"
-  local default_model="${3:-gpt-5-mini}"
+  local issue_number="$1"
+  local default_model="${2:-gpt-5-mini}"
   
-  local labels=$(get_issue_labels "$repo" "$issue_number")
+  local labels=$(get_issue_labels "$issue_number")
   
   for label in $labels; do
     if [[ "$label" =~ ^model: ]]; then
