@@ -43,10 +43,11 @@ copilot --agent worker --model gpt-5-mini -i "Fix issue #123 in milyin/copilot."
 
 **Available model labels:**
 - `model:gpt-5-mini` (default, free tier)
-- `model:gpt-5`
-- `model:gpt-5.2-codex`
-- `model:claude-sonnet-4.5`
-- `model:claude-opus-4.5`
+- `model:claude-haiku-4.5` (low cost)
+- `model:gpt-5`, `model:claude-sonnet-4.5` (medium cost)
+- `model:gpt-5.2-codex`, `model:gemini-3-pro-preview` (medium-high cost)
+- `model:claude-opus-4.6` (high cost)
+- See `.github/scripts/setup.sh` for full list
 
 See [.github/copilot-instructions.md](.github/copilot-instructions.md) for detailed documentation.
 

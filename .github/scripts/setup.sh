@@ -1,66 +1,208 @@
 #!/bin/bash
-# Setup script for Copilot Agent Workflow
-# Creates required labels and milestones in milyin/copilot repository
-# Idempotent: safe to run multiple times
+set -euo pipefail
 
-set -e
+# Source common library functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib.sh"
 
+# Repository to set up
 REPO="milyin/copilot"
 
-echo "Setting up Copilot Agent Workflow for $REPO..."
+echo "Setting up repository: $REPO"
+echo
 
-# Function to create label if it doesn't exist
+# Get available models from copilot CLI
+get_available_models() {
+    copilot --help | grep -A 100 "Available models:" | tail -n +2 | grep "^  " | awk '{print $1}' || true
+}
+
+# Extract model cost tier based on help text description
+get_model_cost() {
+    local model=$1
+    local description
+    description=$(copilot --help | grep -A 100 "Available models:" | grep "^  $model " | sed "s/^  $model  *//")
+    
+    case "$description" in
+        *"(free)"*|*"Free"*)
+            echo "free"
+            ;;
+        *"(low cost)"*|*"Low cost"*|*"inexpensive"*)
+            echo "low"
+            ;;
+        *"(moderate cost)"*|*"Moderate cost"*|*"balanced"*)
+            echo "moderate"
+            ;;
+        *"(higher cost)"*|*"Higher cost"*|*"expensive"*)
+            echo "higher"
+            ;;
+        *"(highest cost)"*|*"Highest cost"*|*"premium"*|*"most capable"*)
+            echo "high"
+            ;;
+        *)
+            echo "moderate"
+            ;;
+    esac
+}
+
+# Get color for cost tier
+get_cost_color() {
+    local cost=$1
+    case "$cost" in
+        free)
+            echo "0e8a16"  # Green
+            ;;
+        low)
+            echo "bfd4f2"  # Light Blue
+            ;;
+        moderate)
+            echo "fbca04"  # Yellow
+            ;;
+        higher)
+            echo "d93f0b"  # Orange
+            ;;
+        high)
+            echo "b60205"  # Red
+            ;;
+        *)
+            echo "fbca04"  # Default to Yellow
+            ;;
+    esac
+}
+
+# Wrapper functions that call lib.sh functions with repo parameter
 create_label() {
-  local name="$1"
-  local description="$2"
-  local color="$3"
-  
-  if gh label list --repo "$REPO" | grep -q "^${name}[[:space:]]"; then
-    echo "  Label '$name' already exists"
-  else
-    gh label create "$name" --description "$description" --color "$color" --repo "$REPO"
-    echo "  Created label '$name'"
-  fi
+    create_repo_label "$REPO" "$@"
 }
 
-# Function to create milestone if it doesn't exist
+delete_label() {
+    delete_repo_label "$REPO" "$@"
+}
+
 create_milestone() {
-  local title="$1"
-  local description="$2"
-  
-  if gh api "repos/$REPO/milestones" --jq '.[].title' | grep -q "^${title}$"; then
-    echo "  Milestone '$title' already exists"
-  else
-    gh api "repos/$REPO/milestones" -f title="$title" -f description="$description" -f state="open" > /dev/null
-    echo "  Created milestone '$title'"
-  fi
+    create_repo_milestone "$REPO" "$@"
 }
 
-echo ""
-echo "Creating labels..."
+delete_milestone() {
+    delete_repo_milestone "$REPO" "$@"
+}
 
-# Model labels
-create_label "model:gpt-5-mini" "Use GPT-5 Mini model (free tier)" "0E8A16"
-create_label "model:gpt-5" "Use GPT-5 model" "1D76DB"
-create_label "model:gpt-5.2-codex" "Use GPT-5.2 Codex model" "0052CC"
-create_label "model:claude-sonnet-4.5" "Use Claude Sonnet 4.5 model" "5319E7"
-create_label "model:claude-opus-4.5" "Use Claude Opus 4.5 model" "7B16FF"
+# Process labels
+echo "Processing labels..."
 
-# Status labels
-create_label "done" "Task completed, awaiting review" "00FF00"
+# Get existing labels
+mapfile -t existing_labels < <(get_repo_labels "$REPO")
 
-echo ""
-echo "Creating milestones..."
+# Build desired labels list: all model:* labels + done label
+declare -a desired_labels=()
 
-# Stage milestones
-create_milestone "PLANNING" "Manager creates implementation plan"
-create_milestone "PENDING" "Awaiting human review and approval"
-create_milestone "READY" "Ready for Worker to implement"
-create_milestone "WORKING" "Worker is implementing the issue"
+# Add model labels
+mapfile -t models < <(get_available_models)
+for model in "${models[@]}"; do
+    if [[ -n "$model" ]]; then
+        desired_labels+=("model:$model")
+    fi
+done
 
-echo ""
-echo "✓ Setup complete!"
-echo ""
-echo "Next steps:"
-echo "  1. Create issues with milestone 'PLANNING'"
-echo "  2. Run: copilot --agent manager -i \"Process issues using the manager workflow.\""
+# Add done label
+desired_labels+=("done")
+
+# Reconcile labels (find what to delete and what to create)
+declare -a labels_to_delete=()
+declare -a labels_to_create=()
+reconcile_lists existing_labels desired_labels labels_to_delete labels_to_create
+
+# Delete extra labels
+if [[ ${#labels_to_delete[@]} -gt 0 ]]; then
+    echo "Deleting extra labels:"
+    for label in "${labels_to_delete[@]}"; do
+        if [[ "$label" =~ ^model: ]] || [[ "$label" == "done" ]]; then
+            echo "  - $label"
+            delete_label "$label"
+        fi
+    done
+else
+    echo "No extra labels to delete"
+fi
+
+# Create missing labels
+if [[ ${#labels_to_create[@]} -gt 0 ]]; then
+    echo "Creating missing labels:"
+    for label in "${labels_to_create[@]}"; do
+        if [[ "$label" =~ ^model:(.*)$ ]]; then
+            model="${BASH_REMATCH[1]}"
+            cost=$(get_model_cost "$model")
+            color=$(get_cost_color "$cost")
+            description="Use $model model ($cost cost)"
+            echo "  + $label ($cost)"
+            create_label "$label" "$color" "$description"
+        elif [[ "$label" == "done" ]]; then
+            echo "  + $label"
+            create_label "$label" "5319e7" "Issue implementation completed"
+        fi
+    done
+else
+    echo "No missing labels to create"
+fi
+
+echo
+
+# Process milestones
+echo "Processing milestones..."
+
+# Get existing milestones
+mapfile -t existing_milestones < <(get_repo_milestones "$REPO")
+
+# Desired milestones
+declare -a desired_milestones=(
+    "PLANNING"
+    "PENDING"
+    "READY"
+    "WORKING"
+)
+
+# Reconcile milestones
+declare -a milestones_to_delete=()
+declare -a milestones_to_create=()
+reconcile_lists existing_milestones desired_milestones milestones_to_delete milestones_to_create
+
+# Delete extra milestones
+if [[ ${#milestones_to_delete[@]} -gt 0 ]]; then
+    echo "Deleting extra milestones:"
+    for milestone in "${milestones_to_delete[@]}"; do
+        echo "  - $milestone"
+        delete_milestone "$milestone"
+    done
+else
+    echo "No extra milestones to delete"
+fi
+
+# Create missing milestones
+if [[ ${#milestones_to_create[@]} -gt 0 ]]; then
+    echo "Creating missing milestones:"
+    for milestone in "${milestones_to_create[@]}"; do
+        case "$milestone" in
+            PLANNING)
+                description="Issue is being planned by Manager agent"
+                ;;
+            PENDING)
+                description="Issue plan is complete, awaiting human review or implementation is done"
+                ;;
+            READY)
+                description="Issue is approved and ready for Worker agent"
+                ;;
+            WORKING)
+                description="Issue is being implemented by Worker agent"
+                ;;
+            *)
+                description=""
+                ;;
+        esac
+        echo "  + $milestone"
+        create_milestone "$milestone" "$description"
+    done
+else
+    echo "No missing milestones to create"
+fi
+
+echo
+echo "✓ Repository setup complete"

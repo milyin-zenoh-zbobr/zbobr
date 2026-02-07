@@ -38,11 +38,11 @@ Take the first available open issue in `milyin/copilot` with milestone `PLANNING
 Take the first available open issue in `milyin/copilot` with milestone `READY`:
 
 - Read issue description and implementation plan
-- Extract model from labels with `model:` prefix:
-  - Get issue labels using `gh issue view <issue_number> --json labels`
-  - Look for label starting with `model:` (e.g., `model:gpt-5-mini`, `model:claude-sonnet-4.5`)
-  - Extract model name after the colon (e.g., `gpt-5-mini`)
-  - Use `gpt-5-mini` as default if no `model:` label exists
+- Extract model from labels using the helper function:
+  ```bash
+  source .github/scripts/lib.sh
+  MODEL=$(extract_model_from_labels "milyin/copilot" <issue_number> "gpt-5-mini")
+  ```
 - Spawn a Worker agent:
   ```bash
   .github/scripts/worker.sh --issue <issue_number> --model <model_name>
@@ -58,4 +58,5 @@ Take the first available open issue in `milyin/copilot` with milestone `READY`:
 **Available Tools:**
 - `.github/scripts/update_issue_with_plan.sh`
 - `.github/scripts/worker.sh`
+- `.github/scripts/lib.sh` (common functions)
 - Standard GitHub CLI (`gh`) tools

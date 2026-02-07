@@ -58,3 +58,8 @@ Both Manager and Worker agents can use these tools:
   - Purpose: Initiates a Worker agent to implement the issue
   - Requirements: `gh` CLI and authenticated session
 
+- **lib.sh** — Common library functions for repository operations and label/milestone management.
+  - Usage: `source .github/scripts/lib.sh`
+  - Functions: `reconcile_lists`, `get_repo_labels`, `get_repo_milestones`, `extract_model_from_labels`, etc.
+  - Used by other scripts for consistent repository interactions
+
