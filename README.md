@@ -72,7 +72,7 @@ automation/scripts/manager_loop.sh --interval 60
 
 1. **Create issue** in domain project with milestone `PLANNING` and reference a target repo
 2. **Manager researches** the issue and creates an implementation plan → sets `PENDING`
-3. **Human reviews** and sets milestone to `READY` (optionally add `model:*` label for AI model choice)
+3. **Human reviews** and sets milestone to `READY` (optionally add `copilot:<model>` label for AI model choice)
 4. **Manager spawns Worker** → sets `WORKING`  
 5. **Worker implements** by:
    - Forking target repo to fork owner (e.g., `YoroolGui/*`)
@@ -86,7 +86,7 @@ automation/scripts/manager_loop.sh --interval 60
 These are orchestrator-owned and universal—same across all domain projects:
 
 **Labels:**
-- `model:*` — Specify which AI model to use (e.g., `model:gpt-5-mini`, `model:claude-opus-4.6`)
+- `copilot:<model>` — Use GitHub Copilot with specified model (e.g., `copilot:gpt-5-mini`, `copilot:claude-opus-4.6`)
 - `done` — Issue implementation is complete
 
 **Milestones:**
@@ -235,7 +235,7 @@ The setup script automatically detects available models from the Copilot CLI. Co
 - `gpt-5`, `claude-sonnet-4.5`
 - `claude-opus-4.6`
 
-Use labels like `model:claude-opus-4.6` on issues to select a specific model.
+Use labels like `copilot:claude-opus-4.6` on issues to select a specific model.
 
 ## Important Notes
 

@@ -78,7 +78,8 @@ get_available_models() {
         | grep -E '.+' || true
 }
 
-MODEL_LABEL_COLOR="bfd4f2"
+# Label colors for each service
+COPILOT_LABEL_COLOR="bfd4f2"  # light blue
 
 # Process labels
 echo "Processing labels..."
@@ -86,15 +87,15 @@ echo "Processing labels..."
 # Get existing labels
 read_lines existing_labels < <(get_labels)
 
-# Build desired labels list: all model:* labels + done label
+# Build desired labels list: all service:model labels + done label
 declare -a desired_labels=()
 
-# Add model labels
+# Add copilot model labels
 declare -a models=()
 read_lines models < <(get_available_models)
 for model in "${models[@]:-}"; do
     if [[ -n "$model" ]]; then
-        desired_labels+=("model:$model")
+        desired_labels+=("copilot:$model")
     fi
 done
 
@@ -110,7 +111,7 @@ reconcile_lists existing_labels desired_labels labels_to_delete labels_to_create
 if [[ ${#labels_to_delete[@]} -gt 0 ]]; then
     echo "Deleting extra labels:"
     for label in "${labels_to_delete[@]}"; do
-        if [[ "$label" =~ ^model: ]] || [[ "$label" == "done" ]]; then
+        if [[ "$label" =~ ^copilot: ]] || [[ "$label" == "done" ]]; then
             echo "  - $label"
             delete_label "$label"
         fi
@@ -123,11 +124,11 @@ fi
 if [[ ${#labels_to_create[@]} -gt 0 ]]; then
     echo "Creating missing labels:"
     for label in "${labels_to_create[@]}"; do
-        if [[ "$label" =~ ^model:(.*)$ ]]; then
+        if [[ "$label" =~ ^copilot:(.*)$ ]]; then
             model="${BASH_REMATCH[1]}"
-            description="Use $model model"
+            description="Copilot: $model"
             echo "  + $label"
-            create_label "$label" "$MODEL_LABEL_COLOR" "$description"
+            create_label "$label" "$COPILOT_LABEL_COLOR" "$description"
         elif [[ "$label" == "done" ]]; then
             echo "  + $label"
             create_label "$label" "5319e7" "Issue implementation completed"
@@ -140,11 +141,11 @@ fi
 # Update existing labels to desired color/description
 echo "Updating existing labels:"
 for label in "${desired_labels[@]}"; do
-    if [[ "$label" =~ ^model:(.*)$ ]]; then
+    if [[ "$label" =~ ^copilot:(.*)$ ]]; then
         model="${BASH_REMATCH[1]}"
-        description="Use $model model"
+        description="Copilot: $model"
         echo "  ~ $label"
-        update_label "$label" "$MODEL_LABEL_COLOR" "$description"
+        update_label "$label" "$COPILOT_LABEL_COLOR" "$description"
     elif [[ "$label" == "done" ]]; then
         echo "  ~ $label"
         update_label "$label" "5319e7" "Issue implementation completed"
