@@ -2,27 +2,33 @@ mod mcp;
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use zbobr_lib::{Zbobr, ZbobrConfig, SetupFile, Stage};
+
+#[derive(Args, Clone)]
+struct GlobalArgs {
+    /// Domain project repo (overrides ZBOBR_DOMAIN_REPO)
+    #[arg(long, global = true)]
+    domain_repo: Option<String>,
+
+    /// Fork owner (overrides ZBOBR_FORK_OWNER)
+    #[arg(long, global = true)]
+    fork_owner: Option<String>,
+
+    /// Path to planner prompt file (overrides ZBOBR_PLANNER_PROMPT)
+    #[arg(long, env = "ZBOBR_PLANNER_PROMPT", global = true)]
+    planner_prompt: Option<PathBuf>,
+
+    /// Path to worker prompt file (overrides ZBOBR_WORKER_PROMPT)
+    #[arg(long, env = "ZBOBR_WORKER_PROMPT", global = true)]
+    worker_prompt: Option<PathBuf>,
+}
 
 #[derive(Parser)]
 #[command(name = "zbobr", about = "AI-powered issue orchestrator")]
 struct Cli {
-    /// Domain project repo (overrides ZBOBR_DOMAIN_REPO)
-    #[arg(long)]
-    domain_repo: Option<String>,
-
-    /// Fork owner (overrides ZBOBR_FORK_OWNER)
-    #[arg(long)]
-    fork_owner: Option<String>,
-
-    /// Path to planner prompt file (overrides ZBOBR_PLANNER_PROMPT)
-    #[arg(long, env = "ZBOBR_PLANNER_PROMPT")]
-    planner_prompt: Option<PathBuf>,
-
-    /// Path to worker prompt file (overrides ZBOBR_WORKER_PROMPT)
-    #[arg(long, env = "ZBOBR_WORKER_PROMPT")]
-    worker_prompt: Option<PathBuf>,
+    #[command(flatten)]
+    global: GlobalArgs,
 
     #[command(subcommand)]
     command: Command,
@@ -95,11 +101,13 @@ fn resolve_prompts(cli: &Cli) -> anyhow::Result<Prompts> {
     let prompts_dir = default_prompts_dir()?;
 
     let planner = cli
+        .global
         .planner_prompt
         .clone()
         .unwrap_or_else(|| prompts_dir.join("planner.md"));
 
     let worker = cli
+        .global
         .worker_prompt
         .clone()
         .unwrap_or_else(|| prompts_dir.join("worker.md"));
@@ -124,10 +132,10 @@ fn load_prompt(path: &PathBuf) -> anyhow::Result<String> {
 
 fn load_config(cli: &Cli) -> Result<ZbobrConfig, zbobr_lib::ZbobrError> {
     let mut config = ZbobrConfig::from_env()?;
-    if let Some(ref dr) = cli.domain_repo {
+    if let Some(ref dr) = cli.global.domain_repo {
         config.domain_repo = dr.clone();
     }
-    if let Some(ref fo) = cli.fork_owner {
+    if let Some(ref fo) = cli.global.fork_owner {
         config.fork_owner = fo.clone();
     }
     Ok(config)
