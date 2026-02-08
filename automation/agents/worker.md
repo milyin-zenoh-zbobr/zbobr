@@ -13,7 +13,7 @@ These tools are provided via the zbobr MCP server. No arguments refer to task ID
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
-| `get_plan` | — | Get the implementation plan for this task |
+| `get_description` | — | Get the implementation plan for this task |
 | `get_discussion` | — | Get all discussion messages on this task |
 | `post_message` | `message: string` | Post a message to the task discussion |
 | `request_repo` | `repo: string` | Fork & clone a repo (`owner/repo`). Returns local path with feature branch ready. |
@@ -26,7 +26,7 @@ These tools are provided via the zbobr MCP server. No arguments refer to task ID
 
 ### 1. Understand the task
 
-1. Call `get_plan` to read the implementation plan
+1. Call `get_description` to read the implementation plan
 2. Call `get_discussion` to read any additional context
 
 ### 2. Set up the repository

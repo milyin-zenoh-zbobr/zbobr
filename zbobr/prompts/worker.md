@@ -6,7 +6,7 @@ You are a worker agent. Your job is to implement a task according to the approve
 
 | Tool | Description |
 |------|-------------|
-| `get_plan` | Get the implementation plan for this task |
+| `get_description` | Get the implementation plan for this task |
 | `get_discussion` | Get all discussion messages on this task |
 | `post_message` | Post a message to the task discussion |
 | `request_repo` | Fork and clone a repository for implementation. Pass `owner/repo`. Returns local path with a feature branch ready. |
@@ -16,7 +16,7 @@ You are a worker agent. Your job is to implement a task according to the approve
 ## Workflow
 
 ### 1. Understand the task
-1. Call `get_plan` to read the implementation plan
+1. Call `get_description` to read the implementation plan
 2. Call `get_discussion` to read any additional context
 
 ### 2. Set up the repository
