@@ -37,7 +37,11 @@ impl ZbobrConfig {
 
         let github_token = std::env::var("GH_TOKEN")
             .or_else(|_| std::env::var("GITHUB_TOKEN"))
-            .map_err(|_| ZbobrError::Config("GH_TOKEN or GITHUB_TOKEN not set".into()))?;
+            .map_err(|_| ZbobrError::Config(
+                "GitHub token not found. Set GH_TOKEN or GITHUB_TOKEN env var.\n  \
+                 If you have GitHub CLI installed: export GH_TOKEN=$(gh auth token)\n  \
+                 Otherwise create a token at https://github.com/settings/tokens (needs 'repo' scope)".into()
+            ))?;
 
         Ok(Self {
             domain_repo,
@@ -52,12 +56,14 @@ impl ZbobrConfig {
     pub fn validate(&self) -> Result<(), ZbobrError> {
         if self.domain_repo.is_empty() {
             return Err(ZbobrError::Config(
-                "domain repo not set (use --domain-repo or ZBOBR_DOMAIN_REPO)".into(),
+                "domain repo not set. Use --domain-repo owner/repo or set ZBOBR_DOMAIN_REPO.\n  \
+                 This is the GitHub repository whose issues the orchestrator processes.".into(),
             ));
         }
         if self.fork_owner.is_empty() {
             return Err(ZbobrError::Config(
-                "fork owner not set (use --fork-owner or ZBOBR_FORK_OWNER)".into(),
+                "fork owner not set. Use --fork-owner NAME or set ZBOBR_FORK_OWNER.\n  \
+                 This is the GitHub user or organization where target repos are forked for implementation.".into(),
             ));
         }
         Ok(())

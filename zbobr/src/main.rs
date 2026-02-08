@@ -7,25 +7,37 @@ use zbobr_lib::{Zbobr, ZbobrConfig, SetupFile, Stage};
 
 #[derive(Args, Clone)]
 struct GlobalArgs {
-    /// Domain project repo (overrides ZBOBR_DOMAIN_REPO)
+    /// GitHub repository with issues to orchestrate, in "owner/repo" format
+    /// (e.g. "YoroolGui/copilot-zenoh"). Can also be set via ZBOBR_DOMAIN_REPO env var
     #[arg(long, global = true)]
     domain_repo: Option<String>,
 
-    /// Fork owner (overrides ZBOBR_FORK_OWNER)
+    /// GitHub user or organization where target repos are forked for implementation
+    /// (e.g. "YoroolGui"). Workers fork repos here to create PRs.
+    /// Can also be set via ZBOBR_FORK_OWNER env var
     #[arg(long, global = true)]
     fork_owner: Option<String>,
 
-    /// Path to planner prompt file (overrides ZBOBR_PLANNER_PROMPT)
+    /// Path to planner agent prompt file
     #[arg(long, env = "ZBOBR_PLANNER_PROMPT", global = true)]
     planner_prompt: Option<PathBuf>,
 
-    /// Path to worker prompt file (overrides ZBOBR_WORKER_PROMPT)
+    /// Path to worker agent prompt file
     #[arg(long, env = "ZBOBR_WORKER_PROMPT", global = true)]
     worker_prompt: Option<PathBuf>,
 }
 
 #[derive(Parser)]
-#[command(name = "zbobr", about = "AI-powered issue orchestrator")]
+#[command(
+    name = "zbobr",
+    about = "AI-powered issue orchestrator",
+    long_about = "AI-powered issue orchestrator that manages GitHub issues through automated stages.\n\n\
+        Issues flow through: PLANNING -> PENDING -> READY -> WORKING.\n\
+        Planner agents create implementation plans, worker agents implement them\n\
+        by forking target repositories and creating pull requests.\n\n\
+        Requires a GitHub token: set GH_TOKEN or GITHUB_TOKEN env var.\n\
+        Easiest way: export GH_TOKEN=$(gh auth token)"
+)]
 struct Cli {
     #[command(flatten)]
     global: GlobalArgs,
@@ -36,9 +48,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Set up domain project: create local files, push to GitHub
+    /// Initialize a domain project: create config files locally and push to GitHub
     Setup {
-        /// Only create local directory, do not push to GitHub
+        /// Only create local files, skip pushing to GitHub
         #[arg(long, short = 'n')]
         dry_run: bool,
 
@@ -46,45 +58,46 @@ enum Command {
         #[arg(long, short = 'o')]
         output_dir: Option<PathBuf>,
     },
-    /// Run the manager loop
+    /// Poll for issues and run planner/worker agents automatically
     Loop {
-        /// Poll interval in seconds
+        /// How often to check for new issues, in seconds
         #[arg(long, default_value = "60")]
         interval: u64,
-        /// Cleanup interval in seconds
+        /// How often to clean up workspaces for closed issues, in seconds
         #[arg(long, default_value = "600")]
         cleanup_interval: u64,
-        /// AI model to use
+        /// AI model to use (e.g. "gpt-5-mini", "claude-opus-4.6")
         #[arg(long)]
         model: Option<String>,
-        /// MCP server port
+        /// Port for the MCP server that agents connect to
         #[arg(long, default_value = "3000")]
         port: u16,
     },
-    /// Clean up workspace directories for closed issues
+    /// Remove workspace directories for issues that have been closed
     Cleanup {
+        /// Show what would be removed without actually deleting
         #[arg(long, short = 'n')]
         dry_run: bool,
     },
-    /// Run planner for a specific issue
+    /// Run planner agent for a specific issue (creates implementation plan)
     Plan {
-        /// Issue number
+        /// Issue number in the domain project repository
         issue: u64,
-        /// AI model to use
+        /// AI model to use (e.g. "gpt-5-mini", "claude-opus-4.6")
         #[arg(long)]
         model: Option<String>,
-        /// MCP server port
+        /// Port for the MCP server that the agent connects to
         #[arg(long, default_value = "3000")]
         port: u16,
     },
-    /// Run worker for a specific issue
+    /// Run worker agent for a specific issue (implements the plan, creates PR)
     Work {
-        /// Issue number
+        /// Issue number in the domain project repository
         issue: u64,
-        /// AI model to use
+        /// AI model to use (e.g. "gpt-5-mini", "claude-opus-4.6")
         #[arg(long)]
         model: Option<String>,
-        /// MCP server port
+        /// Port for the MCP server that the agent connects to
         #[arg(long, default_value = "3000")]
         port: u16,
     },

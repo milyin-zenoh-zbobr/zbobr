@@ -14,20 +14,20 @@ The orchestrator is domain-agnostic and can manage any set of repositories throu
 ### Concepts
 
 1. **Copilot Orchestrator** (this repo)
-   - Universal automation system
-   - Contains Manager/Worker agents and common scripts
-   - Location: `milyin/copilot`
+   - Universal automation system that processes issues through stages
+   - Contains planner/worker agents and the `zbobr` CLI binary
 
-2. **Domain Project** 
-   - Task/project-specific configuration repo
+2. **Domain Project** (`--domain-repo`)
+   - A GitHub repository whose issues the orchestrator manages
    - Example: `YoroolGui/copilot-zenoh`
-   - Contains: Target repository list and project-specific guidance
-   - Created per-domain via `automation/setup/setup.sh --domain-project`
+   - Contains: target repository list, project-specific guidance, and `.zbobr.env` config
+   - Created via `zbobr setup --domain-repo owner/repo --fork-owner owner`
 
-3. **Fork Owner**
-   - Where Workers create temporary forks during implementation
-   - Configured in domain project's `.zbobr.env` file
-   - Can be a user (e.g., `milyin`) or organization (e.g., `YoroolGui`)
+3. **Fork Owner** (`--fork-owner`)
+   - The GitHub user or organization where target repos are forked for implementation
+   - Worker agents fork repos under this account, create feature branches, and open PRs back to the original
+   - Can be a personal account (e.g., `milyin`) or an organization (e.g., `YoroolGui`)
+   - Configured in domain project's `.zbobr.env` file or via `--fork-owner` CLI flag
 
 ## Quick Start
 
@@ -38,32 +38,25 @@ The orchestrator is domain-agnostic and can manage any set of repositories throu
 
 **Setup a domain project:**
 ```bash
+# Ensure your GitHub token is available
+export GH_TOKEN=$(gh auth token)
+
 # Example: Set up Zenoh domain project
-automation/setup/setup.sh \
-  --domain-project YoroolGui/copilot-zenoh \
-  --fork-owner YoroolGui
+zbobr setup --domain-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
 ```
 
 This will:
-- Create the domain project repo (if needed)
+- Create the domain project repo on GitHub (if needed)
 - Set up labels and milestones
-- Initialize template files (instructions.md, repositories.md)
-- Create `.zbobr.env` with fork owner configuration
+- Initialize template files (README.md, repositories.md)
+- Create `.zbobr.env` with configuration
 
-**Configure target repositories:**
-
-Add a `.zbobr.env` file to each target repository:
-```bash
-# .zbobr.env - zbobr configuration
-ZBOBR_DOMAIN_REPO=YoroolGui/copilot-zenoh
-ZBOBR_FORK_OWNER=YoroolGui
-ZBOBR_DEFAULT_MODEL=gpt-5-mini
-```
+Use `--dry-run` to preview local files without pushing to GitHub.
 
 **Launch the orchestrator:**
 ```bash
-# Run Manager in a loop (checks every 60 seconds)
-automation/scripts/manager_loop.sh --interval 60
+# Run the manager loop (polls every 60 seconds)
+zbobr loop --domain-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
 ```
 
 ## How It Works
@@ -131,56 +124,43 @@ YoroolGui/copilot-zenoh/ (Domain Project - created by setup.sh)
 
 ```bash
 # Create domain project for Apache Kafka ecosystem
-automation/setup/setup.sh \
-  --domain-project myorg/copilot-kafka \
-  --fork-owner myorg
+zbobr setup --domain-repo myorg/copilot-kafka --fork-owner myorg
+
+# Preview without pushing to GitHub
+zbobr setup --domain-repo myorg/copilot-kafka --fork-owner myorg --dry-run
 ```
 
-### Run Manager in background
+### Run the manager loop
 
 ```bash
-# Clone domain project and cd into it
-gh repo clone YoroolGui/copilot-zenoh
-cd copilot-zenoh
-
-# Run manager loop (poll every 30 seconds)
-/path/to/zbobr/automation/scripts/manager_loop.sh --interval 30 &
+# Poll for issues every 30 seconds, clean up every 10 minutes
+zbobr loop --domain-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui \
+  --interval 30 --cleanup-interval 600
 ```
 
-### Manually invoke agents
+### Manually run agents for a specific issue
 
 ```bash
-# From domain project directory:
-cd copilot-zenoh
+# Run planner on issue #42 (creates implementation plan)
+zbobr plan 42 --domain-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
 
-# Process with Manager
-/path/to/zbobr/automation/scripts/agent.sh manager
-
-# Implement specific issue
-/path/to/zbobr/automation/scripts/agent.sh worker 42
-```
-
-### Dry-run setup
-
-```bash
-# See what would be created without making changes
-automation/setup/setup.sh \
-  --domain-project YoroolGui/copilot-zenoh \
-  --fork-owner YoroolGui \
-  --dry-run
+# Run worker on issue #42 (implements the plan, creates PR)
+zbobr work 42 --domain-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
 ```
 
 ## Configuration
 
 ### Domain Project Setup
 
-When you run `setup.sh` with `--domain-project`, it automatically creates:
-- `instructions.md` — Domain-specific guidance for agents (from template)
-- `repositories.md` — List of target repositories (from template)
+`zbobr setup` creates the following files in the domain project:
+- `README.md` — Overview of the domain project workflow
+- `repositories.md` — List of target repositories to manage
+- `.zbobr.env` — Configuration (domain repo, fork owner, etc.)
+- `run.sh` / `run.cmd` — Launcher scripts
 
-**Note:** Existing files are never overwritten. Customize after initial setup.
+**Note:** Existing files on GitHub are never overwritten. Customize after initial setup.
 
-Edit `<domain-project>/repositories.md` to list which repos the domain manages:
+Edit `repositories.md` to list which repos the domain manages:
 
 ```markdown
 # Target Repositories
@@ -190,40 +170,20 @@ Edit `<domain-project>/repositories.md` to list which repos the domain manages:
 - https://github.com/zenoh/python-api
 ```
 
-Edit `<domain-project>/instructions.md` for domain-specific guidance.
+### Configuration
 
-**See [REPOSITORIES.md](REPOSITORIES.md) for a complete real-world example (Zenoh project).**
+All settings can be provided via CLI flags, environment variables, or `.zbobr.env`:
 
-### Domain Project Environment
+| CLI Flag | Env Variable | Required | Description |
+|----------|-------------|----------|-------------|
+| `--domain-repo` | `ZBOBR_DOMAIN_REPO` | Yes | GitHub repo whose issues the orchestrator processes (`owner/repo`) |
+| `--fork-owner` | `ZBOBR_FORK_OWNER` | Yes | GitHub user or org where target repos are forked for implementation |
+| | `ZBOBR_DEFAULT_MODEL` | No | Default AI model when no `copilot:<model>` label is set |
+| | `ZBOBR_WORKSPACE` | No | Directory for agent workspaces (default: `./workspace`) |
+| `--planner-prompt` | `ZBOBR_PLANNER_PROMPT` | No | Custom planner agent prompt file |
+| `--worker-prompt` | `ZBOBR_WORKER_PROMPT` | No | Custom worker agent prompt file |
 
-Create a `.zbobr.env` file in your domain project to configure zbobr behavior:
-
-```bash
-# .zbobr.env - zbobr configuration for this domain project
-
-# Required: This domain project's repository
-ZBOBR_DOMAIN_REPO=YoroolGui/copilot-zenoh
-
-# Required: User or organization where Worker agents create forks
-ZBOBR_FORK_OWNER=YoroolGui
-
-# Optional: Default AI model for issues without model: label
-ZBOBR_DEFAULT_MODEL=gpt-5-mini
-```
-
-**Variables:**
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ZBOBR_DOMAIN_REPO` | Yes | This domain project's repository |
-| `ZBOBR_FORK_OWNER` | Yes | User or organization for creating forks |
-| `ZBOBR_DEFAULT_MODEL` | No | Default AI model for issues |
-
-Scripts must be run from the domain project directory and automatically load `.zbobr.env`:
-```bash
-cd copilot-zenoh  # domain project directory
-/path/to/zbobr/automation/scripts/clone_target.sh zenoh/zenoh 123
-```
+CLI flags take priority over environment variables.
 
 ### Available Models
 
