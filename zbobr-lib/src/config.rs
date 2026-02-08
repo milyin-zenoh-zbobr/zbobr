@@ -2,6 +2,13 @@ use std::path::PathBuf;
 
 use crate::ZbobrError;
 
+/// Backend type to use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackendType {
+    GitHub,
+    Stub,
+}
+
 /// Configuration for the zbobr orchestrator.
 #[derive(Debug, Clone)]
 pub struct ZbobrConfig {
@@ -15,6 +22,8 @@ pub struct ZbobrConfig {
     pub workspace: PathBuf,
     /// GitHub personal access token.
     pub github_token: String,
+    /// Backend to use.
+    pub backend: BackendType,
 }
 
 impl ZbobrConfig {
@@ -43,12 +52,18 @@ impl ZbobrConfig {
                  Otherwise create a token at https://github.com/settings/tokens (needs 'repo' scope)".into()
             ))?;
 
+        let backend = match std::env::var("ZBOBR_BACKEND").unwrap_or_default().as_str() {
+            "stub" => BackendType::Stub,
+            _ => BackendType::GitHub,
+        };
+
         Ok(Self {
             domain_repo,
             fork_owner,
             default_model,
             workspace,
             github_token,
+            backend,
         })
     }
 
@@ -94,6 +109,7 @@ mod tests {
             default_model: "gpt-5-mini".to_string(),
             workspace: PathBuf::from("./workspace"),
             github_token: "fake-token".to_string(),
+            backend: BackendType::GitHub,
         }
     }
 
