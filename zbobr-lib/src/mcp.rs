@@ -170,7 +170,7 @@ impl PlannerMcp {
     async fn post_message(&self, Parameters(params): Parameters<MessageParam>) -> String {
         let session = self.zbobr.planner_session(self.task_id);
         let hostname = get_hostname();
-        match session.post_message(&params.message, "planner", &hostname).await {
+        match session.post_message(&params.message, Role::Planner.as_str(), &hostname).await {
             Ok(()) => "Message posted".to_string(),
             Err(e) => format!("Error: {e}"),
         }
@@ -248,7 +248,7 @@ impl WorkerMcp {
     async fn post_message(&self, Parameters(params): Parameters<MessageParam>) -> String {
         let session = self.zbobr.worker_session(self.task_id);
         let hostname = get_hostname();
-        match session.post_message(&params.message, "worker", &hostname).await {
+        match session.post_message(&params.message, Role::Worker.as_str(), &hostname).await {
             Ok(()) => "Message posted".to_string(),
             Err(e) => format!("Error: {e}"),
         }
