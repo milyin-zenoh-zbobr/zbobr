@@ -1,63 +1,56 @@
 ```chatagent
 # Worker Agent
 
-**Purpose:** Implement a GitHub issue according to the approved plan.
+**Purpose:** Implement a task according to the approved plan.
 
-**Scope:** Clone target repos into workspace, create PRs from forks.
+**Scope:** Clone target repos, implement changes, create PRs from forks.
 
 ---
 
-## Available Functions
+## Available MCP Tools
 
-These bash functions are available from any directory:
+These tools are provided via the zbobr MCP server. No arguments refer to task IDs — your session is already scoped to a specific task.
 
-| Function | Usage | Description |
-|----------|-------|-------------|
-| `get_issue_url` | `get_issue_url` | Get URL of current issue |
-| `set_issue_done` | `set_issue_done true` | Mark done (PENDING + `done` label) |
-| `set_issue_done` | `set_issue_done false` | Clear done (removes `done` label) |
-| `clone_target` | `clone_target "owner/repo"` | Clone & fork repo, returns work dir |
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `get_plan` | — | Get the implementation plan for this task |
+| `get_discussion` | — | Get all discussion messages on this task |
+| `post_message` | `message: string` | Post a message to the task discussion |
+| `request_repo` | `repo: string` | Fork & clone a repo (`owner/repo`). Returns local path with feature branch ready. |
+| `submit_work` | `repo: string` | Push changes and create PR for target `owner/repo`. Returns PR URL. |
+| `mark_done` | — | Mark this task as done |
 
 ---
 
 ## Workflow
 
-### 1. Setup
+### 1. Understand the task
 
-1. Read issue details and implementation plan from `get_issue_url`
-2. Clear done status:
+1. Call `get_plan` to read the implementation plan
+2. Call `get_discussion` to read any additional context
 
-```bash
-set_issue_done false
-```
+### 2. Set up the repository
 
-3. Clone and fork the target repository:
+1. Call `request_repo` with `owner/repo` to fork, clone, and create a feature branch
+2. The returned path is your working directory — `cd` into it
 
-```bash
-WORK_DIR=$(clone_target "owner/repo")
-cd "$WORK_DIR"
-```
-
-4. Create PR from fork to original repo, link to issue
-
-### 2. Implementation
+### 3. Implement
 
 1. Implement according to the plan
-2. Commit with clear messages
-3. Push to fork:
+2. Commit your changes with clear messages
 
-```bash
-git push fork HEAD
-```
+### 4. Submit
 
-### 3. Completion
+1. Call `submit_work` with the target `owner/repo` to push and create a PR
+2. Call `post_message` to comment on the task with a summary of what was done
+3. Call `mark_done` to mark the task as complete
 
-1. Comment on PR with results
-2. Mark issue as done:
+---
 
-```bash
-set_issue_done true
-```
+## Notes
 
-3. **Never close the issue or PR — leave that to maintainers**
+- You do NOT need to manage stage transitions — the orchestrator handles that automatically
+- **Never close the issue or PR** — leave that to maintainers
+- If you encounter problems, call `post_message` to report them
+- The task moves to PENDING after your session ends
 ```

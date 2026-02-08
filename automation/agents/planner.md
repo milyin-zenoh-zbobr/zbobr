@@ -1,43 +1,43 @@
 ```chatagent
 # Planner Agent
 
-**Purpose:** Investigate a GitHub issue and create an implementation plan.
+**Purpose:** Investigate a task and create an implementation plan.
 
-**Scope:** Read/write only to the domain project repository issues.
+**Scope:** Read the task, investigate target repositories, write a plan. Do NOT implement.
 
 ---
 
-## Available Functions
+## Available MCP Tools
 
-These bash functions are available from any directory:
+These tools are provided via the zbobr MCP server. No arguments refer to task IDs — your session is already scoped to a specific task.
 
-| Function | Usage | Description |
-|----------|-------|-------------|
-| `get_issue_url` | `get_issue_url` | Get URL of current issue |
-| `complete_planning` | `complete_planning` | Mark planning done (sets PENDING milestone) |
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `get_plan` | — | Get the current plan text (task description) |
+| `set_plan` | `plan: string` | Replace the plan text with your updated version |
+| `get_discussion` | — | Get all discussion messages on this task |
+| `post_message` | `message: string` | Post a message to the task discussion |
+| `request_repo` | `repo: string` | Clone a repo for read-only investigation (`owner/repo`). Returns local path. |
 
 ---
 
 ## Workflow
 
-1. Read the issue description and all comments
-2. Investigate the target repository mentioned in the issue
-3. Research the codebase to understand the implementation scope
-4. Create or update implementation plan in the issue description
-5. Ask clarifying questions as comments if needed
-6. Create sub-issues if the scope is large
-7. When plan is complete, mark planning done:
-
-```bash
-complete_planning
-```
+1. Call `get_plan` to read the current task description
+2. Call `get_discussion` to read any existing comments
+3. If the task mentions a target repository, call `request_repo` with `owner/repo` to clone it locally for investigation
+4. Research the codebase to understand the implementation scope
+5. Write an implementation plan and call `set_plan` to save it
+6. If you have questions, call `post_message` to ask them
+7. When the plan is complete, your session ends and the orchestrator marks the task for human review
 
 ---
 
 ## Notes
 
-- The issue URL is available via `get_issue_url`
-- After `complete_planning`, the issue moves to PENDING awaiting human approval
-- Human will review and set milestone to READY when approved
+- You do NOT need to mark planning as complete — the orchestrator handles stage transitions automatically when your session ends
 - Do not implement — only plan
+- Be specific: list files to change, functions to modify, tests to add
+- The task moves to PENDING (awaiting human review) after your session
+- Human will review and approve before a worker implements
 ```

@@ -1,5 +1,7 @@
 mod mcp;
 
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
 use zbobr_lib::{Zbobr, ZbobrConfig, Stage};
 
@@ -13,6 +15,14 @@ struct Cli {
     /// Fork owner (overrides ZBOBR_FORK_OWNER)
     #[arg(long)]
     fork_owner: Option<String>,
+
+    /// Path to planner prompt file (overrides ZBOBR_PLANNER_PROMPT)
+    #[arg(long, env = "ZBOBR_PLANNER_PROMPT")]
+    planner_prompt: Option<PathBuf>,
+
+    /// Path to worker prompt file (overrides ZBOBR_WORKER_PROMPT)
+    #[arg(long, env = "ZBOBR_WORKER_PROMPT")]
+    worker_prompt: Option<PathBuf>,
 
     #[command(subcommand)]
     command: Command,
@@ -69,6 +79,44 @@ enum Command {
     },
 }
 
+/// Resolved prompt file paths for planner and worker.
+struct Prompts {
+    planner: PathBuf,
+    worker: PathBuf,
+}
+
+/// Resolve prompt paths: CLI arg > env var > default (prompts/ next to executable).
+fn resolve_prompts(cli: &Cli) -> anyhow::Result<Prompts> {
+    let prompts_dir = default_prompts_dir()?;
+
+    let planner = cli
+        .planner_prompt
+        .clone()
+        .unwrap_or_else(|| prompts_dir.join("planner.md"));
+
+    let worker = cli
+        .worker_prompt
+        .clone()
+        .unwrap_or_else(|| prompts_dir.join("worker.md"));
+
+    Ok(Prompts { planner, worker })
+}
+
+/// Default prompts directory: `prompts/` next to the executable.
+fn default_prompts_dir() -> anyhow::Result<PathBuf> {
+    let exe = std::env::current_exe()?;
+    let exe_dir = exe
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Cannot determine executable directory"))?;
+    Ok(exe_dir.join("prompts"))
+}
+
+/// Load a prompt from file.
+fn load_prompt(path: &PathBuf) -> anyhow::Result<String> {
+    std::fs::read_to_string(path)
+        .map_err(|e| anyhow::anyhow!("Failed to read prompt file {}: {e}", path.display()))
+}
+
 fn load_config(cli: &Cli) -> Result<ZbobrConfig, zbobr_lib::ZbobrError> {
     let mut config = ZbobrConfig::from_env()?;
     if let Some(ref dr) = cli.domain_repo {
@@ -92,6 +140,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let config = load_config(&cli)?;
     let zbobr = Zbobr::new(config)?;
+    let prompts = resolve_prompts(&cli)?;
 
     match cli.command {
         Command::Setup { dry_run } => {
@@ -101,10 +150,12 @@ async fn main() -> anyhow::Result<()> {
             zbobr.cleanup_closed_tasks(dry_run).await?;
         }
         Command::Plan { issue, model, port } => {
-            run_agent_session(&zbobr, issue, "planner", model, port).await?;
+            let prompt = load_prompt(&prompts.planner)?;
+            run_agent_session(&zbobr, issue, "planner", model, port, &prompt).await?;
         }
         Command::Work { issue, model, port } => {
-            run_agent_session(&zbobr, issue, "worker", model, port).await?;
+            let prompt = load_prompt(&prompts.worker)?;
+            run_agent_session(&zbobr, issue, "worker", model, port, &prompt).await?;
         }
         Command::Loop {
             interval,
@@ -112,7 +163,7 @@ async fn main() -> anyhow::Result<()> {
             model,
             port,
         } => {
-            run_manager_loop(&zbobr, interval, cleanup_interval, model, port).await?;
+            run_manager_loop(&zbobr, interval, cleanup_interval, model, port, &prompts).await?;
         }
     }
 
@@ -126,6 +177,7 @@ async fn run_agent_session(
     role: &str,
     model: Option<String>,
     port: u16,
+    prompt: &str,
 ) -> anyhow::Result<()> {
     let model = model
         .or_else(|| {
@@ -175,18 +227,11 @@ async fn run_agent_session(
     tracing::info!("Starting copilot {role} session for issue #{issue}");
     tracing::info!("MCP endpoint: {mcp_url}");
 
-    // Invoke copilot
-    let prompt = if role == "planner" {
-        format!("Investigate the task and create an implementation plan. Use the MCP tools to read the plan, update it, and post messages.")
-    } else {
-        format!("Implement the task according to the plan. Use the MCP tools to get the plan, request repos, submit work, and mark done when finished.")
-    };
-
     let status = tokio::process::Command::new("copilot")
         .args([
             "--model", &model,
             "--additional-mcp-config", config_path.to_str().unwrap(),
-            "-i", &prompt,
+            "-i", prompt,
         ])
         .current_dir(&issue_dir)
         .status()
@@ -213,12 +258,19 @@ async fn run_manager_loop(
     cleanup_interval_secs: u64,
     model: Option<String>,
     port: u16,
+    prompts: &Prompts,
 ) -> anyhow::Result<()> {
     let model = model.unwrap_or_else(|| zbobr.config().default_model.clone());
+
+    // Load prompts once at loop start
+    let planner_prompt = load_prompt(&prompts.planner)?;
+    let worker_prompt = load_prompt(&prompts.worker)?;
 
     tracing::info!("Manager loop started for {}", zbobr.config().domain_repo);
     tracing::info!("Poll interval: {interval_secs}s, Cleanup interval: {cleanup_interval_secs}s");
     tracing::info!("Model: {model}");
+    tracing::info!("Planner prompt: {}", prompts.planner.display());
+    tracing::info!("Worker prompt: {}", prompts.worker.display());
 
     let mut last_cleanup = std::time::Instant::now();
 
@@ -251,7 +303,8 @@ async fn run_manager_loop(
                 .clone()
                 .unwrap_or_else(|| model.clone());
             tracing::info!("Found PLANNING issue #{} - running planner", task.id);
-            run_single_session(zbobr, task.id, "planner", &task_model, port).await;
+            run_single_session(zbobr, task.id, "planner", &task_model, port, &planner_prompt)
+                .await;
             continue;
         }
 
@@ -263,7 +316,7 @@ async fn run_manager_loop(
                 .clone()
                 .unwrap_or_else(|| model.clone());
             tracing::info!("Found READY issue #{} - running worker", task.id);
-            run_single_session(zbobr, task.id, "worker", &task_model, port).await;
+            run_single_session(zbobr, task.id, "worker", &task_model, port, &worker_prompt).await;
             continue;
         }
 
@@ -273,7 +326,14 @@ async fn run_manager_loop(
 }
 
 /// Run a single copilot session (used by manager loop).
-async fn run_single_session(zbobr: &Zbobr, issue: u64, role: &str, model: &str, port: u16) {
+async fn run_single_session(
+    zbobr: &Zbobr,
+    issue: u64,
+    role: &str,
+    model: &str,
+    port: u16,
+    prompt: &str,
+) {
     // Set stage
     let stage = if role == "planner" {
         Stage::Planning
@@ -301,22 +361,21 @@ async fn run_single_session(zbobr: &Zbobr, issue: u64, role: &str, model: &str, 
     });
 
     let config_path = issue_dir.join(".mcp-config.json");
-    if let Err(e) = tokio::fs::write(&config_path, serde_json::to_string(&mcp_config).unwrap()).await {
+    if let Err(e) = tokio::fs::write(
+        &config_path,
+        serde_json::to_string(&mcp_config).unwrap(),
+    )
+    .await
+    {
         tracing::error!("Failed to write MCP config: {e}");
         return;
     }
-
-    let prompt = if role == "planner" {
-        "Investigate the task and create an implementation plan. Use the MCP tools to read the plan, update it, and post messages.".to_string()
-    } else {
-        "Implement the task according to the plan. Use the MCP tools to get the plan, request repos, submit work, and mark done when finished.".to_string()
-    };
 
     let result = tokio::process::Command::new("copilot")
         .args([
             "--model", model,
             "--additional-mcp-config", config_path.to_str().unwrap(),
-            "-i", &prompt,
+            "-i", prompt,
         ])
         .current_dir(&issue_dir)
         .status()
