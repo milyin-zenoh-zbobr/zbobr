@@ -89,16 +89,76 @@ pub enum Model {
     Claude35Sonnet,
     #[serde(rename = "claude-3-opus")]
     Claude3Opus,
+    #[serde(rename = "claude-sonnet-4.5")]
+    ClaudeSonnet4_5,
+    #[serde(rename = "claude-haiku-4.5")]
+    ClaudeHaiku4_5,
+    #[serde(rename = "claude-opus-4.6")]
+    ClaudeOpus4_6,
+    #[serde(rename = "claude-opus-4.5")]
+    ClaudeOpus4_5,
+    #[serde(rename = "claude-sonnet-4")]
+    ClaudeSonnet4,
+    #[serde(rename = "gemini-3-pro-preview")]
+    Gemini3ProPreview,
+    #[serde(rename = "gpt-5.2-codex")]
+    Gpt5_2Codex,
+    #[serde(rename = "gpt-5.2")]
+    Gpt5_2,
+    #[serde(rename = "gpt-5.1-codex-max")]
+    Gpt5_1CodexMax,
+    #[serde(rename = "gpt-5.1-codex")]
+    Gpt5_1Codex,
+}
+
+impl Model {
+    pub fn model_name_for_tool(&self, tool: Tool) -> Option<&'static str> {
+        match tool {
+            Tool::Copilot => match self {
+                Model::Gpt4o => Some("gpt-4o"),
+                Model::Gpt5Mini => Some("gpt-5-mini"),
+                Model::Claude35Sonnet => Some("claude-3-5-sonnet"),
+                Model::Claude3Opus => Some("claude-3-opus"),
+                Model::ClaudeSonnet4_5 => Some("claude-sonnet-4.5"),
+                Model::ClaudeHaiku4_5 => Some("claude-haiku-4.5"),
+                Model::ClaudeOpus4_6 => Some("claude-opus-4.6"),
+                Model::ClaudeOpus4_5 => Some("claude-opus-4.5"),
+                Model::ClaudeSonnet4 => Some("claude-sonnet-4"),
+                Model::Gemini3ProPreview => Some("gemini-3-pro-preview"),
+                Model::Gpt5_2Codex => Some("gpt-5.2-codex"),
+                Model::Gpt5_2 => Some("gpt-5.2"),
+                Model::Gpt5_1CodexMax => Some("gpt-5.1-codex-max"),
+                Model::Gpt5_1Codex => Some("gpt-5.1-codex"),
+            },
+            Tool::Claude => match self {
+                Model::Claude35Sonnet => Some("sonnet"),
+                Model::Claude3Opus => Some("opus"),
+                _ => None,
+            },
+            Tool::Stub => Some("stub-model"),
+        }
+    }
 }
 
 impl std::fmt::Display for Model {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Model::Gpt4o => write!(f, "gpt-4o"),
-            Model::Gpt5Mini => write!(f, "gpt-5-mini"),
-            Model::Claude35Sonnet => write!(f, "claude-3-5-sonnet"),
-            Model::Claude3Opus => write!(f, "claude-3-opus"),
-        }
+        let s = match self {
+            Model::Gpt4o => "gpt-4o",
+            Model::Gpt5Mini => "gpt-5-mini",
+            Model::Claude35Sonnet => "claude-3-5-sonnet",
+            Model::Claude3Opus => "claude-3-opus",
+            Model::ClaudeSonnet4_5 => "claude-sonnet-4.5",
+            Model::ClaudeHaiku4_5 => "claude-haiku-4.5",
+            Model::ClaudeOpus4_6 => "claude-opus-4.6",
+            Model::ClaudeOpus4_5 => "claude-opus-4.5",
+            Model::ClaudeSonnet4 => "claude-sonnet-4",
+            Model::Gemini3ProPreview => "gemini-3-pro-preview",
+            Model::Gpt5_2Codex => "gpt-5.2-codex",
+            Model::Gpt5_2 => "gpt-5.2",
+            Model::Gpt5_1CodexMax => "gpt-5.1-codex-max",
+            Model::Gpt5_1Codex => "gpt-5.1-codex",
+        };
+        f.write_str(s)
     }
 }
 
@@ -112,6 +172,16 @@ impl std::str::FromStr for Model {
                 Ok(Model::Claude35Sonnet)
             }
             "claude-3-opus" | "claude3opus" => Ok(Model::Claude3Opus),
+            "claude-sonnet-4.5" | "claude-sonnet-4-5" => Ok(Model::ClaudeSonnet4_5),
+            "claude-haiku-4.5" | "claude-haiku-4-5" => Ok(Model::ClaudeHaiku4_5),
+            "claude-opus-4.6" | "claude-opus-4-6" => Ok(Model::ClaudeOpus4_6),
+            "claude-opus-4.5" | "claude-opus-4-5" => Ok(Model::ClaudeOpus4_5),
+            "claude-sonnet-4" => Ok(Model::ClaudeSonnet4),
+            "gemini-3-pro-preview" => Ok(Model::Gemini3ProPreview),
+            "gpt-5.2-codex" | "gpt-5-2-codex" => Ok(Model::Gpt5_2Codex),
+            "gpt-5.2" | "gpt-5-2" => Ok(Model::Gpt5_2),
+            "gpt-5.1-codex-max" | "gpt-5-1-codex-max" => Ok(Model::Gpt5_1CodexMax),
+            "gpt-5.1-codex" | "gpt-5-1-codex" => Ok(Model::Gpt5_1Codex),
             _ => Err(format!("Unknown model: {}", s)),
         }
     }
@@ -282,5 +352,38 @@ mod tests {
         assert_eq!(back.tool, Some(Tool::Claude));
         assert_eq!(back.model, Some(Model::Claude3Opus));
         assert!(!back.done);
+    }
+
+    #[test]
+    fn model_mapping() {
+        assert_eq!(
+            Model::Gpt4o.model_name_for_tool(Tool::Copilot),
+            Some("gpt-4o")
+        );
+        assert_eq!(
+            Model::ClaudeSonnet4_5.model_name_for_tool(Tool::Copilot),
+            Some("claude-sonnet-4.5")
+        );
+        assert_eq!(
+            Model::Claude35Sonnet.model_name_for_tool(Tool::Claude),
+            Some("sonnet")
+        );
+        assert_eq!(Model::Gpt5_2.model_name_for_tool(Tool::Claude), None);
+        assert_eq!(
+            Model::Gpt5_1Codex.model_name_for_tool(Tool::Stub),
+            Some("stub-model")
+        );
+    }
+
+    #[test]
+    fn model_parsing() {
+        assert_eq!("gpt-5.2".parse::<Model>().unwrap(), Model::Gpt5_2);
+        assert_eq!("GPT-5.2".parse::<Model>().unwrap(), Model::Gpt5_2);
+        assert_eq!("gpt-5-2".parse::<Model>().unwrap(), Model::Gpt5_2);
+        assert_eq!(
+            "claude-sonnet-4.5".parse::<Model>().unwrap(),
+            Model::ClaudeSonnet4_5
+        );
+        assert!("invalid-model".parse::<Model>().is_err());
     }
 }

@@ -408,8 +408,12 @@ async fn run_role_session(
             let tool_cmd = if cli_tool == Tool::Copilot {
                 "copilot"
             } else {
-                "claude"
+                unimplemented!("Claude execution is not yet supported")
             };
+
+            let model_name = model.model_name_for_tool(cli_tool).ok_or_else(|| {
+                anyhow::anyhow!("Model {} is not supported by {}", model, tool_cmd)
+            })?;
 
             tracing::info!("Starting {tool_cmd} {role} session for task #{task_id}");
             tracing::info!("MCP endpoint: {mcp_url}");
@@ -417,7 +421,7 @@ async fn run_role_session(
             let status = tokio::process::Command::new(tool_cmd)
                 .args([
                     "--model",
-                    &model.to_string(),
+                    model_name,
                     "--additional-mcp-config",
                     config_path.to_str().unwrap(),
                     "-i",
