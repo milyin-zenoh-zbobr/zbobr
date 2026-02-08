@@ -29,12 +29,38 @@ The orchestrator is domain-agnostic and can manage any set of repositories throu
    - Can be a personal account (e.g., `milyin`) or an organization (e.g., `YoroolGui`)
    - Configured in domain project's `.zbobr.env` file or via `--fork-owner` CLI flag
 
+## Installation
+
+Install zbobr using Cargo:
+
+```bash
+# Install from local source (if you've cloned the repo)
+cargo install --path zbobr
+
+# Or install directly from GitHub
+cargo install --git https://github.com/milyin/zbobr.git zbobr
+```
+
+Verify installation:
+```bash
+zbobr --help
+```
+
+The `zbobr` binary will be installed to `~/.cargo/bin/` (make sure this is in your `PATH`).
+
+**Add to PATH (if needed):**
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+export PATH="$HOME/.cargo/bin:$PATH"
+```
+
 ## Quick Start
 
 **Prerequisites:**
 - GitHub Copilot CLI (`copilot`)
 - GitHub CLI (`gh`) authenticated
 - Permission to create repos (for domain projects)
+- Rust and Cargo (for installation)
 
 **Setup a domain project:**
 ```bash
@@ -58,6 +84,26 @@ Use `--dry-run` to preview local files without pushing to GitHub.
 # Run the manager loop (polls every 60 seconds)
 zbobr loop --domain-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
 ```
+
+**Using run.sh (from domain project):**
+
+After setting up a domain project, you can clone it and use its `run.sh` launcher script, which automatically loads `.zbobr.env`:
+
+```bash
+# Clone the domain project
+git clone https://github.com/YoroolGui/copilot-zenoh.git
+cd copilot-zenoh
+
+# Make sure run.sh is executable (should already be)
+chmod +x run.sh
+
+# Run zbobr commands through run.sh (automatically uses .zbobr.env config)
+./run.sh loop                # Start the orchestrator loop
+./run.sh plan 42            # Run planner on issue #42
+./run.sh work 42            # Run worker on issue #42
+```
+
+This is the recommended approach for domain-specific workflows, as it eliminates the need to manually specify `--domain-repo` and `--fork-owner` flags.
 
 ## How It Works
 
