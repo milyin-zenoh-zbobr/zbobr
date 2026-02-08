@@ -66,6 +66,27 @@ pub struct MilestoneParam {
     pub milestone: String,
 }
 
+macro_rules! admin_tools_list {
+    ($($name:ident = $val:expr),* $(,)?) => {
+        pub mod admin_tools {
+            $(pub const $name: &str = $val;)*
+            pub const ALL_TOOLS: &[&str] = &[$($val),*];
+        }
+    }
+}
+
+admin_tools_list! {
+    LIST_ISSUES = "list_issues",
+    CREATE_ISSUE = "create_issue",
+    GET_ISSUE = "get_issue",
+    UPDATE_ISSUE_BODY = "update_issue_body",
+    SET_ISSUE_STAGE = "set_issue_stage",
+    ADD_ISSUE_LABEL = "add_issue_label",
+    REMOVE_ISSUE_LABEL = "remove_issue_label",
+    GET_DISCUSSION = "get_discussion",
+    DEBUG_STATE = "debug_state",
+}
+
 // -- Planner MCP service --
 
 #[derive(Clone)]
@@ -293,10 +314,13 @@ impl AdminMcp {
         }
     }
 
-    #[tool(description = "Get detailed status of a task")]
+    #[tool(description = "Get details of an issue")]
     async fn get_issue(&self, Parameters(params): Parameters<IssueIdParam>) -> String {
         match self.zbobr.get_issue(params.id).await {
-            Ok(task) => format!("{task:?}"),
+            Ok(task) => format!(
+                "ID: {}\nTitle: {}\nStage: {:?}\nDone: {}\nModel: {:?}\n\n{}",
+                task.id, task.title, task.stage, task.done, task.model, task.description
+            ),
             Err(e) => format!("Error: {e}"),
         }
     }
@@ -432,4 +456,37 @@ pub async fn run_mcp_server(
         .map_err(|e| crate::ZbobrError::Other(e.to_string()))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verifies that all tools registered in AdminMcp match the constants in admin_tools.
+    #[tokio::test]
+    async fn test_admin_tools_consistency() {
+        let config = crate::config::ZbobrConfig {
+            domain_repo: "test/repo".to_string(),
+            fork_owner: "test-owner".to_string(),
+            default_model: "test-model".to_string(),
+            workspace: std::path::PathBuf::from("/tmp"),
+            github_token: "test-token".to_string(),
+            backend: crate::config::BackendType::Stub,
+            cli_tool: crate::config::CliTool::Stub,
+        };
+        let zbobr = Zbobr::new(config).unwrap();
+        let admin = AdminMcp::new(zbobr);
+
+        let tools = admin.tool_router.list_all();
+        let mut tool_names: Vec<_> = tools.iter().map(|t| t.name.as_ref()).collect();
+        tool_names.sort();
+
+        let mut expected_names = admin_tools::ALL_TOOLS.to_vec();
+        expected_names.sort();
+
+        assert_eq!(
+            tool_names, expected_names,
+            "Exposed admin tools do not match admin_tools::ALL_TOOLS"
+        );
+    }
 }

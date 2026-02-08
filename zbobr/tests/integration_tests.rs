@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::{json, Value};
 use std::time::Duration;
 use tokio::time::sleep;
-use zbobr_lib::mcp::{CreateIssueParam, IssueIdParam, SetStageParam};
+use zbobr_lib::mcp::{admin_tools, CreateIssueParam, IssueIdParam, SetStageParam};
 
 struct AdminClient {
     client: reqwest::Client,
@@ -108,7 +108,7 @@ impl AdminClient {
     async fn create_issue(&self, title: &str, body: &str) -> anyhow::Result<u64> {
         let res = self
             .call_tool(
-                "create_issue",
+                admin_tools::CREATE_ISSUE,
                 CreateIssueParam {
                     title: title.to_string(),
                     body: body.to_string(),
@@ -127,7 +127,7 @@ impl AdminClient {
 
     async fn set_issue_stage(&self, id: u64, stage: &str) -> anyhow::Result<()> {
         self.call_tool(
-            "set_issue_stage",
+            admin_tools::SET_ISSUE_STAGE,
             SetStageParam {
                 id,
                 stage: stage.to_string(),
@@ -138,7 +138,9 @@ impl AdminClient {
     }
 
     async fn get_issue_info(&self, id: u64) -> anyhow::Result<String> {
-        let res = self.call_tool("get_issue", IssueIdParam { id }).await?;
+        let res = self
+            .call_tool(admin_tools::GET_ISSUE, IssueIdParam { id })
+            .await?;
         Ok(res["result"]["content"][0]["text"]
             .as_str()
             .unwrap_or("")
