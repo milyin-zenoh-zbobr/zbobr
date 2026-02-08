@@ -68,6 +68,8 @@ impl ToolExecutor for CopilotExecutor {
             "--additional-mcp-config",
             &mcp_config_str,
             "--no-ask-user",
+            "--allow-all-tools",
+            "--silent",
             "-i",
             prompt,
         ];
