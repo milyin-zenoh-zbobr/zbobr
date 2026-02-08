@@ -133,13 +133,13 @@ fn resolve_prompts(cli: &Cli) -> anyhow::Result<Prompts> {
         .global
         .planner_prompt
         .clone()
-        .unwrap_or_else(|| prompts_dir.join("planner.md"));
+        .unwrap_or_else(|| prompts_dir.join("planner-workflow.md"));
 
     let worker = cli
         .global
         .worker_prompt
         .clone()
-        .unwrap_or_else(|| prompts_dir.join("worker.md"));
+        .unwrap_or_else(|| prompts_dir.join("worker-workflow.md"));
 
     Ok(Prompts { planner, worker })
 }
