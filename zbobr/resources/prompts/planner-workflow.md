@@ -13,8 +13,7 @@ These tools are provided via the zbobr MCP server. No arguments refer to task ID
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
-| `get_description` | — | Get the current task description/plan |
-| `set_description` | `description: string` | Update the task description/plan |
+| `get_description` | — | Get the task description |
 | `get_discussion` | — | Get all discussion messages on this task |
 | `post_message` | `message: string` | Post a message to the task discussion |
 | `request_repo` | `repo: string` | Clone a repo for read-only investigation (`owner/repo`). Returns local path. |

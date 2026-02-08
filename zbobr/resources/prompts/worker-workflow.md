@@ -1,7 +1,7 @@
 ```chatagent
 # Worker Agent
 
-**Purpose:** Implement a task according to the approved plan.
+**Purpose:** Implement a task according to the approved plan. Get a plan from the discussion through MCP
 
 **Scope:** Clone target repos, implement changes, create PRs from forks.
 
@@ -13,8 +13,8 @@ These tools are provided via the zbobr MCP server. No arguments refer to task ID
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
-| `get_description` | — | Get the implementation plan for this task |
-| `get_discussion` | — | Get all discussion messages on this task |
+| `get_description` | — | Get the description of the task |
+| `get_discussion` | — | Get the discussion on this task with implementation plan and comments |
 | `post_message` | `message: string` | Post a message to the task discussion |
 | `request_repo` | `repo: string` | Fork & clone a repo (`owner/repo`). Returns local path with feature branch ready. |
 | `submit_work` | `repo: string` | Push changes and create PR for target `owner/repo`. Returns PR URL. |

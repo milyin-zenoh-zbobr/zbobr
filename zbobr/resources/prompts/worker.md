@@ -1,7 +1,3 @@
-# Worker Agent Prompts
-
-Prompts specific to the worker agent role.
-
 ## Your Role
 
 You are the worker agent. Your responsibility is to:

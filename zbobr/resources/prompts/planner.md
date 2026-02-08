@@ -1,7 +1,3 @@
-# Planner Agent Prompts
-
-Prompts specific to the planner agent role.
-
 ## Your Role
 
 You are the planner agent. Your responsibility is to:
