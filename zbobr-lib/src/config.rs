@@ -28,6 +28,10 @@ pub struct ZbobrConfig {
     pub backend: BackendType,
     /// CLI tool to use.
     pub cli_tool: Tool,
+    /// Semicolon-separated list of custom instruction files for planner agent.
+    pub planner_instructions: Vec<PathBuf>,
+    /// Semicolon-separated list of custom instruction files for worker agent.
+    pub worker_instructions: Vec<PathBuf>,
 }
 
 impl ZbobrConfig {
@@ -36,6 +40,7 @@ impl ZbobrConfig {
     /// Required (can be provided later via CLI): ZBOBR_DOMAIN_REPO, ZBOBR_FORK_OWNER
     /// Required: GH_TOKEN or GITHUB_TOKEN
     /// Optional: ZBOBR_DEFAULT_MODEL (default: "gpt-5-mini"), ZBOBR_WORKSPACE (default: "./workspace")
+    /// Optional: ZBOBR_PLANNER_INSTRUCTIONS, ZBOBR_WORKER_INSTRUCTIONS (semicolon-separated file paths)
     pub fn from_env() -> Result<Self, ZbobrError> {
         let domain_repo = std::env::var("ZBOBR_DOMAIN_REPO").unwrap_or_default();
 
@@ -73,6 +78,25 @@ impl ZbobrConfig {
             _ => Tool::Copilot,
         };
 
+        // Parse semicolon-separated instruction file paths
+        let planner_instructions = std::env::var("ZBOBR_PLANNER_INSTRUCTIONS")
+            .unwrap_or_else(|_| {
+                "custom-instructions/common.md;custom-instructions/repositories.md;custom-instructions/planner.md".into()
+            })
+            .split(';')
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .collect();
+
+        let worker_instructions = std::env::var("ZBOBR_WORKER_INSTRUCTIONS")
+            .unwrap_or_else(|_| {
+                "custom-instructions/common.md;custom-instructions/worker.md".into()
+            })
+            .split(';')
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .collect();
+
         Ok(Self {
             domain_repo,
             fork_owner,
@@ -81,6 +105,8 @@ impl ZbobrConfig {
             github_token,
             backend,
             cli_tool,
+            planner_instructions,
+            worker_instructions,
         })
     }
 
@@ -128,6 +154,8 @@ mod tests {
             github_token: "fake-token".to_string(),
             backend: BackendType::Stub,
             cli_tool: Tool::Copilot,
+            planner_instructions: vec![],
+            worker_instructions: vec![],
         }
     }
 

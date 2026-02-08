@@ -214,7 +214,6 @@ fn build_setup_files(zbobr: &Zbobr) -> anyhow::Result<Vec<SetupFile>> {
     let config = zbobr.config();
 
     let readme = load_resource("README.md")?;
-    let repositories = load_resource("repositories.md")?;
     let run_sh = load_resource("run.sh")?;
     let run_cmd = load_resource("run.cmd")?;
 
@@ -223,14 +222,10 @@ fn build_setup_files(zbobr: &Zbobr) -> anyhow::Result<Vec<SetupFile>> {
         .replace("{{DOMAIN_REPO}}", &config.domain_repo)
         .replace("{{FORK_OWNER}}", &config.fork_owner);
 
-    Ok(vec![
+    let mut files = vec![
         SetupFile {
             path: "README.md".into(),
             content: readme,
-        },
-        SetupFile {
-            path: "repositories.md".into(),
-            content: repositories,
         },
         SetupFile {
             path: ".zbobr.env".into(),
@@ -244,7 +239,25 @@ fn build_setup_files(zbobr: &Zbobr) -> anyhow::Result<Vec<SetupFile>> {
             path: "run.cmd".into(),
             content: run_cmd,
         },
-    ])
+    ];
+
+    // Add all custom-instructions files
+    let custom_instructions = [
+        "custom-instructions/common.md",
+        "custom-instructions/repositories.md",
+        "custom-instructions/planner.md",
+        "custom-instructions/worker.md",
+    ];
+
+    for file_name in &custom_instructions {
+        let content = load_resource(file_name)?;
+        files.push(SetupFile {
+            path: file_name.to_string(),
+            content,
+        });
+    }
+
+    Ok(files)
 }
 
 #[tokio::main]

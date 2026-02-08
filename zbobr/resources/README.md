@@ -34,16 +34,17 @@ New issue ──► PLANNING ──► PENDING ──► READY ──► WORKING
 
 | Label | Description |
 |-------|-------------|
-| `copilot:<model>` | Specifies which AI model to use (e.g., `copilot:claude-opus-4.6`) |
+| `tool:<name>` | Specifies which tool to use (e.g., `tool:copilot`, `tool:claude`) |
+| `model:<name>` | Specifies which AI model to use (e.g., `model:claude-3-opus`, `model:gpt-4o`) |
 | `done` | Implementation is complete, PR has been created |
 
-If no `copilot:` label is set, the default model from configuration is used.
+If no `tool:` or `model:` labels are set, the defaults from configuration are used.
 
 ## Creating Issues
 
 1. Create a new issue describing what needs to be done
 2. Set the milestone to **PLANNING** to start automated processing
-3. Optionally add a `copilot:<model>` label to choose a specific model
+3. Optionally add `tool:<name>` and `model:<name>` labels to customize the agent
 4. The planner agent will investigate and write an implementation plan
 5. Review the plan when it reaches **PENDING**
 6. Set milestone to **READY** to approve implementation
@@ -86,74 +87,67 @@ Or create a token at https://github.com/settings/tokens (needs `repo` scope).
 
 These scripts load `.zbobr.env` and launch the zbobr daemon with proper configuration.
 
-## Target Repositories
+## Custom Instructions
 
-The `repositories.md` file lists which repositories this domain project manages. When issues are assigned to agents, they fork these repositories to create feature branches and pull requests.
+The `custom-instructions/` directory contains markdown files that provide context and guidelines to AI agents. These files are automatically included when agents process issues.
 
-**To customize**:
-1. Edit `repositories.md` in this repository
-2. Add GitHub repository URLs (one per line or as a bulleted list)
-3. Format: `https://github.com/owner/repo-name`
+### Instruction Files
 
-Example `repositories.md`:
-```markdown
-# Target Repositories
+| File | Used By | Purpose |
+|------|---------|---------|
+| `common.md` | Planner & Worker | Shared context about project architecture, conventions, and domain knowledge |
+| `repositories.md` | Planner | Lists target repositories and repository-specific notes |
+| `planner.md` | Planner | Instructions specific to the planning phase |
+| `worker.md` | Worker | Instructions specific to the implementation phase |
 
-- https://github.com/myorg/backend-api
-- https://github.com/myorg/frontend-app
-- https://github.com/myorg/shared-library
-```
+### Default Configuration
 
-Agents will:
-1. Fork listed repositories to `ZBOBR_FORK_OWNER`
-2. Create feature branches in the forks
-3. Implement changes and push commits
-4. Open pull requests back to the original repositories
+- **Planner agents** receive: `common.md`, `repositories.md`, and `planner.md`
+- **Worker agents** receive: `common.md` and `worker.md`
 
-## Customizing Agent Prompts
+### Customizing Instructions
 
-Agent behavior is controlled by markdown prompt files. By default, zbobr uses built-in prompts, but you can customize them:
+You can customize which files are used by editing `.zbobr.env`:
 
-### Default Prompts Location
-
-If you cloned the zbobr repository, default prompts are in:
-- `automation/agents/planner.md` - Planner agent instructions
-- `automation/agents/worker.md` - Worker agent instructions
-
-### Using Custom Prompts
-
-1. **Copy and modify** the default prompts:
-   ```bash
-   mkdir -p custom-prompts
-   cp /path/to/zbobr/automation/agents/planner.md custom-prompts/my-planner.md
-   cp /path/to/zbobr/automation/agents/worker.md custom-prompts/my-worker.md
-   ```
-
-2. **Configure zbobr** to use your custom prompts in `.zbobr.env`:
-   ```bash
-   ZBOBR_PLANNER_PROMPT=./custom-prompts/my-planner.md
-   ZBOBR_WORKER_PROMPT=./custom-prompts/my-worker.md
-   ```
-
-3. **Restart zbobr** to load the new prompts.
-
-### Prompt Customization Ideas
-
-- **Domain-specific instructions**: Add context about your project's architecture, coding standards, or conventions
-- **Tool preferences**: Specify preferred libraries, frameworks, or patterns
-- **Quality gates**: Add instructions for testing, documentation, or review requirements
-- **Output format**: Customize how agents document their work or structure commits
-
-### Testing Custom Prompts
-
-Use zbobr CLI commands to test agents with custom prompts:
 ```bash
-# Test planner with specific issue
-zbobr plan --task 123 --planner-prompt ./custom-prompts/my-planner.md
-
-# Test worker with specific issue
-zbobr work --task 456 --worker-prompt ./custom-prompts/my-worker.md
+# Semicolon-separated list of instruction files
+ZBOBR_PLANNER_INSTRUCTIONS=custom-instructions/common.md;custom-instructions/repositories.md;custom-instructions/planner.md
+ZBOBR_WORKER_INSTRUCTIONS=custom-instructions/common.md;custom-instructions/worker.md
 ```
+
+### Editing Instructions
+
+1. **Edit existing files**: Modify the files in `custom-instructions/` to add project-specific context
+2. **Add new files**: Create additional markdown files and reference them in `.zbobr.env`
+3. **Remove files**: Remove file paths from the environment variables
+
+### What to Include
+
+**In common.md**:
+- Architecture patterns (microservices, monolith, etc.)
+- Technology stack (frameworks, databases, tools)
+- Coding conventions and style guides
+- Domain concepts and terminology
+
+**In repositories.md**:
+- List of target repositories
+- Repository-specific notes and conventions
+- Build and test commands
+- Deployment information
+
+**In planner.md**:
+- How to structure implementation plans
+- What level of detail to include
+- Specific investigation approaches
+- Planning output format preferences
+
+**In worker.md**:
+- Code quality expectations
+- Testing requirements
+- Commit message format
+- PR description template
+- When to ask for guidance
+
 
 ## Workflow Deep Dive
 
