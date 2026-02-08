@@ -71,7 +71,7 @@ impl Zbobr {
                     Some(&serde_json::json!({
                         "name": repo,
                         "private": true,
-                        "auto_init": true,
+                        "auto_init": false,
                     })),
                 )
                 .await;
@@ -89,7 +89,7 @@ impl Zbobr {
                             Some(&serde_json::json!({
                                 "name": repo,
                                 "private": true,
-                                "auto_init": true,
+                                "auto_init": false,
                             })),
                         )
                         .await
