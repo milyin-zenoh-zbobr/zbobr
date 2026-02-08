@@ -9,6 +9,14 @@ pub enum BackendType {
     Stub,
 }
 
+/// CLI tool to use for the role (agent).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CliTool {
+    Copilot,
+    Claude,
+    Stub,
+}
+
 /// Configuration for the zbobr orchestrator.
 #[derive(Debug, Clone)]
 pub struct ZbobrConfig {
@@ -24,6 +32,8 @@ pub struct ZbobrConfig {
     pub github_token: String,
     /// Backend to use.
     pub backend: BackendType,
+    /// CLI tool to use.
+    pub cli_tool: CliTool,
 }
 
 impl ZbobrConfig {
@@ -57,6 +67,12 @@ impl ZbobrConfig {
             _ => BackendType::GitHub,
         };
 
+        let cli_tool = match std::env::var("ZBOBR_CLI_TOOL").unwrap_or_default().as_str() {
+            "claude" => CliTool::Claude,
+            "stub" => CliTool::Stub,
+            _ => CliTool::Copilot,
+        };
+
         Ok(Self {
             domain_repo,
             fork_owner,
@@ -64,6 +80,7 @@ impl ZbobrConfig {
             workspace,
             github_token,
             backend,
+            cli_tool,
         })
     }
 
@@ -110,6 +127,7 @@ mod tests {
             workspace: PathBuf::from("./workspace"),
             github_token: "fake-token".to_string(),
             backend: BackendType::GitHub,
+            cli_tool: CliTool::Copilot,
         }
     }
 

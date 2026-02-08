@@ -1,8 +1,8 @@
-# Agents
+# Roles
 
 ## manager
 
-Use this agent to plan and coordinate issues, then spawn Workers.
+Use this role to plan and coordinate issues, then spawn Workers.
 
 Instructions:
 - Read and follow [automation/agents/manager.md](automation/agents/manager.md)
@@ -10,7 +10,7 @@ Instructions:
 
 ## worker
 
-Use this agent to implement a single WORKING issue end-to-end.
+Use this role to implement a single WORKING issue end-to-end.
 
 Instructions:
 - Read and follow [automation/agents/worker.md](automation/agents/worker.md)

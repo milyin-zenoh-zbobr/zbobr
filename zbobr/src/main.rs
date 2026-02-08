@@ -23,17 +23,21 @@ struct GlobalArgs {
     #[arg(long, global = true)]
     workspace: Option<PathBuf>,
 
-    /// Path to planner agent prompt file
+    /// Path to planner role prompt file
     #[arg(long, env = "ZBOBR_PLANNER_PROMPT", global = true)]
     planner_prompt: Option<PathBuf>,
 
-    /// Path to worker agent prompt file
+    /// Path to worker role prompt file
     #[arg(long, env = "ZBOBR_WORKER_PROMPT", global = true)]
     worker_prompt: Option<PathBuf>,
 
     /// Backend to use: "github" (default) or "stub"
     #[arg(long, global = true, env = "ZBOBR_BACKEND")]
     backend: Option<String>,
+
+    /// CLI tool to use: "copilot", "claude", or "stub"
+    #[arg(long, global = true, env = "ZBOBR_CLI_TOOL")]
+    cli_tool: Option<String>,
 }
 
 #[derive(Parser)]
@@ -42,7 +46,7 @@ struct GlobalArgs {
     about = "AI-powered issue orchestrator",
     long_about = "AI-powered issue orchestrator that manages GitHub issues through automated stages.\n\n\
         Issues flow through: PENDING -> PLANNING_READY -> PLANNING -> WORKING_READY -> WORKING.\n\
-        Planner agents create implementation plans, worker agents implement them\n\
+        Planner roles create implementation plans, worker roles implement them\n\
         by forking target repositories and creating pull requests.\n\n\
         Requires a GitHub token: set GH_TOKEN or GITHUB_TOKEN env var.\n\
         Easiest way: export GH_TOKEN=$(gh auth token)"
@@ -67,7 +71,7 @@ enum Command {
         #[arg(long, short = 'o')]
         output_dir: Option<PathBuf>,
     },
-    /// Poll for issues and run planner/worker agents automatically
+    /// Poll for issues and run planner/worker roles automatically
     Loop {
         /// How often to check for new issues, in seconds
         #[arg(long, default_value = "60")]
@@ -78,7 +82,7 @@ enum Command {
         /// AI model to use (e.g. "gpt-5-mini", "claude-opus-4.6")
         #[arg(long)]
         model: Option<String>,
-        /// Port for the MCP server that agents connect to
+        /// Port for the MCP server that roles connect to
         #[arg(long, default_value = "3000")]
         port: u16,
     },
@@ -88,7 +92,7 @@ enum Command {
         #[arg(long, short = 'n')]
         dry_run: bool,
     },
-    /// Run planner agent for a specific issue (creates implementation plan)
+    /// Run planner role for a specific issue (creates implementation plan)
     Plan {
         /// Issue number in the domain project repository
         issue: u64,
@@ -99,7 +103,7 @@ enum Command {
         #[arg(long, default_value = "3000")]
         port: u16,
     },
-    /// Run worker agent for a specific issue (implements the plan, creates PR)
+    /// Run worker role for a specific issue (implements the plan, creates PR)
     Work {
         /// Issue number in the domain project repository
         issue: u64,
@@ -107,18 +111,6 @@ enum Command {
         #[arg(long)]
         model: Option<String>,
         /// Port for the MCP server that the agent connects to
-        #[arg(long, default_value = "3000")]
-        port: u16,
-    },
-    /// Run a stub agent to verify MCP interaction
-    Agent {
-        /// Role to simulate: "planner" or "worker"
-        #[arg(long)]
-        role: String,
-        /// Task ID to connect to
-        #[arg(long)]
-        task_id: u64,
-        /// Port of the MCP server
         #[arg(long, default_value = "3000")]
         port: u16,
     },
@@ -183,6 +175,19 @@ fn load_config(cli: &Cli) -> Result<ZbobrConfig, zbobr_lib::ZbobrError> {
                 return Err(zbobr_lib::ZbobrError::Config(format!(
                     "Unknown backend: {}",
                     b
+                )))
+            }
+        }
+    }
+    if let Some(ref t) = cli.global.cli_tool {
+        match t.as_str() {
+            "claude" => config.cli_tool = zbobr_lib::config::CliTool::Claude,
+            "stub" => config.cli_tool = zbobr_lib::config::CliTool::Stub,
+            "copilot" => config.cli_tool = zbobr_lib::config::CliTool::Copilot,
+            _ => {
+                return Err(zbobr_lib::ZbobrError::Config(format!(
+                    "Unknown CLI tool: {}",
+                    t
                 )))
             }
         }
@@ -292,11 +297,11 @@ async fn main() -> anyhow::Result<()> {
         }
         Command::Plan { issue, model, port } => {
             let prompt = load_prompt(&prompts.planner)?;
-            run_agent_session(&zbobr, issue, "planner", model, port, &prompt).await?;
+            run_role_session(&zbobr, issue, "planner", model, port, &prompt).await?;
         }
         Command::Work { issue, model, port } => {
             let prompt = load_prompt(&prompts.worker)?;
-            run_agent_session(&zbobr, issue, "worker", model, port, &prompt).await?;
+            run_role_session(&zbobr, issue, "worker", model, port, &prompt).await?;
         }
         Command::Loop {
             interval,
@@ -306,20 +311,13 @@ async fn main() -> anyhow::Result<()> {
         } => {
             run_manager_loop(&zbobr, interval, cleanup_interval, model, port, &prompts).await?;
         }
-        Command::Agent {
-            role,
-            task_id,
-            port,
-        } => {
-            run_stub_agent(role, task_id, port).await?;
-        }
     }
 
     Ok(())
 }
 
-/// Start MCP server, invoke copilot, and handle stage transitions.
-async fn run_agent_session(
+/// Start MCP server, invoke CLI tool (copilot/claude/stub), and handle stage transitions.
+async fn run_role_session(
     zbobr: &Zbobr,
     issue: u64,
     role: &str,
@@ -358,71 +356,79 @@ async fn run_agent_session(
     // Give server time to start
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-    // Check if we want to run a stub agent instead of copilot
-    if zbobr.config().backend == zbobr_lib::config::BackendType::Stub {
-        tracing::info!("Running STUB AGENT for {role} session");
+    // Check which tool to run
+    let cli_tool = zbobr.config().cli_tool;
+    let mcp_url = format!("http://127.0.0.1:{port}/{role}/{issue}");
 
-        let exe = std::env::current_exe()?;
-        let status = tokio::process::Command::new(exe)
-            .args([
-                "--domain-repo",
-                &zbobr.config().domain_repo,
-                "--fork-owner",
-                &zbobr.config().fork_owner,
-                "--backend",
-                "stub",
-                "agent",
-                "--role",
-                role,
-                "--task-id",
-                &issue.to_string(),
-                "--port",
-                &port.to_string(),
-            ])
-            .status()
-            .await?;
+    match cli_tool {
+        zbobr_lib::config::CliTool::Stub => {
+            tracing::info!("Running STUB TOOL for {role} session");
+            let exe = std::env::current_exe()?;
+            // Assume zbobr-stub is next to zbobr executable
+            let stub_exe = exe.parent().unwrap().join("zbobr-stub");
 
-        if !status.success() {
-            tracing::warn!("Stub agent exited with status: {status}");
-        }
-    } else {
-        // Build MCP config for copilot
-        let mcp_url = format!("http://127.0.0.1:{port}/{role}/{issue}");
-        let mcp_config = serde_json::json!({
-            "mcpServers": {
-                "zbobr": {
-                    "url": mcp_url
-                }
+            let status = tokio::process::Command::new(stub_exe)
+                .args([
+                    "--role",
+                    role,
+                    "--task-id",
+                    &issue.to_string(),
+                    "--mcp-url",
+                    &mcp_url,
+                ])
+                .status()
+                .await?;
+
+            if !status.success() {
+                tracing::warn!("Stub tool exited with status: {status}");
             }
-        });
-        let mcp_config_str = serde_json::to_string(&mcp_config)?;
+        }
+        zbobr_lib::config::CliTool::Copilot | zbobr_lib::config::CliTool::Claude => {
+            // Build MCP config for tool
+            let mcp_config = serde_json::json!({
+                "mcpServers": {
+                    "zbobr": {
+                        "url": mcp_url
+                    }
+                }
+            });
+            let mcp_config_str = serde_json::to_string(&mcp_config)?;
 
-        // Write MCP config to temp file
-        let config_path = issue_dir.join(".mcp-config.json");
-        tokio::fs::write(&config_path, &mcp_config_str).await?;
+            // Write MCP config to temp file
+            let config_path = issue_dir.join(".mcp-config.json");
+            tokio::fs::write(&config_path, &mcp_config_str).await?;
 
-        tracing::info!("Starting copilot {role} session for issue #{issue}");
-        tracing::info!("MCP endpoint: {mcp_url}");
+            let tool_cmd = if cli_tool == zbobr_lib::config::CliTool::Copilot {
+                "copilot"
+            } else {
+                "claude"
+            };
 
-        let status = tokio::process::Command::new("copilot")
-            .args([
-                "--model",
-                &model,
-                "--additional-mcp-config",
-                config_path.to_str().unwrap(),
-                "-i",
-                prompt,
-            ])
-            .current_dir(&issue_dir)
-            .status()
-            .await?;
+            tracing::info!("Starting {tool_cmd} {role} session for issue #{issue}");
+            tracing::info!("MCP endpoint: {mcp_url}");
 
-        if !status.success() {
-            tracing::warn!("Copilot exited with status: {status}");
+            let status = tokio::process::Command::new(tool_cmd)
+                .args([
+                    "--model",
+                    &model,
+                    "--additional-mcp-config",
+                    config_path.to_str().unwrap(),
+                    "-i",
+                    prompt, // Copilot and Claude CLI largely share flag structure?
+                            // TODO: Verify Claude CLI flags. Assuming same for now as they are often similar or wrappers.
+                            // If Claude CLI has different flags, we'd need a branch here.
+                ])
+                .current_dir(&issue_dir)
+                .status()
+                .await?;
+
+            if !status.success() {
+                tracing::warn!("{tool_cmd} exited with status: {status}");
+            }
         }
     }
 
-    // On copilot/agent exit, set stage to Pending
+    // On exit, set stage to Pending
     zbobr.set_task_stage(issue, Stage::Pending).await?;
     tracing::info!("Session complete, issue #{issue} set to PENDING");
 
@@ -473,7 +479,7 @@ async fn run_manager_loop(
                 if let Some(task) = planning.first() {
                     let task_model = task.model.clone().unwrap_or_else(|| model.clone());
                     tracing::info!("Found PLANNING_READY issue #{} - running planner", task.id);
-                    if let Err(e) = run_agent_session(
+                    if let Err(e) = run_role_session(
                         zbobr,
                         task.id,
                         "planner",
@@ -497,7 +503,7 @@ async fn run_manager_loop(
                 if let Some(task) = ready.first() {
                     let task_model = task.model.clone().unwrap_or_else(|| model.clone());
                     tracing::info!("Found WORKING_READY issue #{} - running worker", task.id);
-                    if let Err(e) = run_agent_session(
+                    if let Err(e) = run_role_session(
                         zbobr,
                         task.id,
                         "worker",
@@ -518,52 +524,4 @@ async fn run_manager_loop(
         tracing::info!("No processable issues. Sleeping {interval_secs}s...");
         tokio::time::sleep(std::time::Duration::from_secs(interval_secs)).await;
     }
-}
-
-// -- Stub Agent Implementation --
-
-use serde_json::{json, Value};
-
-async fn run_stub_agent(role: String, task_id: u64, port: u16) -> anyhow::Result<()> {
-    tracing::info!("Stub Agent ({role}) starting for task #{task_id} on port {port}");
-
-    let base_url = format!("http://127.0.0.1:{port}/{role}/{task_id}");
-    let client = reqwest::Client::new();
-
-    // Check MCP server connectivity
-    tracing::info!("Checking connectivity to {base_url}...");
-    // A simple GET might not work if the server expects something else, but let's try.
-    // Actually, rmcp StreamableHttpService *usually* serves something at root.
-
-    // We'll retry a few times to allow server start up (though run_agent_session waits 500ms)
-    let mut connected = false;
-    for _ in 0..5 {
-        if let Ok(resp) = client.get(&base_url).send().await {
-            tracing::info!("MCP Server is reachable: {}", resp.status());
-            connected = true;
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-    }
-
-    if !connected {
-        tracing::warn!(
-            "Could not reach MCP server at {base_url}, proceeding with simulation anyway."
-        );
-    }
-
-    if role == "planner" {
-        tracing::info!("Agent: analyzing requirements...");
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        tracing::info!("Agent: creating plan...");
-        // In a real stub, we would call `set_plan` tool.
-    } else {
-        tracing::info!("Agent: working on implementation...");
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        tracing::info!("Agent: creating PR...");
-        // In a real stub, we would call `submit_work` tool.
-    }
-
-    tracing::info!("Agent: Work complete.");
-    Ok(())
 }
