@@ -138,6 +138,7 @@ fn load_config(cli: &Cli) -> Result<ZbobrConfig, zbobr_lib::ZbobrError> {
     if let Some(ref fo) = cli.global.fork_owner {
         config.fork_owner = fo.clone();
     }
+    config.validate()?;
     Ok(config)
 }
 

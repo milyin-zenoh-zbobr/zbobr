@@ -20,14 +20,13 @@ pub struct ZbobrConfig {
 impl ZbobrConfig {
     /// Load configuration from environment variables.
     ///
-    /// Required: ZBOBR_DOMAIN_REPO, ZBOBR_FORK_OWNER, GH_TOKEN or GITHUB_TOKEN
+    /// Required (can be provided later via CLI): ZBOBR_DOMAIN_REPO, ZBOBR_FORK_OWNER
+    /// Required: GH_TOKEN or GITHUB_TOKEN
     /// Optional: ZBOBR_DEFAULT_MODEL (default: "gpt-5-mini"), ZBOBR_WORKSPACE (default: "./workspace")
     pub fn from_env() -> Result<Self, ZbobrError> {
-        let domain_repo = std::env::var("ZBOBR_DOMAIN_REPO")
-            .map_err(|_| ZbobrError::Config("ZBOBR_DOMAIN_REPO not set".into()))?;
+        let domain_repo = std::env::var("ZBOBR_DOMAIN_REPO").unwrap_or_default();
 
-        let fork_owner = std::env::var("ZBOBR_FORK_OWNER")
-            .map_err(|_| ZbobrError::Config("ZBOBR_FORK_OWNER not set".into()))?;
+        let fork_owner = std::env::var("ZBOBR_FORK_OWNER").unwrap_or_default();
 
         let default_model = std::env::var("ZBOBR_DEFAULT_MODEL")
             .unwrap_or_else(|_| "gpt-5-mini".into());
@@ -47,6 +46,21 @@ impl ZbobrConfig {
             workspace,
             github_token,
         })
+    }
+
+    /// Validate that all required fields are set.
+    pub fn validate(&self) -> Result<(), ZbobrError> {
+        if self.domain_repo.is_empty() {
+            return Err(ZbobrError::Config(
+                "domain repo not set (use --domain-repo or ZBOBR_DOMAIN_REPO)".into(),
+            ));
+        }
+        if self.fork_owner.is_empty() {
+            return Err(ZbobrError::Config(
+                "fork owner not set (use --fork-owner or ZBOBR_FORK_OWNER)".into(),
+            ));
+        }
+        Ok(())
     }
 
     /// Parse "owner/repo" into (owner, repo).
