@@ -1,7 +1,9 @@
 use crate::{Zbobr, ZbobrError};
 
 /// Workflow stage (maps to GitHub milestones internally).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub enum Stage {
     Pending,
     PlanningReady,

@@ -3,6 +3,7 @@ use serde_json::{json, Value};
 use std::time::Duration;
 use tokio::time::sleep;
 use zbobr_lib::mcp::{admin_tools, CreateIssueParam, IssueIdParam, SetStageParam};
+use zbobr_lib::Stage;
 
 struct AdminClient {
     client: reqwest::Client,
@@ -125,15 +126,9 @@ impl AdminClient {
         Ok(id)
     }
 
-    async fn set_issue_stage(&self, id: u64, stage: &str) -> anyhow::Result<()> {
-        self.call_tool(
-            admin_tools::SET_ISSUE_STAGE,
-            SetStageParam {
-                id,
-                stage: stage.to_string(),
-            },
-        )
-        .await?;
+    async fn set_issue_stage(&self, id: u64, stage: Stage) -> anyhow::Result<()> {
+        self.call_tool(admin_tools::SET_ISSUE_STAGE, SetStageParam { id, stage })
+            .await?;
         Ok(())
     }
 
@@ -166,8 +161,8 @@ async fn test_blackbox_process_flow() -> anyhow::Result<()> {
         return Err(anyhow::anyhow!("zbobr binary not found at {:?}", exe));
     }
 
-    let admin_port = 3033;
-    let agent_port = 3034;
+    let admin_port = 3088;
+    let agent_port = 3089;
 
     // 2. Start zbobr loop with admin port
     let mut child = tokio::process::Command::new(&exe)
@@ -200,21 +195,24 @@ async fn test_blackbox_process_flow() -> anyhow::Result<()> {
 
     let admin = AdminClient::new(&format!("http://127.0.0.1:{admin_port}/admin")).await?;
 
-    // 3. Create an issue via Admin MCP
+    // 1. Create an issue via Admin MCP
     let issue_id = admin
         .create_issue("Blackbox Feature", "Description of blackbox feature")
         .await?;
     println!("Extracted issue ID: {}", issue_id);
 
-    // 4. Move to PLANNING_READY
+    // 2. Set stage to PLANNING_READY
     println!("Transitioning to PLANNING_READY...");
-    admin.set_issue_stage(issue_id, "PLANNING_READY").await?;
+    admin
+        .set_issue_stage(issue_id, Stage::PlanningReady)
+        .await?;
 
-    // 5. Poll until planner finishes (back to PENDING with a plan)
+    // 3. Wait for manager to pick it up and transition to PLANNING
+    println!("Waiting for transition to PLANNING...");
     let mut plan_ready = false;
     for _ in 0..30 {
         let text = admin.get_issue_info(issue_id).await?;
-        if text.contains("stage: Pending") && text.contains("Implementation plan") {
+        if text.contains("Stage: Pending") && text.contains("Implementation plan") {
             println!("Planner finished, plan is available.");
             plan_ready = true;
             break;
@@ -223,15 +221,16 @@ async fn test_blackbox_process_flow() -> anyhow::Result<()> {
     }
     assert!(plan_ready, "Planner did not complete successfully");
 
-    // 6. Move to WORKING_READY
+    // 6. Transition to WORKING_READY
     println!("Transitioning to WORKING_READY...");
-    admin.set_issue_stage(issue_id, "WORKING_READY").await?;
+    admin.set_issue_stage(issue_id, Stage::WorkingReady).await?;
 
-    // 7. Poll until DONE
+    // 7. Wait for transition to WORKING
+    println!("Waiting for transition to WORKING...");
     let mut done = false;
     for _ in 0..30 {
         let text = admin.get_issue_info(issue_id).await?;
-        if text.contains("done: true") {
+        if text.contains("Done: true") {
             done = true;
             break;
         }

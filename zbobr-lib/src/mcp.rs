@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::task::Stage;
 use crate::Zbobr;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -51,7 +52,7 @@ pub struct UpdateIssueParam {
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct SetStageParam {
     pub id: u64,
-    pub stage: String,
+    pub stage: Stage,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
@@ -337,7 +338,7 @@ impl AdminMcp {
     async fn set_issue_stage(&self, Parameters(params): Parameters<SetStageParam>) -> String {
         match self
             .zbobr
-            .set_task_stage_name(params.id, &params.stage)
+            .set_issue_milestone(params.id, params.stage.milestone_name())
             .await
         {
             Ok(()) => format!("Stage updated to {}", params.stage),
