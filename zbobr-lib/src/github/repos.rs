@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use crate::{Zbobr, ZbobrError};
 
 #[derive(Debug, serde::Deserialize)]
+#[allow(dead_code)]
 struct RepoResponse {
     full_name: String,
 }

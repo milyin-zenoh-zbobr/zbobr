@@ -145,6 +145,7 @@ impl Zbobr {
     }
 
     /// Remove a label from an issue (ignores error if label not present).
+    #[allow(dead_code)]
     pub(crate) async fn remove_issue_label(
         &self,
         issue_number: u64,

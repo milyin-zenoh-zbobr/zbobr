@@ -1,32 +1,52 @@
 use std::sync::Arc;
 
-use axum::extract::Path;
-use rmcp::model::{ServerCapabilities, ServerInfo, Implementation};
-use rmcp::handler::server::wrapper::tool::ToolCallContext;
-use rmcp::{ServerHandler, tool};
-use rmcp::model::CallToolResult;
+use rmcp::handler::server::router::tool::ToolRouter;
+use rmcp::handler::server::wrapper::Parameters;
+use rmcp::model::{ServerCapabilities, ServerInfo};
+use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::StreamableHttpService;
 use zbobr_lib::Zbobr;
 
-/// Planner MCP service -- tools available to planner agents.
+// -- Parameter types --
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct PlanParam {
+    #[schemars(description = "The plan text")]
+    pub plan: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct MessageParam {
+    #[schemars(description = "The message to post")]
+    pub message: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct RepoParam {
+    #[schemars(description = "Target repository in owner/name format")]
+    pub repo: String,
+}
+
+// -- Planner MCP service --
+
 #[derive(Clone)]
 pub struct PlannerMcp {
     zbobr: Zbobr,
     task_id: u64,
+    tool_router: ToolRouter<Self>,
 }
 
-/// Worker MCP service -- tools available to worker agents.
-#[derive(Clone)]
-pub struct WorkerMcp {
-    zbobr: Zbobr,
-    task_id: u64,
-}
-
-// -- Planner tools --
-
-#[tool(tool_box)]
+#[tool_router]
 impl PlannerMcp {
+    fn new(zbobr: Zbobr, task_id: u64) -> Self {
+        Self {
+            zbobr,
+            task_id,
+            tool_router: Self::tool_router(),
+        }
+    }
+
     #[tool(description = "Get the current plan text for this task")]
     async fn get_plan(&self) -> String {
         let session = self.zbobr.planner_session(self.task_id);
@@ -37,9 +57,9 @@ impl PlannerMcp {
     }
 
     #[tool(description = "Update the plan text for this task")]
-    async fn set_plan(&self, #[tool(param)] plan: String) -> String {
+    async fn set_plan(&self, Parameters(params): Parameters<PlanParam>) -> String {
         let session = self.zbobr.planner_session(self.task_id);
-        match session.set_plan(&plan).await {
+        match session.set_plan(&params.plan).await {
             Ok(()) => "Plan updated successfully".to_string(),
             Err(e) => format!("Error: {e}"),
         }
@@ -61,42 +81,56 @@ impl PlannerMcp {
     }
 
     #[tool(description = "Post a message to the task discussion")]
-    async fn post_message(&self, #[tool(param)] message: String) -> String {
+    async fn post_message(&self, Parameters(params): Parameters<MessageParam>) -> String {
         let session = self.zbobr.planner_session(self.task_id);
-        match session.post_message(&message).await {
+        match session.post_message(&params.message).await {
             Ok(()) => "Message posted".to_string(),
             Err(e) => format!("Error: {e}"),
         }
     }
 
     #[tool(description = "Clone a repository for investigation (read-only). Returns the local path.")]
-    async fn request_repo(&self, #[tool(param)] repo: String) -> String {
+    async fn request_repo(&self, Parameters(params): Parameters<RepoParam>) -> String {
         let session = self.zbobr.planner_session(self.task_id);
-        match session.request_repo(&repo).await {
+        match session.request_repo(&params.repo).await {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
         }
     }
 }
 
-#[tool(tool_box)]
+#[tool_handler]
 impl ServerHandler for PlannerMcp {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            protocol_version: Default::default(),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
-            server_info: Implementation::from_build_env(),
             instructions: Some(
                 "Planner tools: investigate task and create implementation plan.".to_string(),
             ),
+            ..Default::default()
         }
     }
 }
 
-// -- Worker tools --
+// -- Worker MCP service --
 
-#[tool(tool_box)]
+#[derive(Clone)]
+pub struct WorkerMcp {
+    zbobr: Zbobr,
+    task_id: u64,
+    tool_router: ToolRouter<Self>,
+}
+
+#[tool_router]
 impl WorkerMcp {
+    fn new(zbobr: Zbobr, task_id: u64) -> Self {
+        Self {
+            zbobr,
+            task_id,
+            tool_router: Self::tool_router(),
+        }
+    }
+
     #[tool(description = "Get the current plan text for this task")]
     async fn get_plan(&self) -> String {
         let session = self.zbobr.worker_session(self.task_id);
@@ -122,27 +156,27 @@ impl WorkerMcp {
     }
 
     #[tool(description = "Post a message to the task discussion")]
-    async fn post_message(&self, #[tool(param)] message: String) -> String {
+    async fn post_message(&self, Parameters(params): Parameters<MessageParam>) -> String {
         let session = self.zbobr.worker_session(self.task_id);
-        match session.post_message(&message).await {
+        match session.post_message(&params.message).await {
             Ok(()) => "Message posted".to_string(),
             Err(e) => format!("Error: {e}"),
         }
     }
 
     #[tool(description = "Fork and clone a repository for implementation. Returns the local path with feature branch ready.")]
-    async fn request_repo(&self, #[tool(param)] repo: String) -> String {
+    async fn request_repo(&self, Parameters(params): Parameters<RepoParam>) -> String {
         let session = self.zbobr.worker_session(self.task_id);
-        match session.request_repo(&repo).await {
+        match session.request_repo(&params.repo).await {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
         }
     }
 
     #[tool(description = "Push changes and create a PR from the feature branch. Takes the target repo (owner/name).")]
-    async fn submit_work(&self, #[tool(param)] target_repo: String) -> String {
+    async fn submit_work(&self, Parameters(params): Parameters<RepoParam>) -> String {
         let session = self.zbobr.worker_session(self.task_id);
-        match session.submit_work(&target_repo).await {
+        match session.submit_work(&params.repo).await {
             Ok(pr_url) => format!("PR created: {pr_url}"),
             Err(e) => format!("Error: {e}"),
         }
@@ -158,16 +192,16 @@ impl WorkerMcp {
     }
 }
 
-#[tool(tool_box)]
+#[tool_handler]
 impl ServerHandler for WorkerMcp {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            protocol_version: Default::default(),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
-            server_info: Implementation::from_build_env(),
             instructions: Some(
-                "Worker tools: implement task according to plan, submit work, mark done.".to_string(),
+                "Worker tools: implement task according to plan, submit work, mark done."
+                    .to_string(),
             ),
+            ..Default::default()
         }
     }
 }
@@ -176,29 +210,16 @@ impl ServerHandler for WorkerMcp {
 pub async fn run_mcp_server(zbobr: Zbobr, port: u16) -> anyhow::Result<()> {
     let zbobr = Arc::new(zbobr);
 
-    // Create services for planner and worker, each parameterized by task_id from URL path
-
     let planner_zbobr = zbobr.clone();
     let planner_service = StreamableHttpService::new(
-        move || {
-            // Default task_id=0; will be overridden by the URL-path routing
-            Ok(PlannerMcp {
-                zbobr: (*planner_zbobr).clone(),
-                task_id: 0,
-            })
-        },
+        move || Ok(PlannerMcp::new((*planner_zbobr).clone(), 0)),
         Arc::new(LocalSessionManager::default()),
         Default::default(),
     );
 
     let worker_zbobr = zbobr.clone();
     let worker_service = StreamableHttpService::new(
-        move || {
-            Ok(WorkerMcp {
-                zbobr: (*worker_zbobr).clone(),
-                task_id: 0,
-            })
-        },
+        move || Ok(WorkerMcp::new((*worker_zbobr).clone(), 0)),
         Arc::new(LocalSessionManager::default()),
         Default::default(),
     );

@@ -1,3 +1,6 @@
-# Working directory for cloned projects
+# Rust build artifacts
 target/
 Cargo.lock
+
+# Issue workspace directories
+workspace/

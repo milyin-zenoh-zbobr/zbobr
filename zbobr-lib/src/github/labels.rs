@@ -31,6 +31,7 @@ impl Zbobr {
     }
 
     /// Delete a label from the domain repo.
+    #[allow(dead_code)]
     pub(crate) async fn delete_label(&self, name: &str) -> Result<(), ZbobrError> {
         let (owner, repo) = self.config.parse_repo()?;
         self.octocrab
