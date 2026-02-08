@@ -1,3 +1,5 @@
+mod mcp;
+
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
@@ -346,8 +348,7 @@ async fn run_role_session(
     let server_zbobr = zbobr.clone();
     let server_role = role.to_string();
     let server_handle = tokio::spawn(async move {
-        if let Err(e) = zbobr_lib::mcp::run_mcp_server(server_zbobr, port, server_role, issue).await
-        {
+        if let Err(e) = mcp::run_mcp_server(server_zbobr, port, server_role, issue).await {
             tracing::error!("MCP server error: {e}");
         }
     });
@@ -413,7 +414,9 @@ async fn run_role_session(
                     "--additional-mcp-config",
                     config_path.to_str().unwrap(),
                     "-i",
-                    prompt,
+                    prompt, // Copilot and Claude CLI largely share flag structure?
+                            // TODO: Verify Claude CLI flags. Assuming same for now as they are often similar or wrappers.
+                            // If Claude CLI has different flags, we'd need a branch here.
                 ])
                 .current_dir(&issue_dir)
                 .status()

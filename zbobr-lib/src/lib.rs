@@ -2,6 +2,7 @@ pub mod backend;
 pub mod cleanup;
 pub mod config;
 pub mod manager;
+pub mod mcp;
 pub mod setup;
 pub mod task;
 
@@ -62,6 +63,14 @@ impl Zbobr {
 
     pub async fn get_issue(&self, issue_number: u64) -> Result<Task, ZbobrError> {
         self.backend.get_issue(issue_number).await
+    }
+
+    pub async fn create_issue(&self, title: &str, body: &str) -> Result<u64, ZbobrError> {
+        self.backend.create_issue(title, body).await
+    }
+
+    pub async fn close_issue(&self, issue_number: u64) -> Result<(), ZbobrError> {
+        self.backend.close_issue(issue_number).await
     }
 
     pub async fn get_issue_comments(&self, issue_number: u64) -> Result<Vec<String>, ZbobrError> {

@@ -153,6 +153,30 @@ impl Backend for GitHubBackend {
         })
     }
 
+    async fn create_issue(&self, title: &str, body: &str) -> Result<u64, ZbobrError> {
+        let (owner, repo) = self.parse_repo()?;
+        let issue = self
+            .octocrab
+            .issues(owner, repo)
+            .create(title)
+            .body(body)
+            .send()
+            .await?;
+        Ok(issue.number)
+    }
+
+    async fn close_issue(&self, issue_number: u64) -> Result<(), ZbobrError> {
+        let (owner, repo) = self.parse_repo()?;
+        self.octocrab
+            .patch(
+                format!("/repos/{owner}/{repo}/issues/{issue_number}"),
+                Some(&serde_json::json!({ "state": "closed" })),
+            )
+            .await
+            .map(|_: serde_json::Value| ())?;
+        Ok(())
+    }
+
     async fn get_issue_comments(&self, issue_number: u64) -> Result<Vec<String>, ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         let comments: Vec<CommentResponse> = self

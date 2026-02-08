@@ -10,6 +10,12 @@ pub trait Backend: Send + Sync {
     /// Get an issue as a Task.
     async fn get_issue(&self, issue_number: u64) -> Result<Task, ZbobrError>;
 
+    /// Create a new issue. Returns the issue number.
+    async fn create_issue(&self, title: &str, body: &str) -> Result<u64, ZbobrError>;
+
+    /// Close an issue.
+    async fn close_issue(&self, issue_number: u64) -> Result<(), ZbobrError>;
+
     /// Get all comments on an issue as formatted discussion.
     async fn get_issue_comments(&self, issue_number: u64) -> Result<Vec<String>, ZbobrError>;
 

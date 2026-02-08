@@ -74,6 +74,28 @@ impl Backend for StubBackend {
             .ok_or_else(|| ZbobrError::GitHub(format!("Issue {issue_number} not found")))
     }
 
+    async fn create_issue(&self, title: &str, body: &str) -> Result<u64, ZbobrError> {
+        let mut state = self.state.write().unwrap();
+        let id = state.next_issue_id;
+        state.next_issue_id += 1;
+        let task = Task {
+            id,
+            title: title.to_string(),
+            description: body.to_string(),
+            stage: Stage::Pending,
+            model: None,
+            done: false,
+        };
+        state.issues.insert(id, task);
+        Ok(id)
+    }
+
+    async fn close_issue(&self, issue_number: u64) -> Result<(), ZbobrError> {
+        let mut state = self.state.write().unwrap();
+        state.issues.remove(&issue_number);
+        Ok(())
+    }
+
     async fn get_issue_comments(&self, issue_number: u64) -> Result<Vec<String>, ZbobrError> {
         let state = self.state.read().unwrap();
         Ok(state

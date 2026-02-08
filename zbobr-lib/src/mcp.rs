@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
+use crate::Zbobr;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{ServerCapabilities, ServerInfo};
-use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::StreamableHttpService;
-use zbobr_lib::Zbobr;
+use rmcp::{tool, tool_handler, tool_router, ServerHandler};
 
 // -- Parameter types --
 
@@ -39,7 +39,7 @@ pub struct PlannerMcp {
 
 #[tool_router]
 impl PlannerMcp {
-    fn new(zbobr: Zbobr, task_id: u64) -> Self {
+    pub fn new(zbobr: Zbobr, task_id: u64) -> Self {
         Self {
             zbobr,
             task_id,
@@ -89,7 +89,9 @@ impl PlannerMcp {
         }
     }
 
-    #[tool(description = "Clone a repository for investigation (read-only). Returns the local path.")]
+    #[tool(
+        description = "Clone a repository for investigation (read-only). Returns the local path."
+    )]
     async fn request_repo(&self, Parameters(params): Parameters<RepoParam>) -> String {
         let session = self.zbobr.planner_session(self.task_id);
         match session.request_repo(&params.repo).await {
@@ -123,7 +125,7 @@ pub struct WorkerMcp {
 
 #[tool_router]
 impl WorkerMcp {
-    fn new(zbobr: Zbobr, task_id: u64) -> Self {
+    pub fn new(zbobr: Zbobr, task_id: u64) -> Self {
         Self {
             zbobr,
             task_id,
@@ -164,7 +166,9 @@ impl WorkerMcp {
         }
     }
 
-    #[tool(description = "Fork and clone a repository for implementation. Returns the local path with feature branch ready.")]
+    #[tool(
+        description = "Fork and clone a repository for implementation. Returns the local path with feature branch ready."
+    )]
     async fn request_repo(&self, Parameters(params): Parameters<RepoParam>) -> String {
         let session = self.zbobr.worker_session(self.task_id);
         match session.request_repo(&params.repo).await {
@@ -173,7 +177,9 @@ impl WorkerMcp {
         }
     }
 
-    #[tool(description = "Push changes and create a PR from the feature branch. Takes the target repo (owner/name).")]
+    #[tool(
+        description = "Push changes and create a PR from the feature branch. Takes the target repo (owner/name)."
+    )]
     async fn submit_work(&self, Parameters(params): Parameters<RepoParam>) -> String {
         let session = self.zbobr.worker_session(self.task_id);
         match session.submit_work(&params.repo).await {
@@ -207,15 +213,12 @@ impl ServerHandler for WorkerMcp {
 }
 
 /// Run the MCP HTTP server scoped to a specific role and task.
-///
-/// The service is mounted at `/{role}/{task_id}`, e.g. `/planner/42`.
-/// Each copilot session connects to this URL and never needs to pass a task_id.
 pub async fn run_mcp_server(
     zbobr: Zbobr,
     port: u16,
     role: String,
     task_id: u64,
-) -> anyhow::Result<()> {
+) -> Result<(), crate::ZbobrError> {
     let zbobr = Arc::new(zbobr);
     let path = format!("/{role}/{task_id}");
 
@@ -237,7 +240,7 @@ pub async fn run_mcp_server(
             );
             axum::Router::new().nest_service(&path, svc)
         }
-        _ => return Err(anyhow::anyhow!("Unknown role: {role}")),
+        _ => return Err(crate::ZbobrError::Other(format!("Unknown role: {role}"))),
     };
 
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
@@ -247,7 +250,8 @@ pub async fn run_mcp_server(
         .with_graceful_shutdown(async {
             tokio::signal::ctrl_c().await.ok();
         })
-        .await?;
+        .await
+        .map_err(|e| crate::ZbobrError::Other(e.to_string()))?;
 
     Ok(())
 }
