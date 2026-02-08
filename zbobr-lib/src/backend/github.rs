@@ -779,8 +779,10 @@ impl Backend for GitHubBackend {
 
         const DONE_LABEL: &str = "done";
         const DONE_LABEL_COLOR: &str = "5319e7";
+        const TOOL_LABEL_COLOR: &str = "d4c5f9";
         const MODEL_LABEL_COLOR: &str = "bfd4f2";
 
+        // Create "done" label
         if !existing_labels.contains(&DONE_LABEL.to_string()) {
             tracing::info!("Creating label '{DONE_LABEL}'");
             self.create_label(
@@ -793,17 +795,32 @@ impl Backend for GitHubBackend {
             tracing::info!("Label '{DONE_LABEL}' already exists");
         }
 
-        let model_label = format!("model:{}", self.config.default_model);
-        if !existing_labels.contains(&model_label) {
-            tracing::info!("Creating label '{model_label}'");
-            self.create_label(
-                &model_label,
-                MODEL_LABEL_COLOR,
-                &format!("Use {} model", self.config.default_model),
-            )
-            .await?;
-        } else {
-            tracing::info!("Label '{model_label}' already exists");
+        // Create tool labels for all available tools
+        for tool in Tool::all() {
+            let tool_label = format!("tool:{}", tool);
+            if !existing_labels.contains(&tool_label) {
+                tracing::info!("Creating label '{tool_label}'");
+                self.create_label(&tool_label, TOOL_LABEL_COLOR, &format!("Use {} tool", tool))
+                    .await?;
+            } else {
+                tracing::info!("Label '{tool_label}' already exists");
+            }
+        }
+
+        // Create model labels for all available models
+        for model in Model::all() {
+            let model_label = format!("model:{}", model);
+            if !existing_labels.contains(&model_label) {
+                tracing::info!("Creating label '{model_label}'");
+                self.create_label(
+                    &model_label,
+                    MODEL_LABEL_COLOR,
+                    &format!("Use {} model", model),
+                )
+                .await?;
+            } else {
+                tracing::info!("Label '{model_label}' already exists");
+            }
         }
 
         // Push files from provided list to GitHub

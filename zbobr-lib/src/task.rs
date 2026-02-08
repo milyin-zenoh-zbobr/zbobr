@@ -63,6 +63,13 @@ pub enum Tool {
     Stub,
 }
 
+impl Tool {
+    /// Returns all available tools.
+    pub fn all() -> &'static [Tool] {
+        &[Tool::Copilot, Tool::Claude, Tool::Stub]
+    }
+}
+
 impl std::fmt::Display for Tool {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -121,6 +128,26 @@ pub enum Model {
 }
 
 impl Model {
+    /// Returns all available models.
+    pub fn all() -> &'static [Model] {
+        &[
+            Model::Gpt4o,
+            Model::Gpt5Mini,
+            Model::Claude35Sonnet,
+            Model::Claude3Opus,
+            Model::ClaudeSonnet4_5,
+            Model::ClaudeHaiku4_5,
+            Model::ClaudeOpus4_6,
+            Model::ClaudeOpus4_5,
+            Model::ClaudeSonnet4,
+            Model::Gemini3ProPreview,
+            Model::Gpt5_2Codex,
+            Model::Gpt5_2,
+            Model::Gpt5_1CodexMax,
+            Model::Gpt5_1Codex,
+        ]
+    }
+
     pub fn model_name_for_tool(&self, tool: Tool) -> Option<&'static str> {
         match tool {
             Tool::Copilot => match self {

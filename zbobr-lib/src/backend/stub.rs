@@ -335,6 +335,16 @@ impl Backend for StubBackend {
         state.labels.clear();
         state.labels.insert("done".to_string());
 
+        // Add tool labels
+        for tool in Tool::all() {
+            state.labels.insert(format!("tool:{}", tool));
+        }
+
+        // Add model labels
+        for model in Model::all() {
+            state.labels.insert(format!("model:{}", model));
+        }
+
         // Initialize files
         for file in files {
             state.files.insert(file.path.clone(), file.content.clone());
