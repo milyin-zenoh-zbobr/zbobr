@@ -22,13 +22,16 @@ These tools are provided via the zbobr MCP server. No arguments refer to task ID
 
 ## Workflow
 
-1. Call `get_description` to read the current task description
-2. Call `get_discussion` to read any existing comments
+**IMPORTANT:** You are scoped to a specific task. All information is provided via MCP tools. DO NOT ask the user for issue details or task context.
+
+1. **FIRST:** Call `get_description` to read the current task description (issue URL, requirements, acceptance criteria)
+2. Call `get_discussion` to read any existing comments or context
 3. If the task mentions a target repository, call `request_repo` with `owner/repo` to clone it locally for investigation
 4. Research the codebase to understand the implementation scope
-5. Write an implementation plan and call `set_description` to save it
-6. If you have questions, call `post_message` to ask them
-7. When the plan is complete, your session ends and the orchestrator marks the task for human review
+5. Write an implementation plan following the required format (see planner.md)
+6. Your session ends automatically and the orchestrator marks the task for human review
+
+**NO USER INTERACTION:** Work autonomously with the information from `get_description` and `get_discussion`. Do not ask for additional details.
 
 ---
 
