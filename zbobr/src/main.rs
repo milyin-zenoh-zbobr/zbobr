@@ -354,7 +354,7 @@ async fn run_role_session(
     let server_role = role;
     let server_handle = tokio::spawn(async move {
         if let Err(e) =
-            zbobr_lib::mcp::run_mcp_server(server_zbobr, port, server_role, Some(task_id)).await
+            zbobr_lib::mcp::run_role_mcp_server(server_zbobr, port, server_role, task_id).await
         {
             tracing::error!("MCP server error: {e}");
         }
@@ -417,7 +417,7 @@ async fn run_manager_loop(
         tokio::spawn(async move {
             tracing::info!("Starting Admin MCP on port {a_port}");
             if let Err(e) =
-                zbobr_lib::mcp::run_mcp_server(admin_zbobr, a_port, Role::Admin, None).await
+                zbobr_lib::mcp::run_admin_mcp_server(admin_zbobr, a_port).await
             {
                 tracing::error!("Admin MCP server error: {e}");
             }

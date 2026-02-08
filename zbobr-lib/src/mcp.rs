@@ -447,52 +447,11 @@ impl ServerHandler for AdminMcp {
     }
 }
 
-/// Run the MCP HTTP server scoped to a specific role and task.
-pub async fn run_mcp_server(
-    zbobr: Zbobr,
+async fn serve_mcp(
     port: u16,
-    role: Role,
-    task_id: Option<u64>,
+    path: &str,
+    router: axum::Router,
 ) -> Result<(), crate::ZbobrError> {
-    let zbobr = Arc::new(zbobr);
-    let path = if let Some(id) = task_id {
-        format!("/{}/{}", role, id)
-    } else {
-        format!("/{}", role)
-    };
-
-    let z = zbobr.clone();
-    let router = match role {
-        Role::Planner => {
-            let id = task_id
-                .ok_or_else(|| crate::ZbobrError::Other("Planner needs task_id".to_string()))?;
-            let svc = StreamableHttpService::new(
-                move || Ok(PlannerMcp::new((*z).clone(), id)),
-                Arc::new(LocalSessionManager::default()),
-                Default::default(),
-            );
-            axum::Router::new().nest_service(&path, svc)
-        }
-        Role::Worker => {
-            let id = task_id
-                .ok_or_else(|| crate::ZbobrError::Other("Worker needs task_id".to_string()))?;
-            let svc = StreamableHttpService::new(
-                move || Ok(WorkerMcp::new((*z).clone(), id)),
-                Arc::new(LocalSessionManager::default()),
-                Default::default(),
-            );
-            axum::Router::new().nest_service(&path, svc)
-        }
-        Role::Admin => {
-            let svc = StreamableHttpService::new(
-                move || Ok(AdminMcp::new((*z).clone())),
-                Arc::new(LocalSessionManager::default()),
-                Default::default(),
-            );
-            axum::Router::new().nest_service(&path, svc)
-        }
-    };
-
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
     tracing::info!("MCP server listening on http://127.0.0.1:{port}{path}");
 
@@ -504,6 +463,54 @@ pub async fn run_mcp_server(
         .map_err(|e| crate::ZbobrError::Other(e.to_string()))?;
 
     Ok(())
+}
+
+/// Run the MCP HTTP server scoped to a role (planner or worker) and task.
+pub async fn run_role_mcp_server(
+    zbobr: Zbobr,
+    port: u16,
+    role: Role,
+    task_id: u64,
+) -> Result<(), crate::ZbobrError> {
+    let path = format!("/{}/{}", role, task_id);
+
+    let router = match role {
+        Role::Planner => {
+            let svc = StreamableHttpService::new(
+                move || Ok(PlannerMcp::new(zbobr.clone(), task_id)),
+                Arc::new(LocalSessionManager::default()),
+                Default::default(),
+            );
+            axum::Router::new().nest_service(&path, svc)
+        }
+        Role::Worker => {
+            let svc = StreamableHttpService::new(
+                move || Ok(WorkerMcp::new(zbobr.clone(), task_id)),
+                Arc::new(LocalSessionManager::default()),
+                Default::default(),
+            );
+            axum::Router::new().nest_service(&path, svc)
+        }
+    };
+
+    serve_mcp(port, &path, router).await
+}
+
+/// Run the admin MCP HTTP server.
+pub async fn run_admin_mcp_server(
+    zbobr: Zbobr,
+    port: u16,
+) -> Result<(), crate::ZbobrError> {
+    let path = "/admin";
+
+    let svc = StreamableHttpService::new(
+        move || Ok(AdminMcp::new(zbobr.clone())),
+        Arc::new(LocalSessionManager::default()),
+        Default::default(),
+    );
+    let router = axum::Router::new().nest_service(path, svc);
+
+    serve_mcp(port, path, router).await
 }
 
 #[cfg(test)]

@@ -50,7 +50,7 @@ impl std::fmt::Display for Stage {
     }
 }
 
-/// Role for task execution.
+/// Role for task execution (planner or worker).
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
 )]
@@ -59,8 +59,6 @@ pub enum Role {
     Planner,
     #[serde(rename = "worker")]
     Worker,
-    #[serde(rename = "admin")]
-    Admin,
 }
 
 impl Role {
@@ -69,7 +67,6 @@ impl Role {
         match self {
             Role::Planner => "planner",
             Role::Worker => "worker",
-            Role::Admin => "admin",
         }
     }
 }
@@ -86,7 +83,6 @@ impl std::str::FromStr for Role {
         match s.to_lowercase().as_str() {
             "planner" => Ok(Role::Planner),
             "worker" => Ok(Role::Worker),
-            "admin" => Ok(Role::Admin),
             _ => Err(format!("Unknown role: {}", s)),
         }
     }
