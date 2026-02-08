@@ -1,5 +1,8 @@
 use clap::Parser;
+use serde::Serialize;
+use serde_json::{json, Value};
 use std::time::Duration;
+use zbobr_lib::mcp::{planner_tools, worker_tools, MessageParam, PlanParam, RepoParam};
 
 #[derive(Parser, Debug)]
 #[command(name = "zbobr-stub")]
@@ -15,6 +18,137 @@ struct Args {
     /// URL of the MCP server (e.g. http://127.0.0.1:3000/planner/123)
     #[arg(long)]
     mcp_url: String,
+}
+
+struct McpClient {
+    client: reqwest::Client,
+    url: String,
+    session_id: reqwest::header::HeaderValue,
+}
+
+impl McpClient {
+    async fn new(url: &str) -> anyhow::Result<Self> {
+        let client = reqwest::Client::builder()
+            .cookie_store(true)
+            .default_headers({
+                let mut headers = reqwest::header::HeaderMap::new();
+                headers.insert(
+                    reqwest::header::ACCEPT,
+                    "application/json, text/event-stream".parse().unwrap(),
+                );
+                headers.insert(
+                    reqwest::header::CONTENT_TYPE,
+                    "application/json".parse().unwrap(),
+                );
+                headers
+            })
+            .build()?;
+
+        // Check MCP server connectivity
+        let mut reachable = false;
+        for _ in 0..10 {
+            if let Ok(_resp) = client.get(url).send().await {
+                reachable = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+
+        if !reachable {
+            anyhow::bail!("MCP server at {} is not reachable (no response)", url);
+        }
+
+        // Handshake
+        let init_payload = json!({
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": { "name": "zbobr-stub", "version": "0.1.0" }
+            },
+            "id": 0
+        });
+
+        let resp = client.post(url).json(&init_payload).send().await?;
+        if !resp.status().is_success() {
+            anyhow::bail!(
+                "MCP Handshake failed: {} - {}",
+                resp.status(),
+                resp.text().await?
+            );
+        }
+
+        let session_id = resp
+            .headers()
+            .get("mcp-session-id")
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("No mcp-session-id in MCP response"))?;
+
+        // Initialized notification
+        client
+            .post(url)
+            .header("mcp-session-id", &session_id)
+            .json(&json!({
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized"
+            }))
+            .send()
+            .await?;
+
+        Ok(Self {
+            client,
+            url: url.to_string(),
+            session_id,
+        })
+    }
+
+    async fn call_tool<P: Serialize>(&self, tool: &str, params: P) -> anyhow::Result<Value> {
+        let payload = json!({
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+                "name": tool,
+                "arguments": params
+            },
+            "id": 1
+        });
+
+        let resp = self
+            .client
+            .post(&self.url)
+            .header("mcp-session-id", &self.session_id)
+            .json(&payload)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            anyhow::bail!(
+                "Tool call '{}' failed with status: {} - {}",
+                tool,
+                resp.status(),
+                resp.text().await?
+            );
+        }
+
+        // SSE handling - this is a simplified version for common response bodies
+        let text = resp.text().await?;
+        for line in text.lines() {
+            let line = line.trim();
+            if line.starts_with("data:") {
+                let data = line["data:".len()..].trim();
+                if !data.is_empty() && data.starts_with('{') {
+                    return Ok(serde_json::from_str(data)?);
+                }
+            }
+        }
+
+        anyhow::bail!(
+            "No JSON data found in SSE response for tool '{}': {}",
+            tool,
+            text
+        )
+    }
 }
 
 #[tokio::main]
@@ -33,74 +167,8 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Stub Tool ({role}) starting for task #{task_id}");
     tracing::info!("Connecting to MCP: {mcp_url}");
 
-    let client = reqwest::Client::builder()
-        .cookie_store(true)
-        .default_headers({
-            let mut headers = reqwest::header::HeaderMap::new();
-            headers.insert(
-                reqwest::header::ACCEPT,
-                "application/json, text/event-stream".parse().unwrap(),
-            );
-            headers.insert(
-                reqwest::header::CONTENT_TYPE,
-                "application/json".parse().unwrap(),
-            );
-            headers
-        })
-        .build()?;
-
-    // Check MCP server connectivity
-    let mut connected = false;
-    for _ in 0..5 {
-        if let Ok(resp) = client.get(mcp_url).send().await {
-            let status: reqwest::StatusCode = resp.status();
-            tracing::info!("MCP Server is reachable: {}", status);
-            connected = true;
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(200)).await;
-    }
-
-    if !connected {
-        tracing::warn!(
-            "Could not reach MCP server at {mcp_url}, proceeding with simulation anyway."
-        );
-    }
-
-    // MCP Handshake and capture session ID
-    tracing::info!("Stub: performing MCP handshake...");
-    let init_payload = serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": "initialize",
-        "params": {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": { "name": "zbobr-stub", "version": "0.1.0" }
-        },
-        "id": 0
-    });
-    let resp = client.post(mcp_url).json(&init_payload).send().await?;
-    if !resp.status().is_success() {
-        anyhow::bail!("MCP Handshake failed: {}", resp.status());
-    }
-
-    let session_id = resp
-        .headers()
-        .get("mcp-session-id")
-        .cloned()
-        .ok_or_else(|| anyhow::anyhow!("No mcp-session-id in MCP response"))?;
-    tracing::info!("Captured session ID: {:?}", session_id);
-
-    let initialized_notification = serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": "notifications/initialized"
-    });
-    client
-        .post(mcp_url)
-        .header("mcp-session-id", &session_id)
-        .json(&initialized_notification)
-        .send()
-        .await?;
+    let mcp = McpClient::new(mcp_url).await?;
+    tracing::info!("MCP Handshake successful (session: {:?})", mcp.session_id);
 
     if role == "planner" {
         tracing::info!("Stub: analyzing requirements...");
@@ -110,89 +178,35 @@ async fn main() -> anyhow::Result<()> {
         let plan = format!(
             "Implementation plan for task #{task_id}\n\n1. Add new feature\n2. Fix existing bug"
         );
-        let payload = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "tools/call",
-            "params": {
-                "name": "set_plan",
-                "arguments": {
-                    "plan": plan
-                }
-            },
-            "id": 1
-        });
 
-        let resp = client
-            .post(mcp_url)
-            .header("mcp-session-id", &session_id)
-            .json(&payload)
-            .send()
+        mcp.call_tool(planner_tools::SET_PLAN, PlanParam { plan })
             .await?;
-        if !resp.status().is_success() {
-            anyhow::bail!("Failed to set plan: {}", resp.status());
-        }
         tracing::info!("Stub: plan set via MCP.");
 
-        let msg_payload = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "tools/call",
-            "params": {
-                "name": "post_message",
-                "arguments": {
-                    "message": "Planner: requirements analyzed and plan created."
-                }
+        mcp.call_tool(
+            planner_tools::POST_MESSAGE,
+            MessageParam {
+                message: "Planner: requirements analyzed and plan created.".to_string(),
             },
-            "id": 2
-        });
-        client
-            .post(mcp_url)
-            .header("mcp-session-id", &session_id)
-            .json(&msg_payload)
-            .send()
-            .await?;
+        )
+        .await?;
+        tracing::info!("Stub: status message posted.");
     } else {
         tracing::info!("Stub: working on implementation...");
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         tracing::info!("Stub: creating PR...");
-        // Simulation of PR creation via submit_work
-        let submit_payload = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "tools/call",
-            "params": {
-                "name": "submit_work",
-                "arguments": {
-                    "repo": "stub/repo"
-                }
+        mcp.call_tool(
+            worker_tools::SUBMIT_WORK,
+            RepoParam {
+                repo: "stub/repo".to_string(),
             },
-            "id": 1
-        });
-        client
-            .post(mcp_url)
-            .header("mcp-session-id", &session_id)
-            .json(&submit_payload)
-            .send()
-            .await?;
+        )
+        .await?;
+        tracing::info!("Stub: work submitted via MCP.");
 
         tracing::info!("Stub: marking as done...");
-        let done_payload = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "tools/call",
-            "params": {
-                "name": "mark_done",
-                "arguments": {}
-            },
-            "id": 2
-        });
-        let resp = client
-            .post(mcp_url)
-            .header("mcp-session-id", &session_id)
-            .json(&done_payload)
-            .send()
-            .await?;
-        if !resp.status().is_success() {
-            anyhow::bail!("Failed to mark done: {}", resp.status());
-        }
+        mcp.call_tool(worker_tools::MARK_DONE, json!({})).await?;
         tracing::info!("Stub: task marked as done via MCP.");
     }
 

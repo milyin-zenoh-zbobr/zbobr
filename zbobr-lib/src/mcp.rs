@@ -67,16 +67,36 @@ pub struct MilestoneParam {
     pub milestone: String,
 }
 
-macro_rules! admin_tools_list {
-    ($($name:ident = $val:expr),* $(,)?) => {
-        pub mod admin_tools {
+macro_rules! mcp_tools {
+    ($mod_name:ident, $($name:ident = $val:expr),* $(,)?) => {
+        pub mod $mod_name {
             $(pub const $name: &str = $val;)*
             pub const ALL_TOOLS: &[&str] = &[$($val),*];
         }
     }
 }
 
-admin_tools_list! {
+mcp_tools! {
+    planner_tools,
+    GET_PLAN = "get_plan",
+    SET_PLAN = "set_plan",
+    GET_DISCUSSION = "get_discussion",
+    POST_MESSAGE = "post_message",
+    REQUEST_REPO = "request_repo",
+}
+
+mcp_tools! {
+    worker_tools,
+    GET_PLAN = "get_plan",
+    GET_DISCUSSION = "get_discussion",
+    POST_MESSAGE = "post_message",
+    REQUEST_REPO = "request_repo",
+    SUBMIT_WORK = "submit_work",
+    MARK_DONE = "mark_done",
+}
+
+mcp_tools! {
+    admin_tools,
     LIST_ISSUES = "list_issues",
     CREATE_ISSUE = "create_issue",
     GET_ISSUE = "get_issue",
@@ -488,6 +508,60 @@ mod tests {
         assert_eq!(
             tool_names, expected_names,
             "Exposed admin tools do not match admin_tools::ALL_TOOLS"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_planner_tools_consistency() {
+        let config = crate::config::ZbobrConfig {
+            domain_repo: "test/repo".to_string(),
+            fork_owner: "test-owner".to_string(),
+            default_model: "test-model".to_string(),
+            workspace: std::path::PathBuf::from("/tmp"),
+            github_token: "test-token".to_string(),
+            backend: crate::config::BackendType::Stub,
+            cli_tool: crate::config::CliTool::Stub,
+        };
+        let zbobr = Zbobr::new(config).unwrap();
+        let planner = PlannerMcp::new(zbobr, 123);
+
+        let tools = planner.tool_router.list_all();
+        let mut tool_names: Vec<_> = tools.iter().map(|t| t.name.as_ref()).collect();
+        tool_names.sort();
+
+        let mut expected_names = planner_tools::ALL_TOOLS.to_vec();
+        expected_names.sort();
+
+        assert_eq!(
+            tool_names, expected_names,
+            "Exposed planner tools do not match planner_tools::ALL_TOOLS"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_worker_tools_consistency() {
+        let config = crate::config::ZbobrConfig {
+            domain_repo: "test/repo".to_string(),
+            fork_owner: "test-owner".to_string(),
+            default_model: "test-model".to_string(),
+            workspace: std::path::PathBuf::from("/tmp"),
+            github_token: "test-token".to_string(),
+            backend: crate::config::BackendType::Stub,
+            cli_tool: crate::config::CliTool::Stub,
+        };
+        let zbobr = Zbobr::new(config).unwrap();
+        let worker = WorkerMcp::new(zbobr, 123);
+
+        let tools = worker.tool_router.list_all();
+        let mut tool_names: Vec<_> = tools.iter().map(|t| t.name.as_ref()).collect();
+        tool_names.sort();
+
+        let mut expected_names = worker_tools::ALL_TOOLS.to_vec();
+        expected_names.sort();
+
+        assert_eq!(
+            tool_names, expected_names,
+            "Exposed worker tools do not match worker_tools::ALL_TOOLS"
         );
     }
 }
