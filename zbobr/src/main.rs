@@ -386,21 +386,31 @@ async fn run_role_session(
     // Give server time to start
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-    // Execute the tool using the ToolExecutor trait
+    // Execute the tool using the ToolExecutor trait with Ctrl+C handling
     let cli_tool = zbobr.config().cli_tool;
     let mcp_url = format!("http://127.0.0.1:{port}/{role}/{task_id}");
 
     let executor = cli_tool.executor();
-    if let Err(e) = executor
-        .execute(task_id, role, &model, port, prompt, &task_dir, &mcp_url)
-        .await
-    {
-        tracing::error!("Tool execution failed: {e}");
-    }
+    let execution_result = tokio::select! {
+        result = executor.execute(task_id, role, &model, port, prompt, &task_dir, &mcp_url) => {
+            if let Err(e) = result {
+                tracing::error!("Tool execution failed: {e}");
+            }
+            false // Normal completion
+        }
+        _ = tokio::signal::ctrl_c() => {
+            tracing::warn!("Received shutdown signal during execution");
+            true // Interrupted
+        }
+    };
 
     // On exit, set stage to Pending
     zbobr.set_task_stage(task_id, Stage::Pending).await?;
-    tracing::info!("Session complete, task #{task_id} set to PENDING");
+    if execution_result {
+        tracing::info!("Session interrupted, task #{task_id} set to PENDING");
+    } else {
+        tracing::info!("Session complete, task #{task_id} set to PENDING");
+    }
 
     // Shut down server
     server_handle.abort();
@@ -547,6 +557,19 @@ async fn run_manager_loop(
         }
 
         tracing::info!("No processable tasks. Sleeping {interval_secs}s...");
-        tokio::time::sleep(std::time::Duration::from_secs(interval_secs)).await;
+
+        // Sleep with Ctrl+C handling
+        tokio::select! {
+            _ = tokio::time::sleep(std::time::Duration::from_secs(interval_secs)) => {
+                // Continue to next iteration
+            }
+            _ = tokio::signal::ctrl_c() => {
+                tracing::info!("Received shutdown signal, exiting...");
+                break;
+            }
+        }
     }
+
+    tracing::info!("Manager loop terminated gracefully");
+    Ok(())
 }
