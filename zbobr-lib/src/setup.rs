@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+
 use crate::{Zbobr, ZbobrError, Stage};
 
 /// Desired labels for the domain project.
@@ -17,46 +19,59 @@ fn milestone_description(stage: Stage) -> &'static str {
 
 /// A file to create in the domain repository during setup.
 pub struct SetupFile {
-    /// Path in the repository (e.g., "README.md").
+    /// Path relative to the repo root (e.g., "README.md").
     pub path: String,
-    /// File content (plain text, will be base64-encoded for the API).
+    /// File content (plain text).
     pub content: String,
 }
 
 impl Zbobr {
-    /// Set up the domain project: ensure repo exists, create labels, milestones, and files.
-    /// `files` is a list of resource files to create in the domain repo.
-    /// If dry_run is true, only logs what would happen.
-    pub async fn setup_domain_project(
+    /// Stage 1: Write all setup files to a local directory.
+    /// Always runs, even in dry-run mode. Creates the directory if needed.
+    /// Returns the output directory path.
+    pub async fn setup_write_local(
         &self,
-        dry_run: bool,
+        output_dir: &Path,
         files: &[SetupFile],
-    ) -> Result<(), ZbobrError> {
-        tracing::info!("Setting up domain project: {}", self.config.domain_repo);
+    ) -> Result<PathBuf, ZbobrError> {
+        tokio::fs::create_dir_all(output_dir).await?;
+        tracing::info!("Writing setup files to {}", output_dir.display());
 
-        // Ensure the domain repo exists
-        if dry_run {
-            tracing::info!("DRY RUN: Would ensure domain repo exists");
-        } else {
-            self.ensure_domain_repo_exists().await?;
+        for file in files {
+            let dest = output_dir.join(&file.path);
+            // Create parent dirs if the file path has subdirectories
+            if let Some(parent) = dest.parent() {
+                tokio::fs::create_dir_all(parent).await?;
+            }
+            tokio::fs::write(&dest, &file.content).await?;
+            tracing::info!("  + {}", file.path);
         }
 
-        // Setup milestones
+        tracing::info!("Local setup files written to {}", output_dir.display());
+        Ok(output_dir.to_path_buf())
+    }
+
+    /// Stage 2: Push content to GitHub -- create repo, milestones, labels, and files.
+    /// Reads files from the local directory created by stage 1.
+    pub async fn setup_push_remote(
+        &self,
+        local_dir: &Path,
+        files: &[SetupFile],
+    ) -> Result<(), ZbobrError> {
+        tracing::info!("Pushing setup to GitHub: {}", self.config.domain_repo);
+
+        // Ensure the domain repo exists
+        self.ensure_domain_repo_exists().await?;
+
+        // Create milestones
         let desired_stages = [Stage::Planning, Stage::Pending, Stage::Ready, Stage::Working];
-        let existing = if dry_run {
-            // In dry-run, try to list but don't fail if repo doesn't exist
-            self.list_milestones().await.unwrap_or_default()
-        } else {
-            self.list_milestones().await?
-        };
+        let existing = self.list_milestones().await?;
         let existing_titles: Vec<&str> = existing.iter().map(|(_, t)| t.as_str()).collect();
 
         for stage in &desired_stages {
             let title = stage.milestone_name();
             if existing_titles.contains(&title) {
                 tracing::info!("Milestone '{title}' already exists");
-            } else if dry_run {
-                tracing::info!("DRY RUN: Would create milestone '{title}'");
             } else {
                 tracing::info!("Creating milestone '{title}'");
                 self.create_milestone(title, milestone_description(*stage))
@@ -64,81 +79,64 @@ impl Zbobr {
             }
         }
 
-        // Delete milestones that shouldn't exist
+        // Delete extra milestones
         let desired_titles: Vec<&str> = desired_stages.iter().map(|s| s.milestone_name()).collect();
         for (number, title) in &existing {
             if !desired_titles.contains(&title.as_str()) {
-                if dry_run {
-                    tracing::info!("DRY RUN: Would delete milestone '{title}'");
-                } else {
-                    tracing::info!("Deleting milestone '{title}'");
-                    self.delete_milestone(*number).await?;
-                }
+                tracing::info!("Deleting milestone '{title}'");
+                self.delete_milestone(*number).await?;
             }
         }
 
-        // Setup labels
-        let existing_labels = if dry_run {
-            self.list_labels().await.unwrap_or_default()
-        } else {
-            self.list_labels().await?
-        };
+        // Create labels
+        let existing_labels = self.list_labels().await?;
 
-        // Ensure 'done' label
         if !existing_labels.contains(&DONE_LABEL.to_string()) {
-            if dry_run {
-                tracing::info!("DRY RUN: Would create label '{DONE_LABEL}'");
-            } else {
-                tracing::info!("Creating label '{DONE_LABEL}'");
-                self.create_label(DONE_LABEL, DONE_LABEL_COLOR, "Issue implementation completed")
-                    .await?;
-            }
+            tracing::info!("Creating label '{DONE_LABEL}'");
+            self.create_label(DONE_LABEL, DONE_LABEL_COLOR, "Issue implementation completed")
+                .await?;
         } else {
             tracing::info!("Label '{DONE_LABEL}' already exists");
         }
 
-        // Ensure default model label
         let model_label = format!("copilot:{}", self.config.default_model);
         if !existing_labels.contains(&model_label) {
-            if dry_run {
-                tracing::info!("DRY RUN: Would create label '{model_label}'");
-            } else {
-                tracing::info!("Creating label '{model_label}'");
-                self.create_label(
-                    &model_label,
-                    MODEL_LABEL_COLOR,
-                    &format!("Use {} model", self.config.default_model),
-                )
-                .await?;
-            }
+            tracing::info!("Creating label '{model_label}'");
+            self.create_label(
+                &model_label,
+                MODEL_LABEL_COLOR,
+                &format!("Use {} model", self.config.default_model),
+            )
+            .await?;
         } else {
             tracing::info!("Label '{model_label}' already exists");
         }
 
-        // Create resource files in the domain repo
+        // Push files from local directory to GitHub
         for file in files {
-            let exists = if dry_run {
-                self.repo_file_exists(&file.path).await.unwrap_or(false)
-            } else {
-                self.repo_file_exists(&file.path).await?
-            };
+            let local_path = local_dir.join(&file.path);
+            let content = tokio::fs::read_to_string(&local_path).await.map_err(|e| {
+                ZbobrError::Other(format!(
+                    "Failed to read {}: {e}",
+                    local_path.display()
+                ))
+            })?;
 
+            let exists = self.repo_file_exists(&file.path).await?;
             if exists {
-                tracing::info!("File '{}' already exists, skipping", file.path);
-            } else if dry_run {
-                tracing::info!("DRY RUN: Would create '{}'", file.path);
+                tracing::info!("File '{}' already exists in repo, skipping", file.path);
             } else {
-                tracing::info!("Creating '{}'", file.path);
+                tracing::info!("Pushing '{}' to repo", file.path);
                 self.create_repo_file(
                     &file.path,
-                    &file.content,
+                    &content,
                     &format!("Initialize {} from zbobr setup", file.path),
                 )
                 .await?;
             }
         }
 
-        tracing::info!("Domain project setup complete");
+        tracing::info!("GitHub setup complete for {}", self.config.domain_repo);
         Ok(())
     }
 }

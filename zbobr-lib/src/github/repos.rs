@@ -359,3 +359,37 @@ fn base64_encode(input: &str) -> String {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base64_encode_empty() {
+        assert_eq!(base64_encode(""), "");
+    }
+
+    #[test]
+    fn base64_encode_hello() {
+        // "Hello" -> "SGVsbG8="
+        assert_eq!(base64_encode("Hello"), "SGVsbG8=");
+    }
+
+    #[test]
+    fn base64_encode_padding() {
+        // "a" -> "YQ=="  (1 byte, 2 padding chars)
+        assert_eq!(base64_encode("a"), "YQ==");
+        // "ab" -> "YWI=" (2 bytes, 1 padding char)
+        assert_eq!(base64_encode("ab"), "YWI=");
+        // "abc" -> "YWJj" (3 bytes, no padding)
+        assert_eq!(base64_encode("abc"), "YWJj");
+    }
+
+    #[test]
+    fn base64_encode_longer_text() {
+        assert_eq!(
+            base64_encode("Hello, World!"),
+            "SGVsbG8sIFdvcmxkIQ=="
+        );
+    }
+}

@@ -135,3 +135,49 @@ impl WorkerSession {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stage_milestone_names() {
+        assert_eq!(Stage::Planning.milestone_name(), "PLANNING");
+        assert_eq!(Stage::Pending.milestone_name(), "PENDING");
+        assert_eq!(Stage::Ready.milestone_name(), "READY");
+        assert_eq!(Stage::Working.milestone_name(), "WORKING");
+    }
+
+    #[test]
+    fn stage_display() {
+        assert_eq!(Stage::Planning.to_string(), "PLANNING");
+        assert_eq!(Stage::Working.to_string(), "WORKING");
+    }
+
+    #[test]
+    fn stage_roundtrip_serde() {
+        let stage = Stage::Ready;
+        let json = serde_json::to_string(&stage).unwrap();
+        let back: Stage = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, stage);
+    }
+
+    #[test]
+    fn task_serde() {
+        let task = Task {
+            id: 42,
+            title: "Test task".to_string(),
+            description: "Do something".to_string(),
+            stage: Stage::Planning,
+            model: Some("claude-opus-4-6".to_string()),
+            done: false,
+        };
+        let json = serde_json::to_string(&task).unwrap();
+        let back: Task = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.id, 42);
+        assert_eq!(back.title, "Test task");
+        assert_eq!(back.stage, Stage::Planning);
+        assert_eq!(back.model, Some("claude-opus-4-6".to_string()));
+        assert!(!back.done);
+    }
+}

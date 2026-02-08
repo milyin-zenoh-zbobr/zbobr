@@ -206,30 +206,42 @@ impl ServerHandler for WorkerMcp {
     }
 }
 
-/// Run the MCP HTTP server with routing by URL path.
-pub async fn run_mcp_server(zbobr: Zbobr, port: u16) -> anyhow::Result<()> {
+/// Run the MCP HTTP server scoped to a specific role and task.
+///
+/// The service is mounted at `/{role}/{task_id}`, e.g. `/planner/42`.
+/// Each copilot session connects to this URL and never needs to pass a task_id.
+pub async fn run_mcp_server(
+    zbobr: Zbobr,
+    port: u16,
+    role: String,
+    task_id: u64,
+) -> anyhow::Result<()> {
     let zbobr = Arc::new(zbobr);
+    let path = format!("/{role}/{task_id}");
 
-    let planner_zbobr = zbobr.clone();
-    let planner_service = StreamableHttpService::new(
-        move || Ok(PlannerMcp::new((*planner_zbobr).clone(), 0)),
-        Arc::new(LocalSessionManager::default()),
-        Default::default(),
-    );
-
-    let worker_zbobr = zbobr.clone();
-    let worker_service = StreamableHttpService::new(
-        move || Ok(WorkerMcp::new((*worker_zbobr).clone(), 0)),
-        Arc::new(LocalSessionManager::default()),
-        Default::default(),
-    );
-
-    let router = axum::Router::new()
-        .nest_service("/planner", planner_service)
-        .nest_service("/worker", worker_service);
+    let z = zbobr.clone();
+    let router = match role.as_str() {
+        "planner" => {
+            let svc = StreamableHttpService::new(
+                move || Ok(PlannerMcp::new((*z).clone(), task_id)),
+                Arc::new(LocalSessionManager::default()),
+                Default::default(),
+            );
+            axum::Router::new().nest_service(&path, svc)
+        }
+        "worker" => {
+            let svc = StreamableHttpService::new(
+                move || Ok(WorkerMcp::new((*z).clone(), task_id)),
+                Arc::new(LocalSessionManager::default()),
+                Default::default(),
+            );
+            axum::Router::new().nest_service(&path, svc)
+        }
+        _ => return Err(anyhow::anyhow!("Unknown role: {role}")),
+    };
 
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
-    tracing::info!("MCP server listening on http://127.0.0.1:{port}");
+    tracing::info!("MCP server listening on http://127.0.0.1:{port}{path}");
 
     axum::serve(listener, router)
         .with_graceful_shutdown(async {

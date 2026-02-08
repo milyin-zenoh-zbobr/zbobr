@@ -61,3 +61,48 @@ impl ZbobrConfig {
         Ok((parts[0], parts[1]))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config(domain_repo: &str) -> ZbobrConfig {
+        ZbobrConfig {
+            domain_repo: domain_repo.to_string(),
+            fork_owner: "test-fork".to_string(),
+            default_model: "gpt-5-mini".to_string(),
+            workspace: PathBuf::from("./workspace"),
+            github_token: "fake-token".to_string(),
+        }
+    }
+
+    #[test]
+    fn parse_repo_valid() {
+        let cfg = test_config("MyOrg/my-project");
+        let (owner, repo) = cfg.parse_repo().unwrap();
+        assert_eq!(owner, "MyOrg");
+        assert_eq!(repo, "my-project");
+    }
+
+    #[test]
+    fn parse_repo_with_slashes_in_name() {
+        let cfg = test_config("owner/repo/extra");
+        let (owner, repo) = cfg.parse_repo().unwrap();
+        assert_eq!(owner, "owner");
+        assert_eq!(repo, "repo/extra");
+    }
+
+    #[test]
+    fn parse_repo_invalid() {
+        let cfg = test_config("no-slash-here");
+        assert!(cfg.parse_repo().is_err());
+    }
+
+    #[test]
+    fn from_env_missing_required() {
+        // Clear env to ensure ZBOBR_DOMAIN_REPO is not set
+        std::env::remove_var("ZBOBR_DOMAIN_REPO");
+        let result = ZbobrConfig::from_env();
+        assert!(result.is_err());
+    }
+}

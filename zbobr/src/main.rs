@@ -30,10 +30,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Set up domain project labels and milestones
+    /// Set up domain project: create local files, push to GitHub
     Setup {
+        /// Only create local directory, do not push to GitHub
         #[arg(long, short = 'n')]
         dry_run: bool,
+
+        /// Output directory for local setup files (default: ./<repo-name>)
+        #[arg(long, short = 'o')]
+        output_dir: Option<PathBuf>,
     },
     /// Run the manager loop
     Loop {
@@ -128,6 +133,14 @@ fn load_config(cli: &Cli) -> Result<ZbobrConfig, zbobr_lib::ZbobrError> {
     Ok(config)
 }
 
+/// Default output directory for setup: `./<repo-name>` in the current dir.
+fn default_setup_dir(zbobr: &Zbobr) -> PathBuf {
+    let repo = &zbobr.config().domain_repo;
+    // Use the repo part after the slash, e.g. "Org/my-project" -> "my-project"
+    let name = repo.split('/').nth(1).unwrap_or(repo);
+    PathBuf::from(name)
+}
+
 /// Default resources directory: `resources/` next to the executable.
 fn default_resources_dir() -> anyhow::Result<PathBuf> {
     let exe = std::env::current_exe()?;
@@ -198,9 +211,21 @@ async fn main() -> anyhow::Result<()> {
     let prompts = resolve_prompts(&cli)?;
 
     match cli.command {
-        Command::Setup { dry_run } => {
+        Command::Setup { dry_run, output_dir } => {
             let files = build_setup_files(&zbobr)?;
-            zbobr.setup_domain_project(dry_run, &files).await?;
+            let default_dir = default_setup_dir(&zbobr);
+            let dir = output_dir.unwrap_or(default_dir);
+
+            // Stage 1: always write local files
+            zbobr.setup_write_local(&dir, &files).await?;
+
+            if dry_run {
+                tracing::info!("Dry run: local files written to {}", dir.display());
+                tracing::info!("Skipping GitHub push. Run without --dry-run to push.");
+            } else {
+                // Stage 2: push to GitHub
+                zbobr.setup_push_remote(&dir, &files).await?;
+            }
         }
         Command::Cleanup { dry_run } => {
             zbobr.cleanup_closed_tasks(dry_run).await?;
@@ -254,10 +279,11 @@ async fn run_agent_session(
     let issue_dir = zbobr.config().workspace.join(format!("issue#{issue}"));
     tokio::fs::create_dir_all(&issue_dir).await?;
 
-    // Start MCP server in background
+    // Start MCP server in background, scoped to this role and issue
     let server_zbobr = zbobr.clone();
+    let server_role = role.to_string();
     let server_handle = tokio::spawn(async move {
-        if let Err(e) = mcp::run_mcp_server(server_zbobr, port).await {
+        if let Err(e) = mcp::run_mcp_server(server_zbobr, port, server_role, issue).await {
             tracing::error!("MCP server error: {e}");
         }
     });
@@ -330,17 +356,6 @@ async fn run_manager_loop(
 
     let mut last_cleanup = std::time::Instant::now();
 
-    // Start MCP server in background for the entire loop
-    let server_zbobr = zbobr.clone();
-    let _server_handle = tokio::spawn(async move {
-        if let Err(e) = mcp::run_mcp_server(server_zbobr, port).await {
-            tracing::error!("MCP server error: {e}");
-        }
-    });
-
-    // Give server time to start
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
     loop {
         // Run cleanup if interval has passed
         if last_cleanup.elapsed().as_secs() >= cleanup_interval_secs {
@@ -382,6 +397,7 @@ async fn run_manager_loop(
 }
 
 /// Run a single copilot session (used by manager loop).
+/// Starts its own MCP server scoped to the role and issue, then shuts it down after.
 async fn run_single_session(
     zbobr: &Zbobr,
     issue: u64,
@@ -407,6 +423,18 @@ async fn run_single_session(
         return;
     }
 
+    // Start MCP server scoped to this role and issue
+    let server_zbobr = zbobr.clone();
+    let server_role = role.to_string();
+    let server_handle = tokio::spawn(async move {
+        if let Err(e) = mcp::run_mcp_server(server_zbobr, port, server_role, issue).await {
+            tracing::error!("MCP server error: {e}");
+        }
+    });
+
+    // Give server time to start
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
     let mcp_url = format!("http://127.0.0.1:{port}/{role}/{issue}");
     let mcp_config = serde_json::json!({
         "mcpServers": {
@@ -424,6 +452,7 @@ async fn run_single_session(
     .await
     {
         tracing::error!("Failed to write MCP config: {e}");
+        server_handle.abort();
         return;
     }
 
@@ -451,6 +480,9 @@ async fn run_single_session(
     if let Err(e) = zbobr.set_task_stage(issue, Stage::Pending).await {
         tracing::error!("Failed to set PENDING for issue #{issue}: {e}");
     }
+
+    // Shut down server
+    server_handle.abort();
 
     tracing::info!("Session complete for issue #{issue}");
 }
