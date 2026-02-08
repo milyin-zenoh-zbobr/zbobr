@@ -68,6 +68,15 @@ impl Tool {
     pub fn all() -> &'static [Tool] {
         &[Tool::Copilot, Tool::Claude, Tool::Stub]
     }
+
+    /// Returns the appropriate executor for this tool.
+    pub fn executor(&self) -> Box<dyn crate::tool_executor::ToolExecutor> {
+        match self {
+            Tool::Copilot => Box::new(crate::tool_executor::CopilotExecutor),
+            Tool::Claude => Box::new(crate::tool_executor::ClaudeExecutor),
+            Tool::Stub => Box::new(crate::tool_executor::StubExecutor),
+        }
+    }
 }
 
 impl std::fmt::Display for Tool {

@@ -363,78 +363,16 @@ async fn run_role_session(
     // Give server time to start
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-    // Check which tool to run
+    // Execute the tool using the ToolExecutor trait
     let cli_tool = zbobr.config().cli_tool;
     let mcp_url = format!("http://127.0.0.1:{port}/{role}/{task_id}");
 
-    match cli_tool {
-        Tool::Stub => {
-            tracing::info!("Running STUB TOOL for {role} session");
-            let exe = std::env::current_exe()?;
-            // Assume zbobr-stub is next to zbobr executable
-            let stub_exe = exe.parent().unwrap().join("zbobr-stub");
-
-            let status = tokio::process::Command::new(stub_exe)
-                .args([
-                    "--role",
-                    role,
-                    "--task-id",
-                    &task_id.to_string(),
-                    "--mcp-url",
-                    &mcp_url,
-                ])
-                .status()
-                .await?;
-
-            if !status.success() {
-                tracing::warn!("Stub tool exited with status: {status}");
-            }
-        }
-        Tool::Copilot | Tool::Claude => {
-            // Build MCP config for tool
-            let mcp_config = serde_json::json!({
-                "mcpServers": {
-                    "zbobr": {
-                        "url": mcp_url
-                    }
-                }
-            });
-            let mcp_config_str = serde_json::to_string(&mcp_config)?;
-
-            // Write MCP config to temp file
-            let config_path = task_dir.join(".mcp-config.json");
-            tokio::fs::write(&config_path, &mcp_config_str).await?;
-
-            let tool_cmd = if cli_tool == Tool::Copilot {
-                "copilot"
-            } else {
-                unimplemented!("Claude execution is not yet supported")
-            };
-
-            let model_name = model.model_name_for_tool(cli_tool).ok_or_else(|| {
-                anyhow::anyhow!("Model {} is not supported by {}", model, tool_cmd)
-            })?;
-
-            tracing::info!("Starting {tool_cmd} {role} session for task #{task_id}");
-            tracing::info!("MCP endpoint: {mcp_url}");
-
-            let status = tokio::process::Command::new(tool_cmd)
-                .args([
-                    "--model",
-                    model_name,
-                    "--additional-mcp-config",
-                    config_path.to_str().unwrap(),
-                    "-i",
-                    prompt,
-                ])
-                .current_dir(&task_dir)
-                .status()
-                .await?;
-
-            if !status.success() {
-                tracing::warn!("{tool_cmd} exited with status: {status}");
-            }
-        }
+    let executor = cli_tool.executor();
+    if let Err(e) = executor
+        .execute(task_id, role, &model, port, prompt, &task_dir, &mcp_url)
+        .await
+    {
+        tracing::error!("Tool execution failed: {e}");
     }
 
     // On exit, set stage to Pending

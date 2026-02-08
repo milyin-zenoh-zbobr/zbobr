@@ -5,9 +5,11 @@ pub mod manager;
 pub mod mcp;
 pub mod setup;
 pub mod task;
+pub mod tool_executor;
 
 pub use config::ZbobrConfig;
 pub use task::{Model, PlannerSession, SetupFile, Stage, Task, Tool, WorkerSession};
+pub use tool_executor::{ClaudeExecutor, CopilotExecutor, StubExecutor, ToolExecutor};
 
 use crate::backend::github::GitHubBackend;
 use crate::backend::stub::StubBackend;
