@@ -69,9 +69,10 @@ ZBOBR_DEFAULT_MODEL=claude-sonnet-4.5
 # Optional: Directory for agent workspaces (cloned repos, temp files)
 ZBOBR_WORKSPACE=./workspace
 
-# Optional: Custom prompt files for planner and worker agents
-ZBOBR_PLANNER_PROMPT=/path/to/custom-planner.md
-ZBOBR_WORKER_PROMPT=/path/to/custom-worker.md
+# Optional: Custom prompt files for agents (semicolon-separated paths)
+# Paths are relative to the directory where run.sh is executed
+ZBOBR_PLANNER_PROMPTS=prompts/common.md;prompts/repositories.md;prompts/planner.md
+ZBOBR_WORKER_PROMPTS=prompts/common.md;prompts/worker.md
 ```
 
 **GitHub Token**: Set `GH_TOKEN` in your environment (not in `.zbobr.env`):
