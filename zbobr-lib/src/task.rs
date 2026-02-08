@@ -20,6 +20,17 @@ impl Stage {
             Stage::Working => "WORKING",
         }
     }
+
+    pub fn from_milestone_name(name: &str) -> Option<Self> {
+        match name {
+            "PENDING" => Some(Stage::Pending),
+            "PLANNING_READY" => Some(Stage::PlanningReady),
+            "PLANNING" => Some(Stage::Planning),
+            "WORKING_READY" => Some(Stage::WorkingReady),
+            "WORKING" => Some(Stage::Working),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for Stage {

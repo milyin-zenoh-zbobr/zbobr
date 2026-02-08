@@ -28,6 +28,44 @@ pub struct RepoParam {
     pub repo: String,
 }
 
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct IssueIdParam {
+    #[schemars(description = "The task/issue ID")]
+    pub id: u64,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct CreateIssueParam {
+    #[schemars(description = "Issue title")]
+    pub title: String,
+    #[schemars(description = "Issue body")]
+    pub body: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct UpdateIssueParam {
+    pub id: u64,
+    pub body: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct SetStageParam {
+    pub id: u64,
+    pub stage: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct LabelParam {
+    pub id: u64,
+    pub label: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct MilestoneParam {
+    #[schemars(description = "Milestone name (e.g. PENDING, PLANNING_READY, etc.)")]
+    pub milestone: String,
+}
+
 // -- Planner MCP service --
 
 #[derive(Clone)]
@@ -212,29 +250,169 @@ impl ServerHandler for WorkerMcp {
     }
 }
 
+// -- Admin MCP service --
+
+#[derive(Clone)]
+pub struct AdminMcp {
+    zbobr: Zbobr,
+    tool_router: ToolRouter<Self>,
+}
+
+#[tool_router]
+impl AdminMcp {
+    pub fn new(zbobr: Zbobr) -> Self {
+        Self {
+            zbobr,
+            tool_router: Self::tool_router(),
+        }
+    }
+
+    #[tool(description = "List issues in a specific milestone")]
+    async fn list_issues(&self, Parameters(params): Parameters<MilestoneParam>) -> String {
+        match self.zbobr.find_tasks_by_stage_name(&params.milestone).await {
+            Ok(tasks) => {
+                if tasks.is_empty() {
+                    "No tasks found.".to_string()
+                } else {
+                    let lines: Vec<_> = tasks
+                        .into_iter()
+                        .map(|t| format!("#{} ({}): {}", t.id, t.stage, t.title))
+                        .collect();
+                    lines.join("\n")
+                }
+            }
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    #[tool(description = "Create a new issue")]
+    async fn create_issue(&self, Parameters(params): Parameters<CreateIssueParam>) -> String {
+        match self.zbobr.create_issue(&params.title, &params.body).await {
+            Ok(id) => format!("Created issue #{}", id),
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    #[tool(description = "Get detailed status of a task")]
+    async fn get_issue(&self, Parameters(params): Parameters<IssueIdParam>) -> String {
+        match self.zbobr.get_issue(params.id).await {
+            Ok(task) => format!("{task:?}"),
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    #[tool(description = "Update the description of a task")]
+    async fn update_issue_body(&self, Parameters(params): Parameters<UpdateIssueParam>) -> String {
+        match self.zbobr.update_issue_body(params.id, &params.body).await {
+            Ok(()) => "Issue body updated".to_string(),
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    #[tool(description = "Change the stage (milestone) of a task")]
+    async fn set_issue_stage(&self, Parameters(params): Parameters<SetStageParam>) -> String {
+        match self
+            .zbobr
+            .set_task_stage_name(params.id, &params.stage)
+            .await
+        {
+            Ok(()) => format!("Stage updated to {}", params.stage),
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    #[tool(description = "Add a label to an issue")]
+    async fn add_issue_label(&self, Parameters(params): Parameters<LabelParam>) -> String {
+        match self.zbobr.add_issue_label(params.id, &params.label).await {
+            Ok(()) => format!("Label '{}' added", params.label),
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    #[tool(description = "Remove a label from an issue")]
+    async fn remove_issue_label(&self, Parameters(params): Parameters<LabelParam>) -> String {
+        match self
+            .zbobr
+            .remove_issue_label(params.id, &params.label)
+            .await
+        {
+            Ok(()) => format!("Label '{}' removed", params.label),
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    #[tool(description = "Get all logs/comments for a task")]
+    async fn get_discussion(&self, Parameters(params): Parameters<IssueIdParam>) -> String {
+        match self.zbobr.get_issue_comments(params.id).await {
+            Ok(comments) => {
+                if comments.is_empty() {
+                    "No logs/comments yet.".to_string()
+                } else {
+                    comments.join("\n\n---\n\n")
+                }
+            }
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    #[tool(description = "DEBUG: Return internal backend state")]
+    async fn debug_state(&self) -> String {
+        self.zbobr.debug_state()
+    }
+}
+
+#[tool_handler]
+impl ServerHandler for AdminMcp {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo {
+            capabilities: ServerCapabilities::builder().enable_tools().build(),
+            instructions: Some(
+                "Admin tools: full control over issues, statuses, and logs.".to_string(),
+            ),
+            ..Default::default()
+        }
+    }
+}
+
 /// Run the MCP HTTP server scoped to a specific role and task.
 pub async fn run_mcp_server(
     zbobr: Zbobr,
     port: u16,
     role: String,
-    task_id: u64,
+    task_id: Option<u64>,
 ) -> Result<(), crate::ZbobrError> {
     let zbobr = Arc::new(zbobr);
-    let path = format!("/{role}/{task_id}");
+    let path = if let Some(id) = task_id {
+        format!("/{role}/{id}")
+    } else {
+        format!("/{role}")
+    };
 
     let z = zbobr.clone();
     let router = match role.as_str() {
         "planner" => {
+            let id = task_id
+                .ok_or_else(|| crate::ZbobrError::Other("Planner needs task_id".to_string()))?;
             let svc = StreamableHttpService::new(
-                move || Ok(PlannerMcp::new((*z).clone(), task_id)),
+                move || Ok(PlannerMcp::new((*z).clone(), id)),
                 Arc::new(LocalSessionManager::default()),
                 Default::default(),
             );
             axum::Router::new().nest_service(&path, svc)
         }
         "worker" => {
+            let id = task_id
+                .ok_or_else(|| crate::ZbobrError::Other("Worker needs task_id".to_string()))?;
             let svc = StreamableHttpService::new(
-                move || Ok(WorkerMcp::new((*z).clone(), task_id)),
+                move || Ok(WorkerMcp::new((*z).clone(), id)),
+                Arc::new(LocalSessionManager::default()),
+                Default::default(),
+            );
+            axum::Router::new().nest_service(&path, svc)
+        }
+        "admin" => {
+            let svc = StreamableHttpService::new(
+                move || Ok(AdminMcp::new((*z).clone())),
                 Arc::new(LocalSessionManager::default()),
                 Default::default(),
             );

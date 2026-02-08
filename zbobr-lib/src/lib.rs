@@ -209,6 +209,10 @@ impl Zbobr {
     ) -> Result<(), ZbobrError> {
         self.backend.create_label(name, color, description).await
     }
+
+    pub fn debug_state(&self) -> String {
+        self.backend.debug_state()
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

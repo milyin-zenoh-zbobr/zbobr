@@ -198,12 +198,14 @@ impl Backend for StubBackend {
             _ => return Ok(vec![]),
         };
 
-        Ok(state
+        let found: Vec<_> = state
             .issues
             .values()
             .filter(|t| t.stage == target_stage)
             .cloned()
-            .collect())
+            .collect();
+
+        Ok(found)
     }
 
     async fn is_issue_closed(&self, issue_number: u64) -> Result<bool, ZbobrError> {
@@ -316,5 +318,10 @@ impl Backend for StubBackend {
         let mut state = self.state.write().unwrap();
         state.labels.insert(name.to_string());
         Ok(())
+    }
+
+    fn debug_state(&self) -> String {
+        let state = self.state.read().unwrap();
+        format!("{:?}", state.issues)
     }
 }

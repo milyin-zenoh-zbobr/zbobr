@@ -67,7 +67,7 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    // MCP Handshake
+    // MCP Handshake and capture session ID
     tracing::info!("Stub: performing MCP handshake...");
     let init_payload = serde_json::json!({
         "jsonrpc": "2.0",
@@ -79,17 +79,28 @@ async fn main() -> anyhow::Result<()> {
         },
         "id": 0
     });
-    let _ = client.post(mcp_url).json(&init_payload).send().await;
+    let resp = client.post(mcp_url).json(&init_payload).send().await?;
+    if !resp.status().is_success() {
+        anyhow::bail!("MCP Handshake failed: {}", resp.status());
+    }
+
+    let session_id = resp
+        .headers()
+        .get("mcp-session-id")
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("No mcp-session-id in MCP response"))?;
+    tracing::info!("Captured session ID: {:?}", session_id);
 
     let initialized_notification = serde_json::json!({
         "jsonrpc": "2.0",
         "method": "notifications/initialized"
     });
-    let _ = client
+    client
         .post(mcp_url)
+        .header("mcp-session-id", &session_id)
         .json(&initialized_notification)
         .send()
-        .await;
+        .await?;
 
     if role == "planner" {
         tracing::info!("Stub: analyzing requirements...");
@@ -111,11 +122,16 @@ async fn main() -> anyhow::Result<()> {
             "id": 1
         });
 
-        if let Err(e) = client.post(mcp_url).json(&payload).send().await {
-            tracing::error!("Failed to set plan via MCP: {e}");
-        } else {
-            tracing::info!("Stub: plan set via MCP.");
+        let resp = client
+            .post(mcp_url)
+            .header("mcp-session-id", &session_id)
+            .json(&payload)
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            anyhow::bail!("Failed to set plan: {}", resp.status());
         }
+        tracing::info!("Stub: plan set via MCP.");
 
         let msg_payload = serde_json::json!({
             "jsonrpc": "2.0",
@@ -128,7 +144,12 @@ async fn main() -> anyhow::Result<()> {
             },
             "id": 2
         });
-        let _ = client.post(mcp_url).json(&msg_payload).send().await;
+        client
+            .post(mcp_url)
+            .header("mcp-session-id", &session_id)
+            .json(&msg_payload)
+            .send()
+            .await?;
     } else {
         tracing::info!("Stub: working on implementation...");
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -146,7 +167,12 @@ async fn main() -> anyhow::Result<()> {
             },
             "id": 1
         });
-        let _ = client.post(mcp_url).json(&submit_payload).send().await;
+        client
+            .post(mcp_url)
+            .header("mcp-session-id", &session_id)
+            .json(&submit_payload)
+            .send()
+            .await?;
 
         tracing::info!("Stub: marking as done...");
         let done_payload = serde_json::json!({
@@ -158,11 +184,16 @@ async fn main() -> anyhow::Result<()> {
             },
             "id": 2
         });
-        if let Err(e) = client.post(mcp_url).json(&done_payload).send().await {
-            tracing::error!("Failed to mark done via MCP: {e}");
-        } else {
-            tracing::info!("Stub: task marked as done via MCP.");
+        let resp = client
+            .post(mcp_url)
+            .header("mcp-session-id", &session_id)
+            .json(&done_payload)
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            anyhow::bail!("Failed to mark done: {}", resp.status());
         }
+        tracing::info!("Stub: task marked as done via MCP.");
     }
 
     tracing::info!("Stub: Work complete.");

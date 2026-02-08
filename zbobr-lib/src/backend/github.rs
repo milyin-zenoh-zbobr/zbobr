@@ -649,6 +649,10 @@ impl Backend for GitHubBackend {
             .await?;
         Ok(())
     }
+
+    fn debug_state(&self) -> String {
+        "GitHubBackend".to_string()
+    }
 }
 
 /// Simple base64 encoder (standard alphabet, with padding).

@@ -97,4 +97,7 @@ pub trait Backend: Send + Sync {
         color: &str,
         description: &str,
     ) -> Result<(), ZbobrError>;
+
+    /// Return a debug string of the backend state.
+    fn debug_state(&self) -> String;
 }
