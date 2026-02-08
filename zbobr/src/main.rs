@@ -73,6 +73,10 @@ enum Command {
         /// Output directory for local setup files (default: ./<repo-name>)
         #[arg(long, short = 'o')]
         output_dir: Option<PathBuf>,
+
+        /// Force overwrite existing files and labels in the repository
+        #[arg(long, short = 'f')]
+        force: bool,
     },
     /// Poll for tasks and run planner/worker roles automatically
     Loop {
@@ -282,6 +286,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Setup {
             dry_run,
             output_dir,
+            force,
         } => {
             let files = build_setup_files(&zbobr)?;
             let default_dir = default_setup_dir(&zbobr);
@@ -295,7 +300,7 @@ async fn main() -> anyhow::Result<()> {
                 tracing::info!("Skipping GitHub push. Run without --dry-run to push.");
             } else {
                 // Stage 2: push to GitHub
-                zbobr.setup_push_remote(&dir, &files).await?;
+                zbobr.setup_push_remote(&dir, &files, force).await?;
             }
         }
         Command::Cleanup { dry_run } => {

@@ -320,7 +320,7 @@ impl Backend for StubBackend {
         Ok(())
     }
 
-    async fn setup_repository(&self, files: &[crate::SetupFile]) -> Result<(), ZbobrError> {
+    async fn setup_repository(&self, files: &[crate::SetupFile], _force: bool) -> Result<(), ZbobrError> {
         let mut state = self.state.write().unwrap();
 
         // Initialize stages

@@ -106,7 +106,8 @@ pub trait Backend: Send + Sync {
     ) -> Result<(), ZbobrError>;
 
     /// Initialize the domain repository with stages, labels, and files.
-    async fn setup_repository(&self, files: &[crate::SetupFile]) -> Result<(), ZbobrError>;
+    /// If force is true, overwrites existing files and labels.
+    async fn setup_repository(&self, files: &[crate::SetupFile], force: bool) -> Result<(), ZbobrError>;
 
     /// Return a debug string of the backend state.
     fn debug_state(&self) -> String;

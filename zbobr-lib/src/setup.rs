@@ -30,11 +30,13 @@ impl Zbobr {
 
     /// Stage 2: Push content to GitHub -- create repo, stages, labels, and files.
     /// Reads files from the local directory created by stage 1.
+    /// If force is true, overwrites existing files and labels.
     pub async fn setup_push_remote(
         &self,
         _local_dir: &Path,
         files: &[SetupFile],
+        force: bool,
     ) -> Result<(), ZbobrError> {
-        self.setup_repository(files).await
+        self.setup_repository(files, force).await
     }
 }

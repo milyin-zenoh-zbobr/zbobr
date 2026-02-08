@@ -154,8 +154,8 @@ impl Zbobr {
             .await
     }
 
-    pub async fn setup_repository(&self, files: &[SetupFile]) -> Result<(), ZbobrError> {
-        self.backend.setup_repository(files).await
+    pub async fn setup_repository(&self, files: &[SetupFile], force: bool) -> Result<(), ZbobrError> {
+        self.backend.setup_repository(files, force).await
     }
 
     pub async fn ensure_domain_repo_exists(&self) -> Result<(), ZbobrError> {

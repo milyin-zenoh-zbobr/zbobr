@@ -112,6 +112,78 @@ struct MilestoneResponse {
     title: String,
 }
 
+// Helper methods for GitHubBackend
+impl GitHubBackend {
+    /// Create or update a file in the domain repo via the Contents API.
+    /// If sha is provided, updates the existing file; otherwise creates a new one.
+    async fn create_or_update_repo_file(
+        &self,
+        path: &str,
+        content: &str,
+        commit_message: &str,
+        sha: Option<String>,
+    ) -> Result<(), ZbobrError> {
+        let (owner, repo) = self.parse_repo()?;
+        let encoded = base64_encode(content);
+
+        let mut body = serde_json::json!({
+            "message": commit_message,
+            "content": encoded,
+        });
+
+        if let Some(sha) = sha {
+            body["sha"] = serde_json::Value::String(sha);
+        }
+
+        self.octocrab
+            .put(
+                format!("/repos/{owner}/{repo}/contents/{path}"),
+                Some(&body),
+            )
+            .await
+            .map(|_: serde_json::Value| ())?;
+        Ok(())
+    }
+
+    /// Get file SHA if it exists.
+    async fn get_repo_file_sha(&self, path: &str) -> Result<Option<String>, ZbobrError> {
+        let (owner, repo) = self.parse_repo()?;
+        let result = self
+            .octocrab
+            .get::<ContentsResponse, _, _>(
+                format!("/repos/{owner}/{repo}/contents/{path}"),
+                None::<&()>,
+            )
+            .await;
+
+        match result {
+            Ok(response) => Ok(response.sha),
+            Err(_) => Ok(None),
+        }
+    }
+
+    /// Update a label's color and description.
+    async fn update_label(
+        &self,
+        name: &str,
+        color: &str,
+        description: &str,
+    ) -> Result<(), ZbobrError> {
+        let (owner, repo) = self.parse_repo()?;
+        self.octocrab
+            .patch(
+                format!("/repos/{owner}/{repo}/labels/{name}"),
+                Some(&serde_json::json!({
+                    "color": color,
+                    "description": description,
+                })),
+            )
+            .await
+            .map(|_: serde_json::Value| ())?;
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl Backend for GitHubBackend {
     async fn get_task(&self, id: u64) -> Result<Task, ZbobrError> {
@@ -427,19 +499,7 @@ impl Backend for GitHubBackend {
         content: &str,
         commit_message: &str,
     ) -> Result<(), ZbobrError> {
-        let (owner, repo) = self.parse_repo()?;
-        let encoded = base64_encode(content);
-        self.octocrab
-            .put(
-                format!("/repos/{owner}/{repo}/contents/{path}"),
-                Some(&serde_json::json!({
-                    "message": commit_message,
-                    "content": encoded,
-                })),
-            )
-            .await
-            .map(|_: serde_json::Value| ())?;
-        Ok(())
+        self.create_or_update_repo_file(path, content, commit_message, None).await
     }
 
     async fn ensure_domain_repo_exists(&self) -> Result<(), ZbobrError> {
@@ -738,8 +798,8 @@ impl Backend for GitHubBackend {
         Ok(())
     }
 
-    async fn setup_repository(&self, files: &[crate::SetupFile]) -> Result<(), ZbobrError> {
-        tracing::info!("Pushing setup to GitHub: {}", self.config.domain_repo);
+    async fn setup_repository(&self, files: &[crate::SetupFile], force: bool) -> Result<(), ZbobrError> {
+        tracing::info!("Pushing setup to GitHub: {} (force: {})", self.config.domain_repo, force);
 
         // Ensure the domain repo exists
         self.ensure_domain_repo_exists().await?;
@@ -791,6 +851,14 @@ impl Backend for GitHubBackend {
                 "Task implementation completed",
             )
             .await?;
+        } else if force {
+            tracing::info!("Updating label '{DONE_LABEL}' (force)");
+            self.update_label(
+                DONE_LABEL,
+                DONE_LABEL_COLOR,
+                "Task implementation completed",
+            )
+            .await?;
         } else {
             tracing::info!("Label '{DONE_LABEL}' already exists");
         }
@@ -798,9 +866,14 @@ impl Backend for GitHubBackend {
         // Create tool labels for all available tools
         for tool in Tool::all() {
             let tool_label = format!("tool:{}", tool);
+            let tool_desc = format!("Use {} tool", tool);
             if !existing_labels.contains(&tool_label) {
                 tracing::info!("Creating label '{tool_label}'");
-                self.create_label(&tool_label, TOOL_LABEL_COLOR, &format!("Use {} tool", tool))
+                self.create_label(&tool_label, TOOL_LABEL_COLOR, &tool_desc)
+                    .await?;
+            } else if force {
+                tracing::info!("Updating label '{tool_label}' (force)");
+                self.update_label(&tool_label, TOOL_LABEL_COLOR, &tool_desc)
                     .await?;
             } else {
                 tracing::info!("Label '{tool_label}' already exists");
@@ -810,12 +883,21 @@ impl Backend for GitHubBackend {
         // Create model labels for all available models
         for model in Model::all() {
             let model_label = format!("model:{}", model);
+            let model_desc = format!("Use {} model", model);
             if !existing_labels.contains(&model_label) {
                 tracing::info!("Creating label '{model_label}'");
                 self.create_label(
                     &model_label,
                     MODEL_LABEL_COLOR,
-                    &format!("Use {} model", model),
+                    &model_desc,
+                )
+                .await?;
+            } else if force {
+                tracing::info!("Updating label '{model_label}' (force)");
+                self.update_label(
+                    &model_label,
+                    MODEL_LABEL_COLOR,
+                    &model_desc,
                 )
                 .await?;
             } else {
@@ -825,15 +907,27 @@ impl Backend for GitHubBackend {
 
         // Push files from provided list to GitHub
         for file in files {
-            let exists = self.repo_file_exists(&file.path).await?;
-            if exists {
-                tracing::info!("File '{}' already exists in repo, skipping", file.path);
+            let sha = self.get_repo_file_sha(&file.path).await?;
+            if let Some(sha) = sha {
+                if force {
+                    tracing::info!("Updating '{}' in repo (force)", file.path);
+                    self.create_or_update_repo_file(
+                        &file.path,
+                        &file.content,
+                        &format!("Update {} from zbobr setup", file.path),
+                        Some(sha),
+                    )
+                    .await?;
+                } else {
+                    tracing::info!("File '{}' already exists in repo, skipping", file.path);
+                }
             } else {
-                tracing::info!("Pushing '{}' to repo", file.path);
-                self.create_repo_file(
+                tracing::info!("Creating '{}' in repo", file.path);
+                self.create_or_update_repo_file(
                     &file.path,
                     &file.content,
                     &format!("Initialize {} from zbobr setup", file.path),
+                    None,
                 )
                 .await?;
             }
