@@ -236,6 +236,36 @@ The setup script automatically detects available models from the Copilot CLI. Co
 
 Use labels like `copilot:claude-opus-4.6` on issues to select a specific model.
 
+## GitHub Authentication
+
+Zbobr uses the GitHub API via a personal access token. It reads the token from the `GH_TOKEN` environment variable (or `GITHUB_TOKEN` as fallback).
+
+**If you already have `gh` CLI authenticated** (i.e., `gh auth status` shows you're logged in), you can reuse that session — no separate token or login is needed:
+
+```bash
+# Export your existing gh session token for zbobr to use
+export GH_TOKEN=$(gh auth token)
+```
+
+Add this to your shell profile (e.g., `~/.bashrc`, `~/.zshrc`) to make it persistent:
+
+```bash
+# In ~/.zshrc or ~/.bashrc
+export GH_TOKEN=$(gh auth token)
+```
+
+**Alternative: use a personal access token directly.** If you prefer not to depend on `gh`, you can create a [GitHub Personal Access Token](https://github.com/settings/tokens) with `repo` scope and set it manually:
+
+```bash
+export GH_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+```
+
+**Token resolution order:**
+1. `GH_TOKEN` environment variable (preferred — matches `gh` CLI convention)
+2. `GITHUB_TOKEN` environment variable (fallback — matches GitHub Actions convention)
+
+**Required token permissions:** The token needs `repo` scope (full access to repositories) to create forks, manage issues/labels/milestones, and push branches.
+
 ## Important Notes
 
 - **All issue/PR management** happens in the domain project repository
