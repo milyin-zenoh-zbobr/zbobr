@@ -46,15 +46,14 @@ impl ToolExecutor for CopilotExecutor {
         let mcp_config = serde_json::json!({
             "mcpServers": {
                 "zbobr": {
-                    "url": mcp_url
+                    "transport": {
+                        "type": "sse",
+                        "url": mcp_url
+                    }
                 }
             }
         });
         let mcp_config_str = serde_json::to_string(&mcp_config)?;
-
-        // Write MCP config to temp file
-        let config_path = task_dir.join(".mcp-config.json");
-        tokio::fs::write(&config_path, &mcp_config_str).await?;
 
         let model_name = model
             .model_name_for_tool(Tool::Copilot)
@@ -68,7 +67,7 @@ impl ToolExecutor for CopilotExecutor {
                 "--model",
                 model_name,
                 "--additional-mcp-config",
-                config_path.to_str().unwrap(),
+                &mcp_config_str,
                 "-i",
                 prompt,
             ])
@@ -103,15 +102,14 @@ impl ToolExecutor for ClaudeExecutor {
         let mcp_config = serde_json::json!({
             "mcpServers": {
                 "zbobr": {
-                    "url": mcp_url
+                    "transport": {
+                        "type": "sse",
+                        "url": mcp_url
+                    }
                 }
             }
         });
         let mcp_config_str = serde_json::to_string(&mcp_config)?;
-
-        // Write MCP config to temp file
-        let config_path = task_dir.join(".mcp-config.json");
-        tokio::fs::write(&config_path, &mcp_config_str).await?;
 
         let model_name = model
             .model_name_for_tool(Tool::Claude)
@@ -127,7 +125,7 @@ impl ToolExecutor for ClaudeExecutor {
                 "--model",
                 model_name,
                 "--additional-mcp-config",
-                config_path.to_str().unwrap(),
+                &mcp_config_str,
                 "-i",
                 prompt,
             ])
