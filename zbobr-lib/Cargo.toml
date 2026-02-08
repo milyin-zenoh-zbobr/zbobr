@@ -15,6 +15,7 @@ rmcp = { workspace = true }
 axum = { workspace = true }
 schemars = { workspace = true }
 anyhow = { workspace = true }
+hostname = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -307,21 +307,19 @@ impl PlannerSession {
         Ok(task.description)
     }
 
-    /// Update the task description.
-    pub async fn set_description(&self, description: &str) -> Result<(), ZbobrError> {
-        self.zbobr
-            .update_task_description(self.task_id, description)
-            .await
-    }
-
     /// Get all discussion messages on the task.
     pub async fn get_discussion(&self) -> Result<Vec<String>, ZbobrError> {
         self.zbobr.get_task_comments(self.task_id).await
     }
 
-    /// Post a message to the task discussion.
-    pub async fn post_message(&self, msg: &str) -> Result<(), ZbobrError> {
-        self.zbobr.post_task_comment(self.task_id, msg).await
+    /// Post a message to the task discussion with role and hostname metadata.
+    pub async fn post_message(
+        &self,
+        msg: &str,
+        role: &str,
+        hostname: &str,
+    ) -> Result<(), ZbobrError> {
+        self.zbobr.post_task_comment(self.task_id, msg, role, hostname).await
     }
 
     /// Clone target repo locally for investigation (read-only).
@@ -357,9 +355,14 @@ impl WorkerSession {
         self.zbobr.get_task_comments(self.task_id).await
     }
 
-    /// Post a message to the task discussion.
-    pub async fn post_message(&self, msg: &str) -> Result<(), ZbobrError> {
-        self.zbobr.post_task_comment(self.task_id, msg).await
+    /// Post a message to the task discussion with role and hostname metadata.
+    pub async fn post_message(
+        &self,
+        msg: &str,
+        role: &str,
+        hostname: &str,
+    ) -> Result<(), ZbobrError> {
+        self.zbobr.post_task_comment(self.task_id, msg, role, hostname).await
     }
 
     /// Fork target repo, clone locally, create branch, return local path.

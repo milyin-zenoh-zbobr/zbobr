@@ -121,10 +121,16 @@ impl Backend for StubBackend {
         Ok(state.comments.get(&id).cloned().unwrap_or_default())
     }
 
-    async fn post_task_comment(&self, id: u64, body: &str) -> Result<(), ZbobrError> {
+    async fn post_task_comment(
+        &self,
+        id: u64,
+        body: &str,
+        role: &str,
+        hostname: &str,
+    ) -> Result<(), ZbobrError> {
         let mut state = self.state.write().unwrap();
         let comments = state.comments.entry(id).or_default();
-        comments.push(format!("stub-user: {body}"));
+        comments.push(format!("[{role}@{hostname}] {body}"));
         Ok(())
     }
 

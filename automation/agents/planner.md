@@ -13,10 +13,9 @@ These tools are provided via the zbobr MCP server. No arguments refer to task ID
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
-| `get_description` | — | Get the current task description/plan |
-| `set_description` | `description: string` | Update the task description/plan |
+| `get_description` | — | Get the current task description (read-only) |
 | `get_discussion` | — | Get all discussion messages on this task |
-| `post_message` | `message: string` | Post a message to the task discussion |
+| `post_message` | `message: string` | Post a message to the task discussion (includes role and hostname) |
 | `request_repo` | `repo: string` | Clone a repo for read-only investigation (`owner/repo`). Returns local path. |
 
 ---
@@ -27,8 +26,8 @@ These tools are provided via the zbobr MCP server. No arguments refer to task ID
 2. Call `get_discussion` to read any existing comments
 3. If the task mentions a target repository, call `request_repo` with `owner/repo` to clone it locally for investigation
 4. Research the codebase to understand the implementation scope
-5. Write an implementation plan and call `set_description` to save it
-6. If you have questions, call `post_message` to ask them
+5. Write an implementation plan and call `post_message` with your plan
+6. If you have questions or updates, call `post_message` to communicate them
 7. When the plan is complete, your session ends and the orchestrator marks the task for human review
 
 ---

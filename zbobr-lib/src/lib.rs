@@ -99,8 +99,14 @@ impl Zbobr {
         self.backend.get_task_comments(id).await
     }
 
-    pub async fn post_task_comment(&self, id: u64, body: &str) -> Result<(), ZbobrError> {
-        self.backend.post_task_comment(id, body).await
+    pub async fn post_task_comment(
+        &self,
+        id: u64,
+        body: &str,
+        role: &str,
+        hostname: &str,
+    ) -> Result<(), ZbobrError> {
+        self.backend.post_task_comment(id, body, role, hostname).await
     }
 
     pub async fn set_task_stage_by_name(

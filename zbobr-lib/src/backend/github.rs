@@ -332,11 +332,18 @@ impl Backend for GitHubBackend {
             .collect())
     }
 
-    async fn post_task_comment(&self, id: u64, body: &str) -> Result<(), ZbobrError> {
+    async fn post_task_comment(
+        &self,
+        id: u64,
+        body: &str,
+        role: &str,
+        hostname: &str,
+    ) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
+        let formatted_body = format!("**[{role}@{hostname}]**\n\n{body}");
         self.octocrab
             .issues(owner, repo)
-            .create_comment(id, body)
+            .create_comment(id, &formatted_body)
             .await?;
         Ok(())
     }

@@ -29,8 +29,14 @@ pub trait Backend: Send + Sync {
     /// Get all comments on a task as formatted discussion.
     async fn get_task_comments(&self, id: u64) -> Result<Vec<String>, ZbobrError>;
 
-    /// Post a comment on a task.
-    async fn post_task_comment(&self, id: u64, body: &str) -> Result<(), ZbobrError>;
+    /// Post a comment on a task with role and hostname metadata.
+    async fn post_task_comment(
+        &self,
+        id: u64,
+        body: &str,
+        role: &str,
+        hostname: &str,
+    ) -> Result<(), ZbobrError>;
 
     /// Set the stage on a task by stage name.
     async fn set_task_stage(&self, id: u64, stage_name: &str) -> Result<(), ZbobrError>;

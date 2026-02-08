@@ -2,7 +2,7 @@ use clap::Parser;
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::time::Duration;
-use zbobr_lib::mcp::{planner_tools, worker_tools, DescriptionParam, MessageParam, RepoParam};
+use zbobr_lib::mcp::{planner_tools, worker_tools, MessageParam, RepoParam};
 use zbobr_lib::task::Role;
 
 #[derive(Parser, Debug)]
@@ -175,28 +175,19 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("Stub: analyzing requirements...");
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        tracing::info!("Stub: creating description...");
-        let description = format!(
+        tracing::info!("Stub: creating plan...");
+        let plan = format!(
             "Implementation plan for task #{task_id}\n\n1. Add new feature\n2. Fix existing bug"
         );
 
         mcp.call_tool(
-            planner_tools::SET_DESCRIPTION,
-            DescriptionParam {
-                description: description,
-            },
-        )
-        .await?;
-        tracing::info!("Stub: description set via MCP.");
-
-        mcp.call_tool(
             planner_tools::POST_MESSAGE,
             MessageParam {
-                message: "Planner: requirements analyzed and description created.".to_string(),
+                message: format!("## Implementation Plan\n\n{plan}\n\n---\n\nRequirements analyzed and plan created."),
             },
         )
         .await?;
-        tracing::info!("Stub: status message posted.");
+        tracing::info!("Stub: plan posted as message.");
     } else {
         tracing::info!("Stub: working on implementation...");
         tokio::time::sleep(Duration::from_secs(1)).await;

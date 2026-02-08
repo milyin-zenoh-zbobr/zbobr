@@ -144,6 +144,16 @@ impl AdminClient {
             .unwrap_or("")
             .to_string())
     }
+
+    async fn get_discussion(&self, id: u64) -> anyhow::Result<String> {
+        let res = self
+            .call_tool(admin_tools::GET_DISCUSSION, TaskIdParam { id })
+            .await?;
+        Ok(res["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or("")
+            .to_string())
+    }
 }
 
 #[tokio::test]
@@ -210,9 +220,10 @@ async fn test_blackbox_process_flow() -> anyhow::Result<()> {
     println!("Waiting for transition to PLANNING...");
     let mut plan_ready = false;
     for _ in 0..30 {
-        let text = admin.get_task_info(task_id).await?;
-        if text.contains("Stage: Pending") && text.contains("Implementation plan") {
-            println!("Planner finished, plan is available.");
+        let info = admin.get_task_info(task_id).await?;
+        let discussion = admin.get_discussion(task_id).await?;
+        if info.contains("Stage: Pending") && discussion.contains("Implementation plan") {
+            println!("Planner finished, plan is available in discussion.");
             plan_ready = true;
             break;
         }

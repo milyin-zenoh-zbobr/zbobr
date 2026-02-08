@@ -13,9 +13,9 @@ These tools are provided via the zbobr MCP server. No arguments refer to task ID
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
-| `get_description` | — | Get the implementation plan for this task |
+| `get_description` | — | Get the implementation plan for this task (read-only) |
 | `get_discussion` | — | Get all discussion messages on this task |
-| `post_message` | `message: string` | Post a message to the task discussion |
+| `post_message` | `message: string` | Post a message to the task discussion (includes role and hostname) |
 | `request_repo` | `repo: string` | Fork & clone a repo (`owner/repo`). Returns local path with feature branch ready. |
 | `submit_work` | `repo: string` | Push changes and create PR for target `owner/repo`. Returns PR URL. |
 | `mark_done` | — | Mark this task as done |

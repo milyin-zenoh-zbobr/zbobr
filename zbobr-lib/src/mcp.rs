@@ -9,6 +9,14 @@ use rmcp::transport::streamable_http_server::session::local::LocalSessionManager
 use rmcp::transport::streamable_http_server::StreamableHttpService;
 use rmcp::{tool, tool_handler, tool_router, ServerHandler};
 
+/// Get the current hostname, or "unknown" if it cannot be determined.
+fn get_hostname() -> String {
+    hostname::get()
+        .ok()
+        .and_then(|h| h.into_string().ok())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
 // -- Parameter types --
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
@@ -87,7 +95,6 @@ macro_rules! mcp_tools {
 mcp_tools! {
     planner_tools,
     GET_DESCRIPTION = "get_description",
-    SET_DESCRIPTION = "set_description",
     GET_DISCUSSION = "get_discussion",
     POST_MESSAGE = "post_message",
     REQUEST_REPO = "request_repo",
@@ -135,20 +142,11 @@ impl PlannerMcp {
         }
     }
 
-    #[tool(description = "Get the current description/plan for this task")]
+    #[tool(description = "Get the current description/plan for this task (read-only)")]
     async fn get_description(&self) -> String {
         let session = self.zbobr.planner_session(self.task_id);
         match session.get_description().await {
             Ok(desc) => desc,
-            Err(e) => format!("Error: {e}"),
-        }
-    }
-
-    #[tool(description = "Update the description/plan for this task")]
-    async fn set_description(&self, Parameters(params): Parameters<DescriptionParam>) -> String {
-        let session = self.zbobr.planner_session(self.task_id);
-        match session.set_description(&params.description).await {
-            Ok(()) => "Description updated successfully".to_string(),
             Err(e) => format!("Error: {e}"),
         }
     }
@@ -171,7 +169,8 @@ impl PlannerMcp {
     #[tool(description = "Post a message to the task discussion")]
     async fn post_message(&self, Parameters(params): Parameters<MessageParam>) -> String {
         let session = self.zbobr.planner_session(self.task_id);
-        match session.post_message(&params.message).await {
+        let hostname = get_hostname();
+        match session.post_message(&params.message, "planner", &hostname).await {
             Ok(()) => "Message posted".to_string(),
             Err(e) => format!("Error: {e}"),
         }
@@ -248,7 +247,8 @@ impl WorkerMcp {
     #[tool(description = "Post a message to the task discussion")]
     async fn post_message(&self, Parameters(params): Parameters<MessageParam>) -> String {
         let session = self.zbobr.worker_session(self.task_id);
-        match session.post_message(&params.message).await {
+        let hostname = get_hostname();
+        match session.post_message(&params.message, "worker", &hostname).await {
             Ok(()) => "Message posted".to_string(),
             Err(e) => format!("Error: {e}"),
         }
@@ -528,6 +528,8 @@ mod tests {
             github_token: "test-token".to_string(),
             backend: crate::config::BackendType::Stub,
             cli_tool: Tool::Stub,
+            planner_prompts: vec![],
+            worker_prompts: vec![],
         };
         let zbobr = Zbobr::new(config).unwrap();
         let admin = AdminMcp::new(zbobr);
@@ -555,6 +557,8 @@ mod tests {
             github_token: "test-token".to_string(),
             backend: crate::config::BackendType::Stub,
             cli_tool: Tool::Stub,
+            planner_prompts: vec![],
+            worker_prompts: vec![],
         };
         let zbobr = Zbobr::new(config).unwrap();
         let planner = PlannerMcp::new(zbobr, 123);
@@ -582,6 +586,8 @@ mod tests {
             github_token: "test-token".to_string(),
             backend: crate::config::BackendType::Stub,
             cli_tool: Tool::Stub,
+            planner_prompts: vec![],
+            worker_prompts: vec![],
         };
         let zbobr = Zbobr::new(config).unwrap();
         let worker = WorkerMcp::new(zbobr, 123);
