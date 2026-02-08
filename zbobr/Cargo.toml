@@ -16,6 +16,7 @@ serde_json = { workspace = true }
 schemars = { workspace = true }
 anyhow = { workspace = true }
 reqwest = { workspace = true }
+rustls = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
