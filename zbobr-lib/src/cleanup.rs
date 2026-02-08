@@ -1,13 +1,16 @@
 use crate::{Zbobr, ZbobrError};
 
 impl Zbobr {
-    /// Clean up workspace directories for closed issues.
+    /// Clean up workspace directories for closed tasks.
     /// If dry_run is true, only logs what would happen.
     pub async fn cleanup_closed_tasks(&self, dry_run: bool) -> Result<(), ZbobrError> {
         let workspace = &self.config.workspace;
 
         if !workspace.exists() {
-            tracing::info!("Workspace directory does not exist: {}", workspace.display());
+            tracing::info!(
+                "Workspace directory does not exist: {}",
+                workspace.display()
+            );
             return Ok(());
         }
 
@@ -19,39 +22,36 @@ impl Zbobr {
         let mut entries = tokio::fs::read_dir(workspace).await?;
         while let Some(entry) = entries.next_entry().await? {
             let name = entry.file_name().to_string_lossy().to_string();
-            if !name.starts_with("issue#") {
+            if !name.starts_with("task#") {
                 continue;
             }
 
-            let issue_number: u64 = match name.strip_prefix("issue#").and_then(|s| s.parse().ok())
-            {
+            let task_id: u64 = match name.strip_prefix("task#").and_then(|s| s.parse().ok()) {
                 Some(n) => n,
                 None => continue,
             };
 
-            match self.is_issue_closed(issue_number).await {
+            match self.is_task_closed(task_id).await {
                 Ok(true) => {
                     let path = entry.path();
                     if dry_run {
-                        tracing::info!("DRY RUN: Would remove {} (issue #{issue_number} is closed)", path.display());
-                    } else {
                         tracing::info!(
-                            "Removing {} (issue #{issue_number} is closed)",
+                            "DRY RUN: Would remove {} (task #{task_id} is closed)",
                             path.display()
                         );
+                    } else {
+                        tracing::info!("Removing {} (task #{task_id} is closed)", path.display());
                         tokio::fs::remove_dir_all(&path).await?;
                     }
                 }
                 Ok(false) => {
                     tracing::info!(
-                        "Issue #{issue_number} is open - keeping {}",
+                        "Task #{task_id} is open - keeping {}",
                         entry.path().display()
                     );
                 }
                 Err(e) => {
-                    tracing::warn!(
-                        "Failed to check issue #{issue_number}: {e} - skipping"
-                    );
+                    tracing::warn!("Failed to check task #{task_id}: {e} - skipping");
                 }
             }
         }

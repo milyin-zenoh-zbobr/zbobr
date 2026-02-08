@@ -1,5 +1,5 @@
 use super::Backend;
-use crate::{Stage, Task, ZbobrConfig, ZbobrError};
+use crate::{Model, Stage, Task, Tool, ZbobrConfig, ZbobrError};
 use async_trait::async_trait;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -18,12 +18,9 @@ impl GitHubBackend {
         self.config.parse_repo()
     }
 
-    async fn find_milestone_number(&self, title: &str) -> Result<Option<u64>, ZbobrError> {
-        let milestones = self.list_milestones().await?;
-        Ok(milestones
-            .into_iter()
-            .find(|(_, t)| t == title)
-            .map(|(n, _)| n))
+    async fn find_stage_number(&self, title: &str) -> Result<Option<u64>, ZbobrError> {
+        let stages = self.list_stages().await?;
+        Ok(stages.into_iter().find(|(_, t)| t == title).map(|(n, _)| n))
     }
 
     async fn ensure_fork(&self, target_repo: &str) -> Result<String, ZbobrError> {
@@ -117,59 +114,125 @@ struct MilestoneResponse {
 
 #[async_trait]
 impl Backend for GitHubBackend {
-    async fn get_issue(&self, issue_number: u64) -> Result<Task, ZbobrError> {
+    async fn get_task(&self, id: u64) -> Result<Task, ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         let issue: IssueResponse = self
             .octocrab
-            .get(
-                format!("/repos/{owner}/{repo}/issues/{issue_number}"),
-                None::<&()>,
-            )
+            .get(format!("/repos/{owner}/{repo}/issues/{id}"), None::<&()>)
             .await?;
 
         let stage = match issue.milestone.as_ref().map(|m| m.title.as_str()) {
-            Some("PLANNING") => Stage::Planning,
-            Some("PENDING") => Stage::Pending,
-            Some("PLANNING_READY") => Stage::PlanningReady,
-            Some("WORKING_READY") => Stage::WorkingReady,
-            Some("WORKING") => Stage::Working,
-            _ => Stage::Planning, // default
+            Some(t) => Stage::from_milestone_name(t).unwrap_or(Stage::Planning),
+            _ => Stage::Planning,
         };
 
-        let model = issue
-            .labels
-            .iter()
-            .find_map(|l| l.name.strip_prefix("copilot:").map(String::from));
+        let body = issue.body.unwrap_or_default();
+        let tool = issue.labels.iter().find_map(|l| {
+            if let Some(name) = l.name.strip_prefix("tool:") {
+                match name {
+                    "copilot" => Some(Tool::Copilot),
+                    "claude" => Some(Tool::Claude),
+                    "stub" => Some(Tool::Stub),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        });
+
+        let model = issue.labels.iter().find_map(|l| {
+            if let Some(name) = l.name.strip_prefix("model:") {
+                match name {
+                    "gpt-4o" => Some(Model::Gpt4o),
+                    "gpt-5-mini" => Some(Model::Gpt5Mini),
+                    "claude-3-5-sonnet" => Some(Model::Claude35Sonnet),
+                    "claude-3-opus" => Some(Model::Claude3Opus),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        });
+
+        let parent_task_id =
+            extract_hidden_field(&body, "parent_task_id").and_then(|s| s.parse().ok());
+        let destination_repo = extract_hidden_field(&body, "destination_repo");
+        let destination_branch = extract_hidden_field(&body, "destination_branch");
 
         let done = issue.labels.iter().any(|l| l.name == "done");
 
+        // Discussion is not fetched by default for performance in listings,
+        // but for a single get_task we could.
+        // However, the trait has get_task_comments for that.
+        // I'll populate it with empty for now.
         Ok(Task {
             id: issue.number,
             title: issue.title,
-            description: issue.body.unwrap_or_default(),
+            description: body,
+            discussion: vec![],
             stage,
+            tool,
             model,
+            parent_task_id,
+            destination_repo,
+            destination_branch,
             done,
         })
     }
 
-    async fn create_issue(&self, title: &str, body: &str) -> Result<u64, ZbobrError> {
+    async fn create_task(
+        &self,
+        title: &str,
+        description: &str,
+        stage: Stage,
+        tool: Option<Tool>,
+        model: Option<Model>,
+        parent_task_id: Option<u64>,
+        destination_repo: Option<String>,
+        destination_branch: Option<String>,
+    ) -> Result<u64, ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
-        let issue = self
-            .octocrab
-            .issues(owner, repo)
-            .create(title)
-            .body(body)
-            .send()
-            .await?;
+        let mut body = description.to_string();
+
+        append_hidden_fields(
+            &mut body,
+            &[
+                ("parent_task_id", parent_task_id.map(|id| id.to_string())),
+                ("destination_repo", destination_repo),
+                ("destination_branch", destination_branch),
+            ],
+        );
+
+        let stage_number = self.find_stage_number(stage.milestone_name()).await?;
+
+        let mut labels = vec![];
+        if let Some(t) = tool {
+            labels.push(format!("tool:{}", t));
+        }
+        if let Some(m) = model {
+            labels.push(format!("model:{}", m));
+        }
+
+        let issues = self.octocrab.issues(owner, repo);
+        let mut builder = issues.create(title).body(body);
+
+        if let Some(n) = stage_number {
+            builder = builder.milestone(n);
+        }
+
+        if !labels.is_empty() {
+            builder = builder.labels(labels);
+        }
+
+        let issue = builder.send().await?;
         Ok(issue.number)
     }
 
-    async fn close_issue(&self, issue_number: u64) -> Result<(), ZbobrError> {
+    async fn close_task(&self, id: u64) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         self.octocrab
             .patch(
-                format!("/repos/{owner}/{repo}/issues/{issue_number}"),
+                format!("/repos/{owner}/{repo}/issues/{id}"),
                 Some(&serde_json::json!({ "state": "closed" })),
             )
             .await
@@ -177,12 +240,12 @@ impl Backend for GitHubBackend {
         Ok(())
     }
 
-    async fn get_issue_comments(&self, issue_number: u64) -> Result<Vec<String>, ZbobrError> {
+    async fn get_task_comments(&self, id: u64) -> Result<Vec<String>, ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         let comments: Vec<CommentResponse> = self
             .octocrab
             .get(
-                format!("/repos/{owner}/{repo}/issues/{issue_number}/comments"),
+                format!("/repos/{owner}/{repo}/issues/{id}/comments"),
                 None::<&()>,
             )
             .await?;
@@ -197,126 +260,151 @@ impl Backend for GitHubBackend {
             .collect())
     }
 
-    async fn post_issue_comment(&self, issue_number: u64, body: &str) -> Result<(), ZbobrError> {
+    async fn post_task_comment(&self, id: u64, body: &str) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         self.octocrab
             .issues(owner, repo)
-            .create_comment(issue_number, body)
+            .create_comment(id, body)
             .await?;
         Ok(())
     }
 
-    async fn set_issue_milestone(
-        &self,
-        issue_number: u64,
-        milestone_title: &str,
-    ) -> Result<(), ZbobrError> {
-        let milestone_number = self
-            .find_milestone_number(milestone_title)
+    async fn set_task_stage(&self, id: u64, stage_name: &str) -> Result<(), ZbobrError> {
+        let stage_number = self
+            .find_stage_number(stage_name)
             .await?
-            .ok_or_else(|| {
-                ZbobrError::GitHub(format!("Milestone '{milestone_title}' not found"))
-            })?;
+            .ok_or_else(|| ZbobrError::GitHub(format!("Milestone '{stage_name}' not found")))?;
 
         let (owner, repo) = self.parse_repo()?;
         self.octocrab
             .patch(
-                format!("/repos/{owner}/{repo}/issues/{issue_number}"),
-                Some(&serde_json::json!({ "milestone": milestone_number })),
+                format!("/repos/{owner}/{repo}/issues/{id}"),
+                Some(&serde_json::json!({ "milestone": stage_number })),
             )
             .await
             .map(|_: serde_json::Value| ())?;
         Ok(())
     }
 
-    async fn add_issue_label(&self, issue_number: u64, label: &str) -> Result<(), ZbobrError> {
+    async fn add_task_label(&self, id: u64, label: &str) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         self.octocrab
             .issues(owner, repo)
-            .add_labels(issue_number, &[label.to_string()])
+            .add_labels(id, &[label.to_string()])
             .await?;
         Ok(())
     }
 
-    async fn remove_issue_label(&self, issue_number: u64, label: &str) -> Result<(), ZbobrError> {
+    async fn remove_task_label(&self, id: u64, label: &str) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
-        // Removing a label that doesn't exist returns 404, which we ignore.
         let _ = self
             .octocrab
             .issues(owner, repo)
-            .remove_label(issue_number, label)
+            .remove_label(id, label)
             .await;
         Ok(())
     }
 
-    async fn update_issue_body(&self, issue_number: u64, body: &str) -> Result<(), ZbobrError> {
+    async fn update_task_description(&self, id: u64, description: &str) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         self.octocrab
             .patch(
-                format!("/repos/{owner}/{repo}/issues/{issue_number}"),
-                Some(&serde_json::json!({ "body": body })),
+                format!("/repos/{owner}/{repo}/issues/{id}"),
+                Some(&serde_json::json!({ "body": description })),
             )
             .await
             .map(|_: serde_json::Value| ())?;
         Ok(())
     }
 
-    async fn list_issues_by_milestone(
+    async fn list_tasks_by_stage(
         &self,
-        milestone_title: &str,
+        stage_name: &str,
+        tool: Option<Tool>,
     ) -> Result<Vec<Task>, ZbobrError> {
-        let milestone_number = match self.find_milestone_number(milestone_title).await? {
+        let stage_number = match self.find_stage_number(stage_name).await? {
             Some(n) => n,
             None => return Ok(vec![]),
         };
 
         let (owner, repo) = self.parse_repo()?;
+        let mut params = vec![
+            ("milestone", stage_number.to_string()),
+            ("state", "open".to_string()),
+        ];
+
+        if let Some(t) = tool {
+            params.push(("labels", format!("tool:{}", t)));
+        }
+
         let issues: Vec<IssueResponse> = self
             .octocrab
-            .get(
-                format!("/repos/{owner}/{repo}/issues"),
-                Some(&[
-                    ("milestone", milestone_number.to_string().as_str()),
-                    ("state", "open"),
-                ]),
-            )
+            .get(format!("/repos/{owner}/{repo}/issues"), Some(&params))
             .await?;
 
         let mut tasks = Vec::new();
         for issue in issues {
             let stage = match issue.milestone.as_ref().map(|m| m.title.as_str()) {
-                Some("PLANNING") => Stage::Planning,
-                Some("PENDING") => Stage::Pending,
-                Some("PLANNING_READY") => Stage::PlanningReady,
-                Some("WORKING_READY") => Stage::WorkingReady,
-                Some("WORKING") => Stage::Working,
+                Some(t) => Stage::from_milestone_name(t).unwrap_or(Stage::Planning),
                 _ => Stage::Planning,
             };
-            let model = issue
-                .labels
-                .iter()
-                .find_map(|l| l.name.strip_prefix("copilot:").map(String::from));
+
+            let body = issue.body.unwrap_or_default();
+            let tool = issue.labels.iter().find_map(|l| {
+                if let Some(name) = l.name.strip_prefix("tool:") {
+                    match name {
+                        "copilot" => Some(Tool::Copilot),
+                        "claude" => Some(Tool::Claude),
+                        "stub" => Some(Tool::Stub),
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            });
+
+            let model = issue.labels.iter().find_map(|l| {
+                if let Some(name) = l.name.strip_prefix("model:") {
+                    match name {
+                        "gpt-4o" => Some(Model::Gpt4o),
+                        "gpt-5-mini" => Some(Model::Gpt5Mini),
+                        "claude-3-5-sonnet" => Some(Model::Claude35Sonnet),
+                        "claude-3-opus" => Some(Model::Claude3Opus),
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            });
+
+            let parent_task_id =
+                extract_hidden_field(&body, "parent_task_id").and_then(|s| s.parse().ok());
+            let destination_repo = extract_hidden_field(&body, "destination_repo");
+            let destination_branch = extract_hidden_field(&body, "destination_branch");
             let done = issue.labels.iter().any(|l| l.name == "done");
+
             tasks.push(Task {
                 id: issue.number,
                 title: issue.title,
-                description: issue.body.unwrap_or_default(),
+                description: body,
+                discussion: vec![],
                 stage,
+                tool,
                 model,
+                parent_task_id,
+                destination_repo,
+                destination_branch,
                 done,
             });
         }
         Ok(tasks)
     }
 
-    async fn is_issue_closed(&self, issue_number: u64) -> Result<bool, ZbobrError> {
+    async fn is_task_closed(&self, id: u64) -> Result<bool, ZbobrError> {
         let (owner, repo) = self.config.parse_repo()?;
         let issue: IssueResponse = self
             .octocrab
-            .get(
-                format!("/repos/{owner}/{repo}/issues/{issue_number}"),
-                None::<&()>,
-            )
+            .get(format!("/repos/{owner}/{repo}/issues/{id}"), None::<&()>)
             .await?;
         Ok(issue.state == "closed")
     }
@@ -414,10 +502,10 @@ impl Backend for GitHubBackend {
             .nth(1)
             .ok_or_else(|| ZbobrError::Config(format!("Invalid repo format: {target_repo}")))?;
 
-        let issue_dir = self.config.workspace.join(format!("issue#{task_id}"));
-        let work_dir = issue_dir.join(repo_name);
+        let task_dir = self.config.workspace.join(format!("task#{task_id}"));
+        let work_dir = task_dir.join(repo_name);
 
-        tokio::fs::create_dir_all(&issue_dir).await?;
+        tokio::fs::create_dir_all(&task_dir).await?;
 
         // Clone if not already present
         if !work_dir.exists() {
@@ -494,10 +582,10 @@ impl Backend for GitHubBackend {
             .nth(1)
             .ok_or_else(|| ZbobrError::Config(format!("Invalid repo format: {target_repo}")))?;
 
-        let issue_dir = self.config.workspace.join(format!("issue#{task_id}"));
-        let work_dir = issue_dir.join(repo_name);
+        let task_dir = self.config.workspace.join(format!("task#{task_id}"));
+        let work_dir = task_dir.join(repo_name);
 
-        tokio::fs::create_dir_all(&issue_dir).await?;
+        tokio::fs::create_dir_all(&task_dir).await?;
 
         if !work_dir.exists() {
             tracing::info!(
@@ -529,7 +617,7 @@ impl Backend for GitHubBackend {
         let work_dir = self
             .config
             .workspace
-            .join(format!("issue#{task_id}"))
+            .join(format!("task#{task_id}"))
             .join(repo_name);
 
         if !work_dir.exists() {
@@ -553,7 +641,7 @@ impl Backend for GitHubBackend {
         }
 
         // Create PR using gh CLI
-        let task = self.get_issue(task_id).await?;
+        let task = self.get_task(task_id).await?;
         let pr_title = format!("Fix #{task_id}: {}", task.title);
         let pr_body = format!("Resolves #{task_id}\n\nImplementation for: {}", task.title);
 
@@ -583,7 +671,7 @@ impl Backend for GitHubBackend {
         Ok(pr_url)
     }
 
-    async fn list_milestones(&self) -> Result<Vec<(u64, String)>, ZbobrError> {
+    async fn list_stages(&self) -> Result<Vec<(u64, String)>, ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         let milestones: Vec<MilestoneResponse> = self
             .octocrab
@@ -595,7 +683,7 @@ impl Backend for GitHubBackend {
             .collect())
     }
 
-    async fn create_milestone(&self, title: &str, description: &str) -> Result<(), ZbobrError> {
+    async fn create_stage(&self, title: &str, description: &str) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         self.octocrab
             .post(
@@ -611,7 +699,7 @@ impl Backend for GitHubBackend {
         Ok(())
     }
 
-    async fn delete_milestone(&self, number: u64) -> Result<(), ZbobrError> {
+    async fn delete_stage(&self, number: u64) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         let _response = self
             .octocrab
@@ -652,6 +740,26 @@ impl Backend for GitHubBackend {
 
     fn debug_state(&self) -> String {
         "GitHubBackend".to_string()
+    }
+}
+
+fn extract_hidden_field(body: &str, key: &str) -> Option<String> {
+    let start_tag = format!("<!-- {}: ", key);
+    let end_tag = " -->";
+    if let Some(start_idx) = body.find(&start_tag) {
+        let start_val = start_idx + start_tag.len();
+        if let Some(end_idx) = body[start_val..].find(end_tag) {
+            return Some(body[start_val..start_val + end_idx].to_string());
+        }
+    }
+    None
+}
+
+fn append_hidden_fields(body: &mut String, fields: &[(&str, Option<String>)]) {
+    for (key, value) in fields {
+        if let Some(v) = value {
+            body.push_str(&format!("\n<!-- {}: {} -->", key, v));
+        }
     }
 }
 

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::task::Stage;
+use crate::task::{Model, Stage, Tool};
 use crate::Zbobr;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -12,9 +12,9 @@ use rmcp::{tool, tool_handler, tool_router, ServerHandler};
 // -- Parameter types --
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-pub struct PlanParam {
-    #[schemars(description = "The plan text")]
-    pub plan: String,
+pub struct DescriptionParam {
+    #[schemars(description = "The task description/plan text")]
+    pub description: String,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
@@ -30,23 +30,29 @@ pub struct RepoParam {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-pub struct IssueIdParam {
-    #[schemars(description = "The task/issue ID")]
+pub struct TaskIdParam {
+    #[schemars(description = "The task ID")]
     pub id: u64,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-pub struct CreateIssueParam {
-    #[schemars(description = "Issue title")]
+pub struct CreateTaskParam {
+    #[schemars(description = "Task title")]
     pub title: String,
-    #[schemars(description = "Issue body")]
-    pub body: String,
+    #[schemars(description = "Task description")]
+    pub description: String,
+    #[schemars(description = "Task tool (optional)")]
+    pub tool: Option<Tool>,
+    #[schemars(description = "Task model (optional)")]
+    pub model: Option<Model>,
+    #[schemars(description = "Parent task ID (optional)")]
+    pub parent_task_id: Option<u64>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-pub struct UpdateIssueParam {
+pub struct UpdateTaskParam {
     pub id: u64,
-    pub body: String,
+    pub description: String,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
@@ -62,9 +68,11 @@ pub struct LabelParam {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-pub struct MilestoneParam {
-    #[schemars(description = "Milestone name (e.g. PENDING, PLANNING_READY, etc.)")]
-    pub milestone: String,
+pub struct StageParam {
+    #[schemars(description = "Stage name (e.g. PENDING, PLANNING_READY, etc.)")]
+    pub stage: String,
+    #[schemars(description = "Optional tool filter")]
+    pub tool: Option<Tool>,
 }
 
 macro_rules! mcp_tools {
@@ -78,8 +86,8 @@ macro_rules! mcp_tools {
 
 mcp_tools! {
     planner_tools,
-    GET_PLAN = "get_plan",
-    SET_PLAN = "set_plan",
+    GET_DESCRIPTION = "get_description",
+    SET_DESCRIPTION = "set_description",
     GET_DISCUSSION = "get_discussion",
     POST_MESSAGE = "post_message",
     REQUEST_REPO = "request_repo",
@@ -87,7 +95,7 @@ mcp_tools! {
 
 mcp_tools! {
     worker_tools,
-    GET_PLAN = "get_plan",
+    GET_DESCRIPTION = "get_description",
     GET_DISCUSSION = "get_discussion",
     POST_MESSAGE = "post_message",
     REQUEST_REPO = "request_repo",
@@ -97,13 +105,13 @@ mcp_tools! {
 
 mcp_tools! {
     admin_tools,
-    LIST_ISSUES = "list_issues",
-    CREATE_ISSUE = "create_issue",
-    GET_ISSUE = "get_issue",
-    UPDATE_ISSUE_BODY = "update_issue_body",
-    SET_ISSUE_STAGE = "set_issue_stage",
-    ADD_ISSUE_LABEL = "add_issue_label",
-    REMOVE_ISSUE_LABEL = "remove_issue_label",
+    LIST_TASKS = "list_tasks",
+    CREATE_TASK = "create_task",
+    GET_TASK = "get_task",
+    UPDATE_TASK_DESCRIPTION = "update_task_description",
+    SET_TASK_STAGE = "set_task_stage",
+    ADD_TASK_LABEL = "add_task_label",
+    REMOVE_TASK_LABEL = "remove_task_label",
     GET_DISCUSSION = "get_discussion",
     DEBUG_STATE = "debug_state",
 }
@@ -127,20 +135,20 @@ impl PlannerMcp {
         }
     }
 
-    #[tool(description = "Get the current plan text for this task")]
-    async fn get_plan(&self) -> String {
+    #[tool(description = "Get the current description/plan for this task")]
+    async fn get_description(&self) -> String {
         let session = self.zbobr.planner_session(self.task_id);
-        match session.get_plan().await {
-            Ok(plan) => plan,
+        match session.get_description().await {
+            Ok(desc) => desc,
             Err(e) => format!("Error: {e}"),
         }
     }
 
-    #[tool(description = "Update the plan text for this task")]
-    async fn set_plan(&self, Parameters(params): Parameters<PlanParam>) -> String {
+    #[tool(description = "Update the description/plan for this task")]
+    async fn set_description(&self, Parameters(params): Parameters<DescriptionParam>) -> String {
         let session = self.zbobr.planner_session(self.task_id);
-        match session.set_plan(&params.plan).await {
-            Ok(()) => "Plan updated successfully".to_string(),
+        match session.set_description(&params.description).await {
+            Ok(()) => "Description updated successfully".to_string(),
             Err(e) => format!("Error: {e}"),
         }
     }
@@ -213,11 +221,11 @@ impl WorkerMcp {
         }
     }
 
-    #[tool(description = "Get the current plan text for this task")]
-    async fn get_plan(&self) -> String {
+    #[tool(description = "Get the current description/plan for this task")]
+    async fn get_description(&self) -> String {
         let session = self.zbobr.worker_session(self.task_id);
-        match session.get_plan().await {
-            Ok(plan) => plan,
+        match session.get_description().await {
+            Ok(desc) => desc,
             Err(e) => format!("Error: {e}"),
         }
     }
@@ -309,9 +317,13 @@ impl AdminMcp {
         }
     }
 
-    #[tool(description = "List issues in a specific milestone")]
-    async fn list_issues(&self, Parameters(params): Parameters<MilestoneParam>) -> String {
-        match self.zbobr.find_tasks_by_stage_name(&params.milestone).await {
+    #[tool(description = "List tasks in a specific stage")]
+    async fn list_tasks(&self, Parameters(params): Parameters<StageParam>) -> String {
+        match self
+            .zbobr
+            .list_tasks_by_stage(&params.stage, params.tool)
+            .await
+        {
             Ok(tasks) => {
                 if tasks.is_empty() {
                     "No tasks found.".to_string()
@@ -327,38 +339,58 @@ impl AdminMcp {
         }
     }
 
-    #[tool(description = "Create a new issue")]
-    async fn create_issue(&self, Parameters(params): Parameters<CreateIssueParam>) -> String {
-        match self.zbobr.create_issue(&params.title, &params.body).await {
-            Ok(id) => format!("Created issue #{}", id),
+    #[tool(description = "Create a new task")]
+    async fn create_task(&self, Parameters(params): Parameters<CreateTaskParam>) -> String {
+        match self
+            .zbobr
+            .create_task(
+                &params.title,
+                &params.description,
+                Stage::Planning,
+                params.tool,
+                params.model,
+                params.parent_task_id,
+                None,
+                None,
+            )
+            .await
+        {
+            Ok(id) => format!("Created task #{}", id),
             Err(e) => format!("Error: {e}"),
         }
     }
 
-    #[tool(description = "Get details of an issue")]
-    async fn get_issue(&self, Parameters(params): Parameters<IssueIdParam>) -> String {
-        match self.zbobr.get_issue(params.id).await {
+    #[tool(description = "Get details of a task")]
+    async fn get_task(&self, Parameters(params): Parameters<TaskIdParam>) -> String {
+        match self.zbobr.get_task(params.id).await {
             Ok(task) => format!(
-                "ID: {}\nTitle: {}\nStage: {:?}\nDone: {}\nModel: {:?}\n\n{}",
-                task.id, task.title, task.stage, task.done, task.model, task.description
+                "ID: {}\nTitle: {}\nStage: {:?}\nTool: {:?}\nModel: {:?}\nDone: {}\n\n{}",
+                task.id, task.title, task.stage, task.tool, task.model, task.done, task.description
             ),
             Err(e) => format!("Error: {e}"),
         }
     }
 
     #[tool(description = "Update the description of a task")]
-    async fn update_issue_body(&self, Parameters(params): Parameters<UpdateIssueParam>) -> String {
-        match self.zbobr.update_issue_body(params.id, &params.body).await {
-            Ok(()) => "Issue body updated".to_string(),
+    async fn update_task_description(
+        &self,
+        Parameters(params): Parameters<UpdateTaskParam>,
+    ) -> String {
+        match self
+            .zbobr
+            .update_task_description(params.id, &params.description)
+            .await
+        {
+            Ok(()) => "Task description updated".to_string(),
             Err(e) => format!("Error: {e}"),
         }
     }
 
-    #[tool(description = "Change the stage (milestone) of a task")]
-    async fn set_issue_stage(&self, Parameters(params): Parameters<SetStageParam>) -> String {
+    #[tool(description = "Change the stage of a task")]
+    async fn set_task_stage(&self, Parameters(params): Parameters<SetStageParam>) -> String {
         match self
             .zbobr
-            .set_issue_milestone(params.id, params.stage.milestone_name())
+            .set_task_stage_by_name(params.id, params.stage.milestone_name())
             .await
         {
             Ok(()) => format!("Stage updated to {}", params.stage),
@@ -366,29 +398,25 @@ impl AdminMcp {
         }
     }
 
-    #[tool(description = "Add a label to an issue")]
-    async fn add_issue_label(&self, Parameters(params): Parameters<LabelParam>) -> String {
-        match self.zbobr.add_issue_label(params.id, &params.label).await {
+    #[tool(description = "Add a label to a task")]
+    async fn add_task_label(&self, Parameters(params): Parameters<LabelParam>) -> String {
+        match self.zbobr.add_task_label(params.id, &params.label).await {
             Ok(()) => format!("Label '{}' added", params.label),
             Err(e) => format!("Error: {e}"),
         }
     }
 
-    #[tool(description = "Remove a label from an issue")]
-    async fn remove_issue_label(&self, Parameters(params): Parameters<LabelParam>) -> String {
-        match self
-            .zbobr
-            .remove_issue_label(params.id, &params.label)
-            .await
-        {
+    #[tool(description = "Remove a label from a task")]
+    async fn remove_task_label(&self, Parameters(params): Parameters<LabelParam>) -> String {
+        match self.zbobr.remove_task_label(params.id, &params.label).await {
             Ok(()) => format!("Label '{}' removed", params.label),
             Err(e) => format!("Error: {e}"),
         }
     }
 
     #[tool(description = "Get all logs/comments for a task")]
-    async fn get_discussion(&self, Parameters(params): Parameters<IssueIdParam>) -> String {
-        match self.zbobr.get_issue_comments(params.id).await {
+    async fn get_discussion(&self, Parameters(params): Parameters<TaskIdParam>) -> String {
+        match self.zbobr.get_task_comments(params.id).await {
             Ok(comments) => {
                 if comments.is_empty() {
                     "No logs/comments yet.".to_string()
@@ -412,7 +440,7 @@ impl ServerHandler for AdminMcp {
         ServerInfo {
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             instructions: Some(
-                "Admin tools: full control over issues, statuses, and logs.".to_string(),
+                "Admin tools: full control over tasks, statuses, and logs.".to_string(),
             ),
             ..Default::default()
         }
@@ -489,11 +517,11 @@ mod tests {
         let config = crate::config::ZbobrConfig {
             domain_repo: "test/repo".to_string(),
             fork_owner: "test-owner".to_string(),
-            default_model: "test-model".to_string(),
+            default_model: Model::Gpt4o,
             workspace: std::path::PathBuf::from("/tmp"),
             github_token: "test-token".to_string(),
             backend: crate::config::BackendType::Stub,
-            cli_tool: crate::config::CliTool::Stub,
+            cli_tool: Tool::Stub,
         };
         let zbobr = Zbobr::new(config).unwrap();
         let admin = AdminMcp::new(zbobr);
@@ -516,11 +544,11 @@ mod tests {
         let config = crate::config::ZbobrConfig {
             domain_repo: "test/repo".to_string(),
             fork_owner: "test-owner".to_string(),
-            default_model: "test-model".to_string(),
+            default_model: Model::Gpt4o,
             workspace: std::path::PathBuf::from("/tmp"),
             github_token: "test-token".to_string(),
             backend: crate::config::BackendType::Stub,
-            cli_tool: crate::config::CliTool::Stub,
+            cli_tool: Tool::Stub,
         };
         let zbobr = Zbobr::new(config).unwrap();
         let planner = PlannerMcp::new(zbobr, 123);
@@ -543,11 +571,11 @@ mod tests {
         let config = crate::config::ZbobrConfig {
             domain_repo: "test/repo".to_string(),
             fork_owner: "test-owner".to_string(),
-            default_model: "test-model".to_string(),
+            default_model: Model::Gpt4o,
             workspace: std::path::PathBuf::from("/tmp"),
             github_token: "test-token".to_string(),
             backend: crate::config::BackendType::Stub,
-            cli_tool: crate::config::CliTool::Stub,
+            cli_tool: Tool::Stub,
         };
         let zbobr = Zbobr::new(config).unwrap();
         let worker = WorkerMcp::new(zbobr, 123);

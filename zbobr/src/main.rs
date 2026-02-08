@@ -1,11 +1,12 @@
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
+use zbobr_lib::task::{Model, Tool};
 use zbobr_lib::{SetupFile, Stage, Zbobr, ZbobrConfig};
 
 #[derive(Args, Clone)]
 struct GlobalArgs {
-    /// GitHub repository with issues to orchestrate, in "owner/repo" format
+    /// Domain repository with tasks to orchestrate, in "owner/repo" format
     /// (e.g. "YoroolGui/copilot-zenoh"). Can also be set via ZBOBR_DOMAIN_REPO env var
     #[arg(long, global = true)]
     domain_repo: Option<String>,
@@ -45,9 +46,9 @@ struct GlobalArgs {
 #[derive(Parser)]
 #[command(
     name = "zbobr",
-    about = "AI-powered issue orchestrator",
-    long_about = "AI-powered issue orchestrator that manages GitHub issues through automated stages.\n\n\
-        Issues flow through: PENDING -> PLANNING_READY -> PLANNING -> WORKING_READY -> WORKING.\n\
+    about = "AI-powered task orchestrator",
+    long_about = "AI-powered task orchestrator that manages tasks through automated stages.\n\n\
+        Tasks flow through: PENDING -> PLANNING_READY -> PLANNING -> WORKING_READY -> WORKING.\n\
         Planner roles create implementation plans, worker roles implement them\n\
         by forking target repositories and creating pull requests.\n\n\
         Requires a GitHub token: set GH_TOKEN or GITHUB_TOKEN env var.\n\
@@ -73,43 +74,43 @@ enum Command {
         #[arg(long, short = 'o')]
         output_dir: Option<PathBuf>,
     },
-    /// Poll for issues and run planner/worker roles automatically
+    /// Poll for tasks and run planner/worker roles automatically
     Loop {
-        /// How often to check for new issues, in seconds
+        /// How often to check for new tasks, in seconds
         #[arg(long, default_value = "60")]
         interval: u64,
-        /// How often to clean up workspaces for closed issues, in seconds
+        /// How often to clean up workspaces for closed tasks, in seconds
         #[arg(long, default_value = "600")]
         cleanup_interval: u64,
-        /// AI model to use (e.g. "gpt-5-mini", "claude-opus-4.6")
+        /// AI model to use (e.g. "gpt-5-mini", "claude-3-5-sonnet")
         #[arg(long)]
         model: Option<String>,
         /// Port for the MCP server that roles connect to
         #[arg(long, default_value = "3000")]
         port: u16,
     },
-    /// Remove workspace directories for issues that have been closed
+    /// Remove workspace directories for tasks that have been closed
     Cleanup {
         /// Show what would be removed without actually deleting
         #[arg(long, short = 'n')]
         dry_run: bool,
     },
-    /// Run planner role for a specific issue (creates implementation plan)
+    /// Run planner role for a specific task (creates implementation plan)
     Plan {
-        /// Issue number in the domain project repository
-        issue: u64,
-        /// AI model to use (e.g. "gpt-5-mini", "claude-opus-4.6")
+        /// Task ID
+        task: u64,
+        /// AI model to use (e.g. "gpt-5-mini", "claude-3-5-sonnet")
         #[arg(long)]
         model: Option<String>,
         /// Port for the MCP server that the agent connects to
         #[arg(long, default_value = "3000")]
         port: u16,
     },
-    /// Run worker role for a specific issue (implements the plan, creates PR)
+    /// Run worker role for a specific task (implements the plan, creates PR)
     Work {
-        /// Issue number in the domain project repository
-        issue: u64,
-        /// AI model to use (e.g. "gpt-5-mini", "claude-opus-4.6")
+        /// Task ID
+        task: u64,
+        /// AI model to use (e.g. "gpt-5-mini", "claude-3-5-sonnet")
         #[arg(long)]
         model: Option<String>,
         /// Port for the MCP server that the agent connects to
@@ -158,7 +159,7 @@ fn load_prompt(path: &PathBuf) -> anyhow::Result<String> {
         .map_err(|e| anyhow::anyhow!("Failed to read prompt file {}: {e}", path.display()))
 }
 
-fn load_config(cli: &Cli) -> Result<ZbobrConfig, zbobr_lib::ZbobrError> {
+fn load_config(cli: &Cli) -> anyhow::Result<ZbobrConfig> {
     let mut config = ZbobrConfig::from_env()?;
     if let Some(ref dr) = cli.global.domain_repo {
         config.domain_repo = dr.clone();
@@ -173,26 +174,11 @@ fn load_config(cli: &Cli) -> Result<ZbobrConfig, zbobr_lib::ZbobrError> {
         match b.as_str() {
             "stub" => config.backend = zbobr_lib::config::BackendType::Stub,
             "github" => config.backend = zbobr_lib::config::BackendType::GitHub,
-            _ => {
-                return Err(zbobr_lib::ZbobrError::Config(format!(
-                    "Unknown backend: {}",
-                    b
-                )))
-            }
+            _ => return Err(anyhow::anyhow!("Unknown backend: {}", b)),
         }
     }
     if let Some(ref t) = cli.global.cli_tool {
-        match t.as_str() {
-            "claude" => config.cli_tool = zbobr_lib::config::CliTool::Claude,
-            "stub" => config.cli_tool = zbobr_lib::config::CliTool::Stub,
-            "copilot" => config.cli_tool = zbobr_lib::config::CliTool::Copilot,
-            _ => {
-                return Err(zbobr_lib::ZbobrError::Config(format!(
-                    "Unknown CLI tool: {}",
-                    t
-                )))
-            }
-        }
+        config.cli_tool = t.parse::<Tool>().map_err(|e| anyhow::anyhow!(e))?;
     }
     config.validate()?;
     Ok(config)
@@ -297,25 +283,38 @@ async fn main() -> anyhow::Result<()> {
         Command::Cleanup { dry_run } => {
             zbobr.cleanup_closed_tasks(dry_run).await?;
         }
-        Command::Plan { issue, model, port } => {
+        Command::Plan { task, model, port } => {
             let prompt = load_prompt(&prompts.planner)?;
-            run_role_session(&zbobr, issue, "planner", model, port, &prompt).await?;
+            let model_enum = model
+                .map(|m| m.parse::<Model>())
+                .transpose()
+                .map_err(anyhow::Error::msg)?;
+            run_role_session(&zbobr, task, "planner", model_enum, port, &prompt).await?;
         }
-        Command::Work { issue, model, port } => {
+        Command::Work { task, model, port } => {
             let prompt = load_prompt(&prompts.worker)?;
-            run_role_session(&zbobr, issue, "worker", model, port, &prompt).await?;
+            let model_enum = model
+                .map(|m| m.parse::<Model>())
+                .transpose()
+                .map_err(anyhow::Error::msg)?;
+            run_role_session(&zbobr, task, "worker", model_enum, port, &prompt).await?;
         }
         Command::Loop {
             interval,
             cleanup_interval,
             model,
             port,
+            ..
         } => {
+            let model_enum = model
+                .map(|m| m.parse::<Model>())
+                .transpose()
+                .map_err(anyhow::Error::msg)?;
             run_manager_loop(
                 &zbobr,
                 interval,
                 cleanup_interval,
-                model,
+                model_enum,
                 port,
                 cli.global.admin_port,
                 &prompts,
@@ -330,18 +329,13 @@ async fn main() -> anyhow::Result<()> {
 /// Start MCP server, invoke CLI tool (copilot/claude/stub), and handle stage transitions.
 async fn run_role_session(
     zbobr: &Zbobr,
-    issue: u64,
+    task_id: u64,
     role: &str,
-    model: Option<String>,
+    model: Option<Model>,
     port: u16,
     prompt: &str,
 ) -> anyhow::Result<()> {
-    let model = model
-        .or_else(|| {
-            // Try to get model from the task's label
-            None // Will fall back to default below
-        })
-        .unwrap_or_else(|| zbobr.config().default_model.clone());
+    let model = model.unwrap_or_else(|| zbobr.config().default_model.clone());
 
     // Set stage
     let stage = if role == "planner" {
@@ -349,18 +343,18 @@ async fn run_role_session(
     } else {
         Stage::Working
     };
-    zbobr.set_task_stage(issue, stage).await?;
+    zbobr.set_task_stage(task_id, stage).await?;
 
     // Create workspace dir
-    let issue_dir = zbobr.config().workspace.join(format!("issue#{issue}"));
-    tokio::fs::create_dir_all(&issue_dir).await?;
+    let task_dir = zbobr.config().workspace.join(format!("task#{task_id}"));
+    tokio::fs::create_dir_all(&task_dir).await?;
 
-    // Start MCP server in background, scoped to this role and issue
+    // Start MCP server in background, scoped to this role and task
     let server_zbobr = zbobr.clone();
     let server_role = role.to_string();
     let server_handle = tokio::spawn(async move {
         if let Err(e) =
-            zbobr_lib::mcp::run_mcp_server(server_zbobr, port, server_role, Some(issue)).await
+            zbobr_lib::mcp::run_mcp_server(server_zbobr, port, server_role, Some(task_id)).await
         {
             tracing::error!("MCP server error: {e}");
         }
@@ -371,10 +365,10 @@ async fn run_role_session(
 
     // Check which tool to run
     let cli_tool = zbobr.config().cli_tool;
-    let mcp_url = format!("http://127.0.0.1:{port}/{role}/{issue}");
+    let mcp_url = format!("http://127.0.0.1:{port}/{role}/{task_id}");
 
     match cli_tool {
-        zbobr_lib::config::CliTool::Stub => {
+        Tool::Stub => {
             tracing::info!("Running STUB TOOL for {role} session");
             let exe = std::env::current_exe()?;
             // Assume zbobr-stub is next to zbobr executable
@@ -385,7 +379,7 @@ async fn run_role_session(
                     "--role",
                     role,
                     "--task-id",
-                    &issue.to_string(),
+                    &task_id.to_string(),
                     "--mcp-url",
                     &mcp_url,
                 ])
@@ -396,7 +390,7 @@ async fn run_role_session(
                 tracing::warn!("Stub tool exited with status: {status}");
             }
         }
-        zbobr_lib::config::CliTool::Copilot | zbobr_lib::config::CliTool::Claude => {
+        Tool::Copilot | Tool::Claude => {
             // Build MCP config for tool
             let mcp_config = serde_json::json!({
                 "mcpServers": {
@@ -408,28 +402,28 @@ async fn run_role_session(
             let mcp_config_str = serde_json::to_string(&mcp_config)?;
 
             // Write MCP config to temp file
-            let config_path = issue_dir.join(".mcp-config.json");
+            let config_path = task_dir.join(".mcp-config.json");
             tokio::fs::write(&config_path, &mcp_config_str).await?;
 
-            let tool_cmd = if cli_tool == zbobr_lib::config::CliTool::Copilot {
+            let tool_cmd = if cli_tool == Tool::Copilot {
                 "copilot"
             } else {
                 "claude"
             };
 
-            tracing::info!("Starting {tool_cmd} {role} session for issue #{issue}");
+            tracing::info!("Starting {tool_cmd} {role} session for task #{task_id}");
             tracing::info!("MCP endpoint: {mcp_url}");
 
             let status = tokio::process::Command::new(tool_cmd)
                 .args([
                     "--model",
-                    &model,
+                    &model.to_string(),
                     "--additional-mcp-config",
                     config_path.to_str().unwrap(),
                     "-i",
                     prompt,
                 ])
-                .current_dir(&issue_dir)
+                .current_dir(&task_dir)
                 .status()
                 .await?;
 
@@ -440,8 +434,8 @@ async fn run_role_session(
     }
 
     // On exit, set stage to Pending
-    zbobr.set_task_stage(issue, Stage::Pending).await?;
-    tracing::info!("Session complete, issue #{issue} set to PENDING");
+    zbobr.set_task_stage(task_id, Stage::Pending).await?;
+    tracing::info!("Session complete, task #{task_id} set to PENDING");
 
     // Shut down server
     server_handle.abort();
@@ -454,7 +448,7 @@ async fn run_manager_loop(
     zbobr: &Zbobr,
     interval_secs: u64,
     cleanup_interval_secs: u64,
-    model: Option<String>,
+    model: Option<Model>,
     port: u16,
     admin_port: Option<u16>,
     prompts: &Prompts,
@@ -467,7 +461,8 @@ async fn run_manager_loop(
 
     tracing::info!("Manager loop started for {}", zbobr.config().domain_repo);
     tracing::info!("Poll interval: {interval_secs}s, Cleanup interval: {cleanup_interval_secs}s");
-    tracing::info!("Model: {model}");
+    tracing::info!("Default Model: {model}");
+    tracing::info!("CLI Tool: {:?}", zbobr.config().cli_tool);
     tracing::info!("Planner prompt: {}", prompts.planner.display());
     tracing::info!("Worker prompt: {}", prompts.worker.display());
     tracing::info!("Backend: {:?}", zbobr.config().backend);
@@ -497,13 +492,22 @@ async fn run_manager_loop(
             last_cleanup = std::time::Instant::now();
         }
 
-        // Check for PLANNING_READY issues
-        // If getting issues fails (e.g. GitHub error), just log and retry next loop
-        match zbobr.find_tasks_by_stage(Stage::PlanningReady).await {
+        // Check for processable tasks using tool-based filtering
+        let current_tool = zbobr.config().cli_tool;
+
+        // Check for PLANNING_READY tasks
+        match zbobr
+            .list_tasks_by_stage(Stage::PlanningReady.milestone_name(), Some(current_tool))
+            .await
+        {
             Ok(planning) => {
                 if let Some(task) = planning.first() {
                     let task_model = task.model.clone().unwrap_or_else(|| model.clone());
-                    tracing::info!("Found PLANNING_READY issue #{} - running planner", task.id);
+                    tracing::info!(
+                        "Found PLANNING_READY task #{} for tool {:?} - running planner",
+                        task.id,
+                        current_tool
+                    );
                     if let Err(e) = run_role_session(
                         zbobr,
                         task.id,
@@ -519,15 +523,22 @@ async fn run_manager_loop(
                     continue;
                 }
             }
-            Err(e) => tracing::error!("Failed to check PLANNING_READY issues: {e}"),
+            Err(e) => tracing::error!("Failed to check PLANNING_READY tasks: {e}"),
         }
 
-        // Check for WORKING_READY issues
-        match zbobr.find_tasks_by_stage(Stage::WorkingReady).await {
+        // Check for WORKING_READY tasks
+        match zbobr
+            .list_tasks_by_stage(Stage::WorkingReady.milestone_name(), Some(current_tool))
+            .await
+        {
             Ok(ready) => {
                 if let Some(task) = ready.first() {
                     let task_model = task.model.clone().unwrap_or_else(|| model.clone());
-                    tracing::info!("Found WORKING_READY issue #{} - running worker", task.id);
+                    tracing::info!(
+                        "Found WORKING_READY task #{} for tool {:?} - running worker",
+                        task.id,
+                        current_tool
+                    );
                     if let Err(e) = run_role_session(
                         zbobr,
                         task.id,
@@ -543,10 +554,13 @@ async fn run_manager_loop(
                     continue;
                 }
             }
-            Err(e) => tracing::error!("Failed to check WORKING_READY issues: {e}"),
+            Err(e) => tracing::error!("Failed to check WORKING_READY tasks: {e}"),
         }
 
-        tracing::info!("No processable issues. Sleeping {interval_secs}s...");
+        tracing::info!(
+            "No processable tasks for tool {:?}. Sleeping {interval_secs}s...",
+            current_tool
+        );
         tokio::time::sleep(std::time::Duration::from_secs(interval_secs)).await;
     }
 }

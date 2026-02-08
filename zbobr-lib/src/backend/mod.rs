@@ -1,51 +1,58 @@
 pub mod github;
 pub mod stub;
 
-use crate::{Task, ZbobrError};
+use crate::{Model, Stage, Task, Tool, ZbobrError};
 use async_trait::async_trait;
 use std::path::PathBuf;
 
 #[async_trait]
 pub trait Backend: Send + Sync {
-    /// Get an issue as a Task.
-    async fn get_issue(&self, issue_number: u64) -> Result<Task, ZbobrError>;
+    /// Get a task by ID.
+    async fn get_task(&self, id: u64) -> Result<Task, ZbobrError>;
 
-    /// Create a new issue. Returns the issue number.
-    async fn create_issue(&self, title: &str, body: &str) -> Result<u64, ZbobrError>;
-
-    /// Close an issue.
-    async fn close_issue(&self, issue_number: u64) -> Result<(), ZbobrError>;
-
-    /// Get all comments on an issue as formatted discussion.
-    async fn get_issue_comments(&self, issue_number: u64) -> Result<Vec<String>, ZbobrError>;
-
-    /// Post a comment on an issue.
-    async fn post_issue_comment(&self, issue_number: u64, body: &str) -> Result<(), ZbobrError>;
-
-    /// Set the milestone on an issue by milestone title.
-    async fn set_issue_milestone(
+    /// Create a new task. Returns the task ID.
+    async fn create_task(
         &self,
-        issue_number: u64,
-        milestone_title: &str,
-    ) -> Result<(), ZbobrError>;
+        title: &str,
+        description: &str,
+        stage: Stage,
+        tool: Option<Tool>,
+        model: Option<Model>,
+        parent_task_id: Option<u64>,
+        destination_repo: Option<String>,
+        destination_branch: Option<String>,
+    ) -> Result<u64, ZbobrError>;
 
-    /// Add a label to an issue.
-    async fn add_issue_label(&self, issue_number: u64, label: &str) -> Result<(), ZbobrError>;
+    /// Close a task.
+    async fn close_task(&self, id: u64) -> Result<(), ZbobrError>;
 
-    /// Remove a label from an issue.
-    async fn remove_issue_label(&self, issue_number: u64, label: &str) -> Result<(), ZbobrError>;
+    /// Get all comments on a task as formatted discussion.
+    async fn get_task_comments(&self, id: u64) -> Result<Vec<String>, ZbobrError>;
 
-    /// Update the issue body (description).
-    async fn update_issue_body(&self, issue_number: u64, body: &str) -> Result<(), ZbobrError>;
+    /// Post a comment on a task.
+    async fn post_task_comment(&self, id: u64, body: &str) -> Result<(), ZbobrError>;
 
-    /// List open issues with a given milestone title.
-    async fn list_issues_by_milestone(
+    /// Set the stage on a task by stage name.
+    async fn set_task_stage(&self, id: u64, stage_name: &str) -> Result<(), ZbobrError>;
+
+    /// Add an arbitrary label to a task.
+    async fn add_task_label(&self, id: u64, label: &str) -> Result<(), ZbobrError>;
+
+    /// Remove a label from a task.
+    async fn remove_task_label(&self, id: u64, label: &str) -> Result<(), ZbobrError>;
+
+    /// Update the task description.
+    async fn update_task_description(&self, id: u64, description: &str) -> Result<(), ZbobrError>;
+
+    /// List open tasks with a given stage name, optionally filtered by tool.
+    async fn list_tasks_by_stage(
         &self,
-        milestone_title: &str,
+        stage_name: &str,
+        tool: Option<Tool>,
     ) -> Result<Vec<Task>, ZbobrError>;
 
-    /// Check if an issue is closed.
-    async fn is_issue_closed(&self, issue_number: u64) -> Result<bool, ZbobrError>;
+    /// Check if a task is closed.
+    async fn is_task_closed(&self, id: u64) -> Result<bool, ZbobrError>;
 
     /// Check if a file exists in the domain repo.
     async fn repo_file_exists(&self, path: &str) -> Result<bool, ZbobrError>;
@@ -78,14 +85,14 @@ pub trait Backend: Send + Sync {
 
     // -- Setup methods --
 
-    /// List all milestones in the domain repo.
-    async fn list_milestones(&self) -> Result<Vec<(u64, String)>, ZbobrError>;
+    /// List all stages (milestones) in the domain repo.
+    async fn list_stages(&self) -> Result<Vec<(u64, String)>, ZbobrError>;
 
-    /// Create a milestone in the domain repo.
-    async fn create_milestone(&self, title: &str, description: &str) -> Result<(), ZbobrError>;
+    /// Create a stage (milestone) in the domain repo.
+    async fn create_stage(&self, title: &str, description: &str) -> Result<(), ZbobrError>;
 
-    /// Delete a milestone by its number.
-    async fn delete_milestone(&self, number: u64) -> Result<(), ZbobrError>;
+    /// Delete a stage by its number.
+    async fn delete_stage(&self, number: u64) -> Result<(), ZbobrError>;
 
     /// List all labels in the domain repo.
     async fn list_labels(&self) -> Result<Vec<String>, ZbobrError>;

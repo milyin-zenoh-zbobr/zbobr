@@ -2,18 +2,12 @@ use std::path::PathBuf;
 
 use crate::ZbobrError;
 
+use crate::task::{Model, Tool};
+
 /// Backend type to use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackendType {
     GitHub,
-    Stub,
-}
-
-/// CLI tool to use for the role (agent).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CliTool {
-    Copilot,
-    Claude,
     Stub,
 }
 
@@ -25,7 +19,7 @@ pub struct ZbobrConfig {
     /// Owner for forks (user or org).
     pub fork_owner: String,
     /// Default AI model to use.
-    pub default_model: String,
+    pub default_model: Model,
     /// Workspace directory for issue work dirs.
     pub workspace: PathBuf,
     /// GitHub personal access token.
@@ -33,7 +27,7 @@ pub struct ZbobrConfig {
     /// Backend to use.
     pub backend: BackendType,
     /// CLI tool to use.
-    pub cli_tool: CliTool,
+    pub cli_tool: Tool,
 }
 
 impl ZbobrConfig {
@@ -47,8 +41,14 @@ impl ZbobrConfig {
 
         let fork_owner = std::env::var("ZBOBR_FORK_OWNER").unwrap_or_default();
 
-        let default_model =
+        let default_model_str =
             std::env::var("ZBOBR_DEFAULT_MODEL").unwrap_or_else(|_| "gpt-5-mini".into());
+        let default_model = match default_model_str.as_str() {
+            "gpt-4o" => Model::Gpt4o,
+            "claude-3-5-sonnet" => Model::Claude35Sonnet,
+            "claude-3-opus" => Model::Claude3Opus,
+            _ => Model::Gpt5Mini,
+        };
 
         let workspace = std::env::var("ZBOBR_WORKSPACE")
             .map(PathBuf::from)
@@ -68,9 +68,9 @@ impl ZbobrConfig {
         };
 
         let cli_tool = match std::env::var("ZBOBR_CLI_TOOL").unwrap_or_default().as_str() {
-            "claude" => CliTool::Claude,
-            "stub" => CliTool::Stub,
-            _ => CliTool::Copilot,
+            "claude" => Tool::Claude,
+            "stub" => Tool::Stub,
+            _ => Tool::Copilot,
         };
 
         Ok(Self {
@@ -123,11 +123,11 @@ mod tests {
         ZbobrConfig {
             domain_repo: domain_repo.to_string(),
             fork_owner: "test-fork".to_string(),
-            default_model: "gpt-5-mini".to_string(),
+            default_model: Model::Gpt5Mini,
             workspace: PathBuf::from("./workspace"),
             github_token: "fake-token".to_string(),
-            backend: BackendType::GitHub,
-            cli_tool: CliTool::Copilot,
+            backend: BackendType::Stub,
+            cli_tool: Tool::Copilot,
         }
     }
 

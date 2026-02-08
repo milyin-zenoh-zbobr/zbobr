@@ -8,7 +8,7 @@ pub mod task;
 
 pub use config::ZbobrConfig;
 pub use setup::SetupFile;
-pub use task::{PlannerSession, Stage, Task, WorkerSession};
+pub use task::{Model, PlannerSession, Stage, Task, Tool, WorkerSession};
 
 use crate::backend::github::GitHubBackend;
 use crate::backend::stub::StubBackend;
@@ -61,65 +61,81 @@ impl Zbobr {
 
     // -- Delegate to Backend --
 
-    pub async fn get_issue(&self, issue_number: u64) -> Result<Task, ZbobrError> {
-        self.backend.get_issue(issue_number).await
+    pub async fn get_task(&self, id: u64) -> Result<Task, ZbobrError> {
+        self.backend.get_task(id).await
     }
 
-    pub async fn create_issue(&self, title: &str, body: &str) -> Result<u64, ZbobrError> {
-        self.backend.create_issue(title, body).await
-    }
-
-    pub async fn close_issue(&self, issue_number: u64) -> Result<(), ZbobrError> {
-        self.backend.close_issue(issue_number).await
-    }
-
-    pub async fn get_issue_comments(&self, issue_number: u64) -> Result<Vec<String>, ZbobrError> {
-        self.backend.get_issue_comments(issue_number).await
-    }
-
-    pub async fn post_issue_comment(
+    pub async fn create_task(
         &self,
-        issue_number: u64,
-        body: &str,
-    ) -> Result<(), ZbobrError> {
-        self.backend.post_issue_comment(issue_number, body).await
-    }
-
-    pub async fn set_issue_milestone(
-        &self,
-        issue_number: u64,
-        milestone_title: &str,
-    ) -> Result<(), ZbobrError> {
+        title: &str,
+        description: &str,
+        stage: Stage,
+        tool: Option<Tool>,
+        model: Option<Model>,
+        parent_task_id: Option<u64>,
+        destination_repo: Option<String>,
+        destination_branch: Option<String>,
+    ) -> Result<u64, ZbobrError> {
         self.backend
-            .set_issue_milestone(issue_number, milestone_title)
+            .create_task(
+                title,
+                description,
+                stage,
+                tool,
+                model,
+                parent_task_id,
+                destination_repo,
+                destination_branch,
+            )
             .await
     }
 
-    pub async fn add_issue_label(&self, issue_number: u64, label: &str) -> Result<(), ZbobrError> {
-        self.backend.add_issue_label(issue_number, label).await
+    pub async fn close_task(&self, id: u64) -> Result<(), ZbobrError> {
+        self.backend.close_task(id).await
     }
 
-    pub async fn remove_issue_label(
+    pub async fn get_task_comments(&self, id: u64) -> Result<Vec<String>, ZbobrError> {
+        self.backend.get_task_comments(id).await
+    }
+
+    pub async fn post_task_comment(&self, id: u64, body: &str) -> Result<(), ZbobrError> {
+        self.backend.post_task_comment(id, body).await
+    }
+
+    pub async fn set_task_stage_by_name(
         &self,
-        issue_number: u64,
-        label: &str,
+        id: u64,
+        stage_name: &str,
     ) -> Result<(), ZbobrError> {
-        self.backend.remove_issue_label(issue_number, label).await
+        self.backend.set_task_stage(id, stage_name).await
     }
 
-    pub async fn update_issue_body(&self, issue_number: u64, body: &str) -> Result<(), ZbobrError> {
-        self.backend.update_issue_body(issue_number, body).await
+    pub async fn add_task_label(&self, id: u64, label: &str) -> Result<(), ZbobrError> {
+        self.backend.add_task_label(id, label).await
     }
 
-    pub async fn list_issues_by_milestone(
+    pub async fn remove_task_label(&self, id: u64, label: &str) -> Result<(), ZbobrError> {
+        self.backend.remove_task_label(id, label).await
+    }
+
+    pub async fn update_task_description(
         &self,
-        milestone_title: &str,
-    ) -> Result<Vec<Task>, ZbobrError> {
-        self.backend.list_issues_by_milestone(milestone_title).await
+        id: u64,
+        description: &str,
+    ) -> Result<(), ZbobrError> {
+        self.backend.update_task_description(id, description).await
     }
 
-    pub async fn is_issue_closed(&self, issue_number: u64) -> Result<bool, ZbobrError> {
-        self.backend.is_issue_closed(issue_number).await
+    pub async fn list_tasks_by_stage(
+        &self,
+        stage_name: &str,
+        tool: Option<Tool>,
+    ) -> Result<Vec<Task>, ZbobrError> {
+        self.backend.list_tasks_by_stage(stage_name, tool).await
+    }
+
+    pub async fn is_task_closed(&self, id: u64) -> Result<bool, ZbobrError> {
+        self.backend.is_task_closed(id).await
     }
 
     pub async fn repo_file_exists(&self, path: &str) -> Result<bool, ZbobrError> {
@@ -139,26 +155,6 @@ impl Zbobr {
 
     pub async fn ensure_domain_repo_exists(&self) -> Result<(), ZbobrError> {
         self.backend.ensure_domain_repo_exists().await
-    }
-
-    pub async fn ensure_fork(&self, _target_repo: &str) -> Result<String, ZbobrError> {
-        // ensuring fork logic is now in backend, but wait, ensure_fork wasn't in Backend trait?
-        // I checked github.rs implementation, I put it as a private helper method.
-        // But `clone_and_setup` uses it.
-        // Does `zbobr-lib` need it public?
-        // Checking `setup.rs`... no.
-        // Checking `github/repos.rs`... it was `pub(crate)`.
-        // If it's only used by `clone_and_setup`, then it's fine if it's not exposed.
-        // BUT, `clone_and_setup` is exposed.
-        // Let's check if anything else uses `ensure_fork`.
-        // `lib.rs` doesn't seem to expose it.
-        // So I don't need to expose `ensure_fork` here if it's not part of the public API or used by other modules.
-        // Wait, I saw `ensure_fork` in `repos.rs` as `pub(crate)`.
-        // If I need it, I should add it to Backend.
-        // Checking `implementation_plan.md`... I didn't list it in Backend trait.
-        // Let's assume it's internal to backend for now.
-        // If compilation fails, I'll add it.
-        Ok("fork-check-handled-internally".to_string())
     }
 
     pub async fn clone_and_setup(
@@ -185,16 +181,16 @@ impl Zbobr {
         self.backend.push_and_create_pr(target_repo, task_id).await
     }
 
-    pub async fn list_milestones(&self) -> Result<Vec<(u64, String)>, ZbobrError> {
-        self.backend.list_milestones().await
+    pub async fn list_stages(&self) -> Result<Vec<(u64, String)>, ZbobrError> {
+        self.backend.list_stages().await
     }
 
-    pub async fn create_milestone(&self, title: &str, description: &str) -> Result<(), ZbobrError> {
-        self.backend.create_milestone(title, description).await
+    pub async fn create_stage(&self, title: &str, description: &str) -> Result<(), ZbobrError> {
+        self.backend.create_stage(title, description).await
     }
 
-    pub async fn delete_milestone(&self, number: u64) -> Result<(), ZbobrError> {
-        self.backend.delete_milestone(number).await
+    pub async fn delete_stage(&self, number: u64) -> Result<(), ZbobrError> {
+        self.backend.delete_stage(number).await
     }
 
     pub async fn list_labels(&self) -> Result<Vec<String>, ZbobrError> {

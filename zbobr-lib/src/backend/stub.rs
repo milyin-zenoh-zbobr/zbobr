@@ -1,5 +1,5 @@
 use super::Backend;
-use crate::{Stage, Task, ZbobrError};
+use crate::{Model, Stage, Task, Tool, ZbobrError};
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -7,44 +7,49 @@ use std::sync::{Arc, RwLock};
 
 #[derive(Debug)]
 struct StubState {
-    issues: HashMap<u64, Task>,
+    tasks: HashMap<u64, Task>,
     comments: HashMap<u64, Vec<String>>,
-    milestones: HashMap<String, u64>, // title -> number
+    stages: HashMap<String, u64>, // title -> number
     labels: HashSet<String>,
     files: HashMap<String, String>, // path -> content
-    next_issue_id: u64,
+    next_task_id: u64,
 }
 
 impl Default for StubState {
     fn default() -> Self {
-        let mut issues = HashMap::new();
-        // Add a sample issue
-        issues.insert(
+        let mut tasks = HashMap::new();
+        // Add a sample task
+        tasks.insert(
             1,
             Task {
                 id: 1,
-                title: "Stub Issue".to_string(),
-                description: "This is a stub issue for testing.".to_string(),
+                title: "Stub Task".to_string(),
+                description: "This is a stub task for testing.".to_string(),
+                discussion: vec![],
                 stage: Stage::Pending,
-                model: None,
+                tool: Some(Tool::Stub),
+                model: Some(Model::Gpt5Mini),
+                parent_task_id: None,
+                destination_repo: None,
+                destination_branch: None,
                 done: false,
             },
         );
 
-        let mut milestones = HashMap::new();
-        milestones.insert(Stage::Pending.milestone_name().to_string(), 1);
-        milestones.insert(Stage::PlanningReady.milestone_name().to_string(), 2);
-        milestones.insert(Stage::Planning.milestone_name().to_string(), 3);
-        milestones.insert(Stage::WorkingReady.milestone_name().to_string(), 4);
-        milestones.insert(Stage::Working.milestone_name().to_string(), 5);
+        let mut stages = HashMap::new();
+        stages.insert(Stage::Pending.to_string(), 1);
+        stages.insert(Stage::PlanningReady.to_string(), 2);
+        stages.insert(Stage::Planning.to_string(), 3);
+        stages.insert(Stage::WorkingReady.to_string(), 4);
+        stages.insert(Stage::Working.to_string(), 5);
 
         Self {
-            issues,
+            tasks,
             comments: HashMap::new(),
-            milestones,
+            stages,
             labels: HashSet::new(),
             files: HashMap::new(),
-            next_issue_id: 2,
+            next_task_id: 2,
         }
     }
 }
@@ -65,152 +70,152 @@ impl StubBackend {
 
 #[async_trait]
 impl Backend for StubBackend {
-    async fn get_issue(&self, issue_number: u64) -> Result<Task, ZbobrError> {
+    async fn get_task(&self, id: u64) -> Result<Task, ZbobrError> {
         let state = self.state.read().unwrap();
         state
-            .issues
-            .get(&issue_number)
+            .tasks
+            .get(&id)
             .cloned()
-            .ok_or_else(|| ZbobrError::GitHub(format!("Issue {issue_number} not found")))
+            .ok_or_else(|| ZbobrError::Other(format!("Task {id} not found")))
     }
 
-    async fn create_issue(&self, title: &str, body: &str) -> Result<u64, ZbobrError> {
+    async fn create_task(
+        &self,
+        title: &str,
+        description: &str,
+        stage: Stage,
+        tool: Option<Tool>,
+        model: Option<Model>,
+        parent_task_id: Option<u64>,
+        destination_repo: Option<String>,
+        destination_branch: Option<String>,
+    ) -> Result<u64, ZbobrError> {
         let mut state = self.state.write().unwrap();
-        let id = state.next_issue_id;
-        state.next_issue_id += 1;
+        let id = state.next_task_id;
+        state.next_task_id += 1;
         let task = Task {
             id,
             title: title.to_string(),
-            description: body.to_string(),
-            stage: Stage::Pending,
-            model: None,
+            description: description.to_string(),
+            discussion: vec![],
+            stage,
+            tool,
+            model,
+            parent_task_id,
+            destination_repo,
+            destination_branch,
             done: false,
         };
-        state.issues.insert(id, task);
+        state.tasks.insert(id, task);
         Ok(id)
     }
 
-    async fn close_issue(&self, issue_number: u64) -> Result<(), ZbobrError> {
+    async fn close_task(&self, id: u64) -> Result<(), ZbobrError> {
         let mut state = self.state.write().unwrap();
-        state.issues.remove(&issue_number);
+        state.tasks.remove(&id);
         Ok(())
     }
 
-    async fn get_issue_comments(&self, issue_number: u64) -> Result<Vec<String>, ZbobrError> {
+    async fn get_task_comments(&self, id: u64) -> Result<Vec<String>, ZbobrError> {
         let state = self.state.read().unwrap();
-        Ok(state
-            .comments
-            .get(&issue_number)
-            .cloned()
-            .unwrap_or_default())
+        Ok(state.comments.get(&id).cloned().unwrap_or_default())
     }
 
-    async fn post_issue_comment(&self, issue_number: u64, body: &str) -> Result<(), ZbobrError> {
+    async fn post_task_comment(&self, id: u64, body: &str) -> Result<(), ZbobrError> {
         let mut state = self.state.write().unwrap();
-        let comments = state.comments.entry(issue_number).or_default();
+        let comments = state.comments.entry(id).or_default();
         comments.push(format!("stub-user: {body}"));
         Ok(())
     }
 
-    async fn set_issue_milestone(
-        &self,
-        issue_number: u64,
-        milestone_title: &str,
-    ) -> Result<(), ZbobrError> {
+    async fn set_task_stage(&self, id: u64, stage_name: &str) -> Result<(), ZbobrError> {
         let mut state = self.state.write().unwrap();
-        if let Some(task) = state.issues.get_mut(&issue_number) {
-            let stage = match milestone_title {
-                "PENDING" => Stage::Pending,
-                "PLANNING_READY" => Stage::PlanningReady,
-                "PLANNING" => Stage::Planning,
-                "WORKING_READY" => Stage::WorkingReady,
-                "WORKING" => Stage::Working,
-                _ => {
-                    return Err(ZbobrError::GitHub(format!(
-                        "Unknown milestone {milestone_title}"
-                    )))
-                }
+        if let Some(task) = state.tasks.get_mut(&id) {
+            let stage = match Stage::from_milestone_name(stage_name) {
+                Some(s) => s,
+                None => return Err(ZbobrError::Other(format!("Unknown stage {stage_name}"))),
             };
             task.stage = stage;
             Ok(())
         } else {
-            Err(ZbobrError::GitHub(format!(
-                "Issue {issue_number} not found"
-            )))
+            Err(ZbobrError::Other(format!("Task {id} not found")))
         }
     }
 
-    async fn add_issue_label(&self, issue_number: u64, label: &str) -> Result<(), ZbobrError> {
+    async fn add_task_label(&self, id: u64, label: &str) -> Result<(), ZbobrError> {
         let mut state = self.state.write().unwrap();
-        if let Some(task) = state.issues.get_mut(&issue_number) {
+        if let Some(task) = state.tasks.get_mut(&id) {
             if label == "done" {
                 task.done = true;
-            } else if let Some(model) = label.strip_prefix("copilot:") {
-                task.model = Some(model.to_string());
+            } else if let Some(model_name) = label.strip_prefix("model:") {
+                // Not really used in stub as we have the model field directly, but for compatibility:
+                if let Ok(m) = serde_json::from_str(&format!("\"{model_name}\"")) {
+                    task.model = Some(m);
+                }
+            } else if let Some(tool_name) = label.strip_prefix("tool:") {
+                if let Ok(t) = serde_json::from_str(&format!("\"{tool_name}\"")) {
+                    task.tool = Some(t);
+                }
             }
             Ok(())
         } else {
-            Err(ZbobrError::GitHub(format!(
-                "Issue {issue_number} not found"
-            )))
+            Err(ZbobrError::Other(format!("Task {id} not found")))
         }
     }
 
-    async fn remove_issue_label(&self, issue_number: u64, label: &str) -> Result<(), ZbobrError> {
+    async fn remove_task_label(&self, id: u64, label: &str) -> Result<(), ZbobrError> {
         let mut state = self.state.write().unwrap();
-        if let Some(task) = state.issues.get_mut(&issue_number) {
+        if let Some(task) = state.tasks.get_mut(&id) {
             if label == "done" {
                 task.done = false;
             }
-            // For model, we can't easily remove it without storing all labels separately,
-            // but for stub purposes this might be enough.
             Ok(())
         } else {
-            Err(ZbobrError::GitHub(format!(
-                "Issue {issue_number} not found"
-            )))
+            Err(ZbobrError::Other(format!("Task {id} not found")))
         }
     }
 
-    async fn update_issue_body(&self, issue_number: u64, body: &str) -> Result<(), ZbobrError> {
+    async fn update_task_description(&self, id: u64, description: &str) -> Result<(), ZbobrError> {
         let mut state = self.state.write().unwrap();
-        if let Some(task) = state.issues.get_mut(&issue_number) {
-            task.description = body.to_string();
+        if let Some(task) = state.tasks.get_mut(&id) {
+            task.description = description.to_string();
             Ok(())
         } else {
-            Err(ZbobrError::GitHub(format!(
-                "Issue {issue_number} not found"
-            )))
+            Err(ZbobrError::Other(format!("Task {id} not found")))
         }
     }
 
-    async fn list_issues_by_milestone(
+    async fn list_tasks_by_stage(
         &self,
-        milestone_title: &str,
+        stage_name: &str,
+        tool_filter: Option<Tool>,
     ) -> Result<Vec<Task>, ZbobrError> {
         let state = self.state.read().unwrap();
-        let target_stage = match milestone_title {
-            "PENDING" => Stage::Pending,
-            "PLANNING_READY" => Stage::PlanningReady,
-            "PLANNING" => Stage::Planning,
-            "WORKING_READY" => Stage::WorkingReady,
-            "WORKING" => Stage::Working,
-            _ => return Ok(vec![]),
+        let target_stage = match Stage::from_milestone_name(stage_name) {
+            Some(s) => s,
+            None => return Ok(vec![]),
         };
 
         let found: Vec<_> = state
-            .issues
+            .tasks
             .values()
             .filter(|t| t.stage == target_stage)
+            .filter(|t| {
+                if let Some(requested_tool) = tool_filter {
+                    t.tool == Some(requested_tool)
+                } else {
+                    true
+                }
+            })
             .cloned()
             .collect();
 
         Ok(found)
     }
 
-    async fn is_issue_closed(&self, issue_number: u64) -> Result<bool, ZbobrError> {
+    async fn is_task_closed(&self, id: u64) -> Result<bool, ZbobrError> {
         let state = self.state.read().unwrap();
-        Ok(!state.issues.contains_key(&issue_number))
+        Ok(!state.tasks.contains_key(&id))
     }
 
     async fn repo_file_exists(&self, path: &str) -> Result<bool, ZbobrError> {
@@ -239,8 +244,8 @@ impl Backend for StubBackend {
         task_id: u64,
     ) -> Result<PathBuf, ZbobrError> {
         let repo_name = target_repo.split('/').nth(1).unwrap_or(target_repo);
-        let issue_dir = self.workspace.join(format!("issue#{task_id}"));
-        let work_dir = issue_dir.join(repo_name);
+        let task_dir = self.workspace.join(format!("task#{task_id}"));
+        let work_dir = task_dir.join(repo_name);
 
         tokio::fs::create_dir_all(&work_dir).await?;
 
@@ -270,7 +275,6 @@ impl Backend for StubBackend {
     }
 
     async fn clone_readonly(&self, target_repo: &str, task_id: u64) -> Result<PathBuf, ZbobrError> {
-        // reuse clone_and_setup logic for stub
         self.clone_and_setup(target_repo, task_id).await
     }
 
@@ -282,25 +286,21 @@ impl Backend for StubBackend {
         Ok(format!("https://github.com/stub/repo/pull/{task_id}"))
     }
 
-    async fn list_milestones(&self) -> Result<Vec<(u64, String)>, ZbobrError> {
+    async fn list_stages(&self) -> Result<Vec<(u64, String)>, ZbobrError> {
         let state = self.state.read().unwrap();
-        Ok(state
-            .milestones
-            .iter()
-            .map(|(k, v)| (*v, k.clone()))
-            .collect())
+        Ok(state.stages.iter().map(|(k, v)| (*v, k.clone())).collect())
     }
 
-    async fn create_milestone(&self, title: &str, _description: &str) -> Result<(), ZbobrError> {
+    async fn create_stage(&self, title: &str, _description: &str) -> Result<(), ZbobrError> {
         let mut state = self.state.write().unwrap();
-        let id = state.milestones.len() as u64 + 1;
-        state.milestones.insert(title.to_string(), id);
+        let id = state.stages.len() as u64 + 1;
+        state.stages.insert(title.to_string(), id);
         Ok(())
     }
 
-    async fn delete_milestone(&self, number: u64) -> Result<(), ZbobrError> {
+    async fn delete_stage(&self, number: u64) -> Result<(), ZbobrError> {
         let mut state = self.state.write().unwrap();
-        state.milestones.retain(|_, v| *v != number);
+        state.stages.retain(|_, v| *v != number);
         Ok(())
     }
 
@@ -322,6 +322,6 @@ impl Backend for StubBackend {
 
     fn debug_state(&self) -> String {
         let state = self.state.read().unwrap();
-        format!("{:?}", state.issues)
+        format!("{:?}", state.tasks)
     }
 }

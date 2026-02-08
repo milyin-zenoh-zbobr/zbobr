@@ -7,16 +7,14 @@ const DONE_LABEL: &str = "done";
 const DONE_LABEL_COLOR: &str = "5319e7";
 const MODEL_LABEL_COLOR: &str = "bfd4f2";
 
-/// Milestone descriptions.
-fn milestone_description(stage: Stage) -> &'static str {
+/// Stage descriptions.
+fn stage_description(stage: Stage) -> &'static str {
     match stage {
-        Stage::Pending => "Issue is under user's control, bot ignores it",
-        Stage::PlanningReady => {
-            "Issue must be taken by planner agent, any matching bot can take it"
-        }
-        Stage::Planning => "Issue is in planning, other bots ignore it",
-        Stage::WorkingReady => "Issue must be taken by worker agent, any matching bot can take it",
-        Stage::Working => "Issue is in work, other bots ignore it",
+        Stage::Pending => "Task is under user's control, bot ignores it",
+        Stage::PlanningReady => "Task must be taken by planner agent, any matching bot can take it",
+        Stage::Planning => "Task is in planning, other bots ignore it",
+        Stage::WorkingReady => "Task must be taken by worker agent, any matching bot can take it",
+        Stage::Working => "Task is in work, other bots ignore it",
     }
 }
 
@@ -54,7 +52,7 @@ impl Zbobr {
         Ok(output_dir.to_path_buf())
     }
 
-    /// Stage 2: Push content to GitHub -- create repo, milestones, labels, and files.
+    /// Stage 2: Push content to GitHub -- create repo, stages, labels, and files.
     /// Reads files from the local directory created by stage 1.
     pub async fn setup_push_remote(
         &self,
@@ -66,7 +64,7 @@ impl Zbobr {
         // Ensure the domain repo exists
         self.ensure_domain_repo_exists().await?;
 
-        // Create milestones
+        // Create stages
         let desired_stages = [
             Stage::Pending,
             Stage::PlanningReady,
@@ -74,26 +72,25 @@ impl Zbobr {
             Stage::WorkingReady,
             Stage::Working,
         ];
-        let existing = self.list_milestones().await?;
+        let existing = self.list_stages().await?;
         let existing_titles: Vec<&str> = existing.iter().map(|(_, t)| t.as_str()).collect();
 
         for stage in &desired_stages {
             let title = stage.milestone_name();
             if existing_titles.contains(&title) {
-                tracing::info!("Milestone '{title}' already exists");
+                tracing::info!("Stage '{title}' already exists");
             } else {
-                tracing::info!("Creating milestone '{title}'");
-                self.create_milestone(title, milestone_description(*stage))
-                    .await?;
+                tracing::info!("Creating stage '{title}'");
+                self.create_stage(title, stage_description(*stage)).await?;
             }
         }
 
-        // Delete extra milestones
+        // Delete extra stages
         let desired_titles: Vec<&str> = desired_stages.iter().map(|s| s.milestone_name()).collect();
         for (number, title) in &existing {
             if !desired_titles.contains(&title.as_str()) {
-                tracing::info!("Deleting milestone '{title}'");
-                self.delete_milestone(*number).await?;
+                tracing::info!("Deleting stage '{title}'");
+                self.delete_stage(*number).await?;
             }
         }
 
@@ -105,14 +102,14 @@ impl Zbobr {
             self.create_label(
                 DONE_LABEL,
                 DONE_LABEL_COLOR,
-                "Issue implementation completed",
+                "Task implementation completed",
             )
             .await?;
         } else {
             tracing::info!("Label '{DONE_LABEL}' already exists");
         }
 
-        let model_label = format!("copilot:{}", self.config.default_model);
+        let model_label = format!("model:{}", self.config.default_model);
         if !existing_labels.contains(&model_label) {
             tracing::info!("Creating label '{model_label}'");
             self.create_label(

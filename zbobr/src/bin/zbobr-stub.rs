@@ -2,7 +2,7 @@ use clap::Parser;
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::time::Duration;
-use zbobr_lib::mcp::{planner_tools, worker_tools, MessageParam, PlanParam, RepoParam};
+use zbobr_lib::mcp::{planner_tools, worker_tools, DescriptionParam, MessageParam, RepoParam};
 
 #[derive(Parser, Debug)]
 #[command(name = "zbobr-stub")]
@@ -174,19 +174,24 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("Stub: analyzing requirements...");
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        tracing::info!("Stub: creating plan...");
-        let plan = format!(
+        tracing::info!("Stub: creating description...");
+        let description = format!(
             "Implementation plan for task #{task_id}\n\n1. Add new feature\n2. Fix existing bug"
         );
 
-        mcp.call_tool(planner_tools::SET_PLAN, PlanParam { plan })
-            .await?;
-        tracing::info!("Stub: plan set via MCP.");
+        mcp.call_tool(
+            planner_tools::SET_DESCRIPTION,
+            DescriptionParam {
+                description: description,
+            },
+        )
+        .await?;
+        tracing::info!("Stub: description set via MCP.");
 
         mcp.call_tool(
             planner_tools::POST_MESSAGE,
             MessageParam {
-                message: "Planner: requirements analyzed and plan created.".to_string(),
+                message: "Planner: requirements analyzed and description created.".to_string(),
             },
         )
         .await?;

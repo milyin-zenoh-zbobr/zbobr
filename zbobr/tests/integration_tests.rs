@@ -2,7 +2,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::time::Duration;
 use tokio::time::sleep;
-use zbobr_lib::mcp::{admin_tools, CreateIssueParam, IssueIdParam, SetStageParam};
+use zbobr_lib::mcp::{admin_tools, CreateTaskParam, SetStageParam, TaskIdParam};
 use zbobr_lib::Stage;
 
 struct AdminClient {
@@ -106,13 +106,16 @@ impl AdminClient {
         anyhow::bail!("No JSON data found in SSE response: {}", text)
     }
 
-    async fn create_issue(&self, title: &str, body: &str) -> anyhow::Result<u64> {
+    async fn create_task(&self, title: &str, description: &str) -> anyhow::Result<u64> {
         let res = self
             .call_tool(
-                admin_tools::CREATE_ISSUE,
-                CreateIssueParam {
+                admin_tools::CREATE_TASK,
+                CreateTaskParam {
                     title: title.to_string(),
-                    body: body.to_string(),
+                    description: description.to_string(),
+                    tool: None,
+                    model: None,
+                    parent_task_id: None,
                 },
             )
             .await?;
@@ -122,19 +125,19 @@ impl AdminClient {
             .split('#')
             .nth(1)
             .and_then(|s| s.parse::<u64>().ok())
-            .ok_or_else(|| anyhow::anyhow!("Could not extract issue ID from: {}", result_text))?;
+            .ok_or_else(|| anyhow::anyhow!("Could not extract task ID from: {}", result_text))?;
         Ok(id)
     }
 
-    async fn set_issue_stage(&self, id: u64, stage: Stage) -> anyhow::Result<()> {
-        self.call_tool(admin_tools::SET_ISSUE_STAGE, SetStageParam { id, stage })
+    async fn set_task_stage(&self, id: u64, stage: Stage) -> anyhow::Result<()> {
+        self.call_tool(admin_tools::SET_TASK_STAGE, SetStageParam { id, stage })
             .await?;
         Ok(())
     }
 
-    async fn get_issue_info(&self, id: u64) -> anyhow::Result<String> {
+    async fn get_task_info(&self, id: u64) -> anyhow::Result<String> {
         let res = self
-            .call_tool(admin_tools::GET_ISSUE, IssueIdParam { id })
+            .call_tool(admin_tools::GET_TASK, TaskIdParam { id })
             .await?;
         Ok(res["result"]["content"][0]["text"]
             .as_str()
@@ -187,31 +190,27 @@ async fn test_blackbox_process_flow() -> anyhow::Result<()> {
             "--fork-owner",
             "test-forks",
         ])
-        .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit())
         .spawn()?;
 
     println!("Spawned zbobr (pid: {:?}) from {:?}", child.id(), exe);
 
     let admin = AdminClient::new(&format!("http://127.0.0.1:{admin_port}/admin")).await?;
 
-    // 1. Create an issue via Admin MCP
-    let issue_id = admin
-        .create_issue("Blackbox Feature", "Description of blackbox feature")
+    // 1. Create a task via Admin MCP
+    let task_id = admin
+        .create_task("Blackbox Feature", "Description of blackbox feature")
         .await?;
-    println!("Extracted issue ID: {}", issue_id);
+    println!("Extracted task ID: {}", task_id);
 
     // 2. Set stage to PLANNING_READY
     println!("Transitioning to PLANNING_READY...");
-    admin
-        .set_issue_stage(issue_id, Stage::PlanningReady)
-        .await?;
+    admin.set_task_stage(task_id, Stage::PlanningReady).await?;
 
     // 3. Wait for manager to pick it up and transition to PLANNING
     println!("Waiting for transition to PLANNING...");
     let mut plan_ready = false;
     for _ in 0..30 {
-        let text = admin.get_issue_info(issue_id).await?;
+        let text = admin.get_task_info(task_id).await?;
         if text.contains("Stage: Pending") && text.contains("Implementation plan") {
             println!("Planner finished, plan is available.");
             plan_ready = true;
@@ -223,13 +222,13 @@ async fn test_blackbox_process_flow() -> anyhow::Result<()> {
 
     // 6. Transition to WORKING_READY
     println!("Transitioning to WORKING_READY...");
-    admin.set_issue_stage(issue_id, Stage::WorkingReady).await?;
+    admin.set_task_stage(task_id, Stage::WorkingReady).await?;
 
     // 7. Wait for transition to WORKING
     println!("Waiting for transition to WORKING...");
     let mut done = false;
     for _ in 0..30 {
-        let text = admin.get_issue_info(issue_id).await?;
+        let text = admin.get_task_info(task_id).await?;
         if text.contains("Done: true") {
             done = true;
             break;
