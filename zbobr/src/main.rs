@@ -3,7 +3,7 @@ mod mcp;
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
-use zbobr_lib::{Zbobr, ZbobrConfig, SetupFile, Stage};
+use zbobr_lib::{SetupFile, Stage, Zbobr, ZbobrConfig};
 
 #[derive(Args, Clone)]
 struct GlobalArgs {
@@ -17,6 +17,11 @@ struct GlobalArgs {
     /// Can also be set via ZBOBR_FORK_OWNER env var
     #[arg(long, global = true)]
     fork_owner: Option<String>,
+
+    /// Path to workspace directory (default: ./workspace)
+    /// Can also be set via ZBOBR_WORKSPACE env var
+    #[arg(long, global = true)]
+    workspace: Option<PathBuf>,
 
     /// Path to planner agent prompt file
     #[arg(long, env = "ZBOBR_PLANNER_PROMPT", global = true)]
@@ -151,6 +156,9 @@ fn load_config(cli: &Cli) -> Result<ZbobrConfig, zbobr_lib::ZbobrError> {
     if let Some(ref fo) = cli.global.fork_owner {
         config.fork_owner = fo.clone();
     }
+    if let Some(ref ws) = cli.global.workspace {
+        config.workspace = ws.clone();
+    }
     config.validate()?;
     Ok(config)
 }
@@ -222,8 +230,7 @@ fn build_setup_files(zbobr: &Zbobr) -> anyhow::Result<Vec<SetupFile>> {
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 
@@ -233,7 +240,10 @@ async fn main() -> anyhow::Result<()> {
     let prompts = resolve_prompts(&cli)?;
 
     match cli.command {
-        Command::Setup { dry_run, output_dir } => {
+        Command::Setup {
+            dry_run,
+            output_dir,
+        } => {
             let files = build_setup_files(&zbobr)?;
             let default_dir = default_setup_dir(&zbobr);
             let dir = output_dir.unwrap_or(default_dir);
@@ -333,9 +343,12 @@ async fn run_agent_session(
 
     let status = tokio::process::Command::new("copilot")
         .args([
-            "--model", &model,
-            "--additional-mcp-config", config_path.to_str().unwrap(),
-            "-i", prompt,
+            "--model",
+            &model,
+            "--additional-mcp-config",
+            config_path.to_str().unwrap(),
+            "-i",
+            prompt,
         ])
         .current_dir(&issue_dir)
         .status()
@@ -391,23 +404,24 @@ async fn run_manager_loop(
         // Check for PLANNING issues
         let planning = zbobr.find_tasks_by_stage(Stage::Planning).await?;
         if let Some(task) = planning.first() {
-            let task_model = task
-                .model
-                .clone()
-                .unwrap_or_else(|| model.clone());
+            let task_model = task.model.clone().unwrap_or_else(|| model.clone());
             tracing::info!("Found PLANNING issue #{} - running planner", task.id);
-            run_single_session(zbobr, task.id, "planner", &task_model, port, &planner_prompt)
-                .await;
+            run_single_session(
+                zbobr,
+                task.id,
+                "planner",
+                &task_model,
+                port,
+                &planner_prompt,
+            )
+            .await;
             continue;
         }
 
         // Check for READY issues
         let ready = zbobr.find_tasks_by_stage(Stage::Ready).await?;
         if let Some(task) = ready.first() {
-            let task_model = task
-                .model
-                .clone()
-                .unwrap_or_else(|| model.clone());
+            let task_model = task.model.clone().unwrap_or_else(|| model.clone());
             tracing::info!("Found READY issue #{} - running worker", task.id);
             run_single_session(zbobr, task.id, "worker", &task_model, port, &worker_prompt).await;
             continue;
@@ -467,11 +481,8 @@ async fn run_single_session(
     });
 
     let config_path = issue_dir.join(".mcp-config.json");
-    if let Err(e) = tokio::fs::write(
-        &config_path,
-        serde_json::to_string(&mcp_config).unwrap(),
-    )
-    .await
+    if let Err(e) =
+        tokio::fs::write(&config_path, serde_json::to_string(&mcp_config).unwrap()).await
     {
         tracing::error!("Failed to write MCP config: {e}");
         server_handle.abort();
@@ -480,9 +491,12 @@ async fn run_single_session(
 
     let result = tokio::process::Command::new("copilot")
         .args([
-            "--model", model,
-            "--additional-mcp-config", config_path.to_str().unwrap(),
-            "-i", prompt,
+            "--model",
+            model,
+            "--additional-mcp-config",
+            config_path.to_str().unwrap(),
+            "-i",
+            prompt,
         ])
         .current_dir(&issue_dir)
         .status()
