@@ -10,31 +10,31 @@ use rmcp::{tool, tool_handler, tool_router, ServerHandler};
 
 // -- Parameter types --
 
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct PlanParam {
     #[schemars(description = "The plan text")]
     pub plan: String,
 }
 
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct MessageParam {
     #[schemars(description = "The message to post")]
     pub message: String,
 }
 
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct RepoParam {
     #[schemars(description = "Target repository in owner/name format")]
     pub repo: String,
 }
 
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct IssueIdParam {
     #[schemars(description = "The task/issue ID")]
     pub id: u64,
 }
 
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct CreateIssueParam {
     #[schemars(description = "Issue title")]
     pub title: String,
@@ -42,25 +42,25 @@ pub struct CreateIssueParam {
     pub body: String,
 }
 
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct UpdateIssueParam {
     pub id: u64,
     pub body: String,
 }
 
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct SetStageParam {
     pub id: u64,
     pub stage: String,
 }
 
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct LabelParam {
     pub id: u64,
     pub label: String,
 }
 
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct MilestoneParam {
     #[schemars(description = "Milestone name (e.g. PENDING, PLANNING_READY, etc.)")]
     pub milestone: String,
