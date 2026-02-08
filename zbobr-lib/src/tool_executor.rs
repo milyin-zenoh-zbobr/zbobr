@@ -46,10 +46,9 @@ impl ToolExecutor for CopilotExecutor {
         let mcp_config = serde_json::json!({
             "mcpServers": {
                 "zbobr": {
-                    "transport": {
-                        "type": "sse",
-                        "url": mcp_url
-                    }
+                    "type": "sse",
+                    "url": mcp_url,
+                    "tools": ["*"]
                 }
             }
         });
@@ -61,16 +60,20 @@ impl ToolExecutor for CopilotExecutor {
 
         tracing::info!("Starting copilot {role} session for task #{task_id}");
         tracing::info!("MCP endpoint: {mcp_url}");
+        tracing::debug!("MCP config JSON: {}", mcp_config_str);
+
+        let args = [
+            "--model",
+            model_name,
+            "--additional-mcp-config",
+            &mcp_config_str,
+            "-i",
+            prompt,
+        ];
+        tracing::debug!("Copilot command: copilot {}", args.join(" "));
 
         let status = tokio::process::Command::new("copilot")
-            .args([
-                "--model",
-                model_name,
-                "--additional-mcp-config",
-                &mcp_config_str,
-                "-i",
-                prompt,
-            ])
+            .args(args)
             .current_dir(task_dir)
             .status()
             .await?;
@@ -102,10 +105,9 @@ impl ToolExecutor for ClaudeExecutor {
         let mcp_config = serde_json::json!({
             "mcpServers": {
                 "zbobr": {
-                    "transport": {
-                        "type": "sse",
-                        "url": mcp_url
-                    }
+                    "type": "sse",
+                    "url": mcp_url,
+                    "tools": ["*"]
                 }
             }
         });
@@ -117,18 +119,22 @@ impl ToolExecutor for ClaudeExecutor {
 
         tracing::info!("Starting claude {role} session for task #{task_id}");
         tracing::info!("MCP endpoint: {mcp_url}");
+        tracing::debug!("MCP config JSON: {}", mcp_config_str);
+
+        let args = [
+            "--model",
+            model_name,
+            "--additional-mcp-config",
+            &mcp_config_str,
+            "-i",
+            prompt,
+        ];
+        tracing::debug!("Claude command: claude {}", args.join(" "));
 
         // Note: Claude CLI execution is not yet fully implemented
         // This is a placeholder for future implementation
         let status = tokio::process::Command::new("claude")
-            .args([
-                "--model",
-                model_name,
-                "--additional-mcp-config",
-                &mcp_config_str,
-                "-i",
-                prompt,
-            ])
+            .args(args)
             .current_dir(task_dir)
             .status()
             .await?;
