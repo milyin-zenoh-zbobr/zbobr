@@ -58,7 +58,7 @@ case "$AGENT_TYPE" in
 
     # Run agent from issue workspace
     cd "$ISSUE_WORKDIR"
-    copilot --agent planner --model "$MODEL" -i "$PROMPT"
+    copilot --agent planner --model "$MODEL" --no-ask-user -i "$PROMPT"
     ;;
   worker)
     # Export functions for the agent
@@ -68,7 +68,7 @@ case "$AGENT_TYPE" in
 
     # Run agent from issue workspace
     cd "$ISSUE_WORKDIR"
-    copilot --agent worker --model "$MODEL" -i "$PROMPT"
+    copilot --agent worker --model "$MODEL" --no-ask-user -i "$PROMPT"
     ;;
   *)
     echo "Unknown agent: $AGENT_TYPE"

@@ -67,6 +67,7 @@ impl ToolExecutor for CopilotExecutor {
             model_name,
             "--additional-mcp-config",
             &mcp_config_str,
+            "--no-ask-user",
             "-i",
             prompt,
         ];
@@ -126,6 +127,8 @@ impl ToolExecutor for ClaudeExecutor {
             model_name,
             "--additional-mcp-config",
             &mcp_config_str,
+            "--permission-mode",
+            "dontAsk",
             "-i",
             prompt,
         ];
