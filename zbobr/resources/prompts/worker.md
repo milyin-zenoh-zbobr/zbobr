@@ -1,6 +1,6 @@
-# Worker Agent Instructions
+# Worker Agent Prompts
 
-Instructions specific to the worker agent role.
+Prompts specific to the worker agent role.
 
 ## Your Role
 

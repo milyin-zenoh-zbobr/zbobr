@@ -241,15 +241,17 @@ fn build_setup_files(zbobr: &Zbobr) -> anyhow::Result<Vec<SetupFile>> {
         },
     ];
 
-    // Add all custom-instructions files
-    let custom_instructions = [
-        "custom-instructions/common.md",
-        "custom-instructions/repositories.md",
-        "custom-instructions/planner.md",
-        "custom-instructions/worker.md",
+    // Add all prompts files
+    let prompts = [
+        "prompts/common.md",
+        "prompts/repositories.md",
+        "prompts/planner.md",
+        "prompts/worker.md",
+        "prompts/planner-workflow.md",
+        "prompts/worker-workflow.md",
     ];
 
-    for file_name in &custom_instructions {
+    for file_name in &prompts {
         let content = load_resource(file_name)?;
         files.push(SetupFile {
             path: file_name.to_string(),

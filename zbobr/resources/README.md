@@ -87,37 +87,39 @@ Or create a token at https://github.com/settings/tokens (needs `repo` scope).
 
 These scripts load `.zbobr.env` and launch the zbobr daemon with proper configuration.
 
-## Custom Instructions
+## Prompts
 
-The `custom-instructions/` directory contains markdown files that provide context and guidelines to AI agents. These files are automatically included when agents process issues.
+The `prompts/` directory contains markdown files that provide context, guidelines, and technical workflow instructions to AI agents. These files are automatically included when agents process issues.
 
-### Instruction Files
+### Prompt Files
 
 | File | Used By | Purpose |
 |------|---------|---------|
 | `common.md` | Planner & Worker | Shared context about project architecture, conventions, and domain knowledge |
 | `repositories.md` | Planner | Lists target repositories and repository-specific notes |
-| `planner.md` | Planner | Instructions specific to the planning phase |
-| `worker.md` | Worker | Instructions specific to the implementation phase |
+| `planner.md` | Planner | Domain-specific prompts for the planning phase |
+| `worker.md` | Worker | Domain-specific prompts for the implementation phase |
+| `planner-workflow.md` | Planner | Technical workflow and MCP API documentation |
+| `worker-workflow.md` | Worker | Technical workflow and MCP API documentation |
 
 ### Default Configuration
 
 - **Planner agents** receive: `common.md`, `repositories.md`, and `planner.md`
 - **Worker agents** receive: `common.md` and `worker.md`
 
-### Customizing Instructions
+### Customizing Prompts
 
 You can customize which files are used by editing `.zbobr.env`:
 
 ```bash
-# Semicolon-separated list of instruction files
-ZBOBR_PLANNER_INSTRUCTIONS=custom-instructions/common.md;custom-instructions/repositories.md;custom-instructions/planner.md
-ZBOBR_WORKER_INSTRUCTIONS=custom-instructions/common.md;custom-instructions/worker.md
+# Semicolon-separated list of prompt files
+ZBOBR_PLANNER_PROMPTS=prompts/common.md;prompts/repositories.md;prompts/planner.md
+ZBOBR_WORKER_PROMPTS=prompts/common.md;prompts/worker.md
 ```
 
-### Editing Instructions
+### Editing Prompts
 
-1. **Edit existing files**: Modify the files in `custom-instructions/` to add project-specific context
+1. **Edit existing files**: Modify the files in `prompts/` to add project-specific context
 2. **Add new files**: Create additional markdown files and reference them in `.zbobr.env`
 3. **Remove files**: Remove file paths from the environment variables
 

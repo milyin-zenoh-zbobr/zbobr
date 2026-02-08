@@ -29,7 +29,7 @@ Add any repository-specific notes here:
 - Used by both backend and frontend
 - Must maintain backward compatibility
 
-## Instructions
+## Guidelines
 
 When working with these repositories:
 1. Fork the repository to the configured ZBOBR_FORK_OWNER

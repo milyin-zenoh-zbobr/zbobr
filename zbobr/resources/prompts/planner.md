@@ -1,6 +1,6 @@
-# Planner Agent Instructions
+# Planner Agent Prompts
 
-Instructions specific to the planner agent role.
+Prompts specific to the planner agent role.
 
 ## Your Role
 

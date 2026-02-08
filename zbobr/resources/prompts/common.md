@@ -1,6 +1,6 @@
-# Common Instructions
+# Common Prompts
 
-This file contains instructions that are shared between both planner and worker agents.
+This file contains prompts that are shared between both planner and worker agents.
 
 ## Project Context
 
@@ -24,4 +24,4 @@ This project follows a microservices architecture using:
 
 - This file is automatically included for both planner and worker agents
 - Keep this focused on information both agents need
-- Agent-specific instructions go in planner.md or worker.md
+- Agent-specific prompts go in planner.md or worker.md
