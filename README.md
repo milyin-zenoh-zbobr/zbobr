@@ -6,7 +6,7 @@ Universal AI-powered issue management automation using GitHub Copilot agents for
 
 This repository contains the **Copilot Orchestrator** — a reusable automation system that:
 
-- **Manager Agent**: Processes issues through stages (PLANNING → PENDING → READY → WORKING), creates implementation plans, and spawns Worker agents
+- **Manager Agent**: Processes issues through stages (PENDING → PLANNING_READY → PLANNING → WORKING_READY → WORKING), creates implementation plans, and spawns Worker agents
 - **Worker Agent**: Implements individual issues by forking repos, creating PRs, and executing the work
 
 The orchestrator is domain-agnostic and can manage any set of repositories through **Domain Projects**.
@@ -63,10 +63,10 @@ zbobr loop --domain-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
 
 ### Workflow
 
-1. **Create issue** in domain project with milestone `PLANNING` and reference a target repo
-2. **Manager researches** the issue and creates an implementation plan → sets `PENDING`
-3. **Human reviews** and sets milestone to `READY` (optionally add `copilot:<model>` label for AI model choice)
-4. **Manager spawns Worker** → sets `WORKING`  
+1. **Create issue** in domain project with milestone `PLANNING_READY` and reference a target repo
+2. **Manager researches** the issue (transitioning to `PLANNING` lock state) and creates an implementation plan → sets `PENDING`
+3. **Human reviews** and sets milestone to `WORKING_READY` (optionally add `copilot:<model>` label for AI model choice)
+4. **Manager spawns Worker** (transitioning to `WORKING` lock state)  
 5. **Worker implements** by:
    - Forking target repo to fork owner (e.g., `YoroolGui/*`)
    - Creating PR with link to issue
@@ -83,10 +83,12 @@ These are orchestrator-owned and universal—same across all domain projects:
 - `done` — Issue implementation is complete
 
 **Milestones:**
-- `PLANNING` → Manager researches and plans
-- `PENDING` → Waiting for human review or implementation complete
-- `READY` → Approved, ready for Worker to implement
-- `WORKING` → Worker agent is actively implementing
+**Milestones:**
+- `PENDING` → Issue is under user's control, bot ignores it
+- `PLANNING_READY` → Issue must be taken by planner agent, any matching bot can take it
+- `PLANNING` → Issue is in planning, other bots ignore it
+- `WORKING_READY` → Issue must be taken by worker agent, any matching bot can take it
+- `WORKING` → Issue is in work, other bots ignore it
 
 ## Architecture
 

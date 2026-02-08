@@ -28,8 +28,8 @@ impl ZbobrConfig {
 
         let fork_owner = std::env::var("ZBOBR_FORK_OWNER").unwrap_or_default();
 
-        let default_model = std::env::var("ZBOBR_DEFAULT_MODEL")
-            .unwrap_or_else(|_| "gpt-5-mini".into());
+        let default_model =
+            std::env::var("ZBOBR_DEFAULT_MODEL").unwrap_or_else(|_| "gpt-5-mini".into());
 
         let workspace = std::env::var("ZBOBR_WORKSPACE")
             .map(PathBuf::from)
@@ -57,7 +57,8 @@ impl ZbobrConfig {
         if self.domain_repo.is_empty() {
             return Err(ZbobrError::Config(
                 "domain repo not set. Use --domain-repo owner/repo or set ZBOBR_DOMAIN_REPO.\n  \
-                 This is the GitHub repository whose issues the orchestrator processes.".into(),
+                 This is the GitHub repository whose issues the orchestrator processes."
+                    .into(),
             ));
         }
         if self.fork_owner.is_empty() {
@@ -122,7 +123,11 @@ mod tests {
     fn from_env_missing_required() {
         // Clear env to ensure ZBOBR_DOMAIN_REPO is not set
         std::env::remove_var("ZBOBR_DOMAIN_REPO");
-        let result = ZbobrConfig::from_env();
-        assert!(result.is_err());
+        // Ensure we have a token so we don't fail on "GitHub token not found"
+        std::env::set_var("GH_TOKEN", "test-token");
+
+        let config = ZbobrConfig::from_env().expect("from_env should succeed with token");
+        // validate() should fail because domain_repo is missing
+        assert!(config.validate().is_err());
     }
 }

@@ -1,4 +1,4 @@
-use crate::{Zbobr, ZbobrError, Stage, Task};
+use crate::{Stage, Task, Zbobr, ZbobrError};
 
 #[derive(Debug, serde::Deserialize)]
 struct IssueResponse {
@@ -46,7 +46,8 @@ impl Zbobr {
         let stage = match issue.milestone.as_ref().map(|m| m.title.as_str()) {
             Some("PLANNING") => Stage::Planning,
             Some("PENDING") => Stage::Pending,
-            Some("READY") => Stage::Ready,
+            Some("PLANNING_READY") => Stage::PlanningReady,
+            Some("WORKING_READY") => Stage::WorkingReady,
             Some("WORKING") => Stage::Working,
             _ => Stage::Planning, // default
         };
@@ -205,7 +206,8 @@ impl Zbobr {
             let stage = match issue.milestone.as_ref().map(|m| m.title.as_str()) {
                 Some("PLANNING") => Stage::Planning,
                 Some("PENDING") => Stage::Pending,
-                Some("READY") => Stage::Ready,
+                Some("PLANNING_READY") => Stage::PlanningReady,
+                Some("WORKING_READY") => Stage::WorkingReady,
                 Some("WORKING") => Stage::Working,
                 _ => Stage::Planning,
             };

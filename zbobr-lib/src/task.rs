@@ -3,18 +3,20 @@ use crate::{Zbobr, ZbobrError};
 /// Workflow stage (maps to GitHub milestones internally).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Stage {
-    Planning,
     Pending,
-    Ready,
+    PlanningReady,
+    Planning,
+    WorkingReady,
     Working,
 }
 
 impl Stage {
     pub fn milestone_name(&self) -> &'static str {
         match self {
-            Stage::Planning => "PLANNING",
             Stage::Pending => "PENDING",
-            Stage::Ready => "READY",
+            Stage::PlanningReady => "PLANNING_READY",
+            Stage::Planning => "PLANNING",
+            Stage::WorkingReady => "WORKING_READY",
             Stage::Working => "WORKING",
         }
     }
@@ -121,7 +123,9 @@ impl WorkerSession {
 
     /// Push changes and create PR from the prepared branch.
     pub async fn submit_work(&self, target_repo: &str) -> Result<String, ZbobrError> {
-        self.zbobr.push_and_create_pr(target_repo, self.task_id).await
+        self.zbobr
+            .push_and_create_pr(target_repo, self.task_id)
+            .await
     }
 
     /// Mark task as done (sets done flag and transitions to Pending).
@@ -129,9 +133,7 @@ impl WorkerSession {
         self.zbobr
             .set_issue_milestone(self.task_id, Stage::Pending.milestone_name())
             .await?;
-        self.zbobr
-            .add_issue_label(self.task_id, "done")
-            .await?;
+        self.zbobr.add_issue_label(self.task_id, "done").await?;
         Ok(())
     }
 }
@@ -142,9 +144,10 @@ mod tests {
 
     #[test]
     fn stage_milestone_names() {
-        assert_eq!(Stage::Planning.milestone_name(), "PLANNING");
         assert_eq!(Stage::Pending.milestone_name(), "PENDING");
-        assert_eq!(Stage::Ready.milestone_name(), "READY");
+        assert_eq!(Stage::PlanningReady.milestone_name(), "PLANNING_READY");
+        assert_eq!(Stage::Planning.milestone_name(), "PLANNING");
+        assert_eq!(Stage::WorkingReady.milestone_name(), "WORKING_READY");
         assert_eq!(Stage::Working.milestone_name(), "WORKING");
     }
 
@@ -156,7 +159,7 @@ mod tests {
 
     #[test]
     fn stage_roundtrip_serde() {
-        let stage = Stage::Ready;
+        let stage = Stage::PlanningReady;
         let json = serde_json::to_string(&stage).unwrap();
         let back: Stage = serde_json::from_str(&json).unwrap();
         assert_eq!(back, stage);

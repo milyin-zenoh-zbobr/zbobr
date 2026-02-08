@@ -37,7 +37,7 @@ struct GlobalArgs {
     name = "zbobr",
     about = "AI-powered issue orchestrator",
     long_about = "AI-powered issue orchestrator that manages GitHub issues through automated stages.\n\n\
-        Issues flow through: PLANNING -> PENDING -> READY -> WORKING.\n\
+        Issues flow through: PENDING -> PLANNING_READY -> PLANNING -> WORKING_READY -> WORKING.\n\
         Planner agents create implementation plans, worker agents implement them\n\
         by forking target repositories and creating pull requests.\n\n\
         Requires a GitHub token: set GH_TOKEN or GITHUB_TOKEN env var.\n\
@@ -401,11 +401,11 @@ async fn run_manager_loop(
             last_cleanup = std::time::Instant::now();
         }
 
-        // Check for PLANNING issues
-        let planning = zbobr.find_tasks_by_stage(Stage::Planning).await?;
+        // Check for PLANNING_READY issues
+        let planning = zbobr.find_tasks_by_stage(Stage::PlanningReady).await?;
         if let Some(task) = planning.first() {
             let task_model = task.model.clone().unwrap_or_else(|| model.clone());
-            tracing::info!("Found PLANNING issue #{} - running planner", task.id);
+            tracing::info!("Found PLANNING_READY issue #{} - running planner", task.id);
             run_single_session(
                 zbobr,
                 task.id,
@@ -418,11 +418,11 @@ async fn run_manager_loop(
             continue;
         }
 
-        // Check for READY issues
-        let ready = zbobr.find_tasks_by_stage(Stage::Ready).await?;
+        // Check for WORKING_READY issues
+        let ready = zbobr.find_tasks_by_stage(Stage::WorkingReady).await?;
         if let Some(task) = ready.first() {
             let task_model = task.model.clone().unwrap_or_else(|| model.clone());
-            tracing::info!("Found READY issue #{} - running worker", task.id);
+            tracing::info!("Found WORKING_READY issue #{} - running worker", task.id);
             run_single_session(zbobr, task.id, "worker", &task_model, port, &worker_prompt).await;
             continue;
         }

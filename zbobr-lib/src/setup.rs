@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::{Zbobr, ZbobrError, Stage};
+use crate::{Stage, Zbobr, ZbobrError};
 
 /// Desired labels for the domain project.
 const DONE_LABEL: &str = "done";
@@ -10,10 +10,13 @@ const MODEL_LABEL_COLOR: &str = "bfd4f2";
 /// Milestone descriptions.
 fn milestone_description(stage: Stage) -> &'static str {
     match stage {
-        Stage::Planning => "Issue is being planned by agent",
-        Stage::Pending => "Issue plan is complete, awaiting human review or implementation is done",
-        Stage::Ready => "Issue is approved and ready for worker agent",
-        Stage::Working => "Issue is being implemented by worker agent",
+        Stage::Pending => "Issue is under user's control, bot ignores it",
+        Stage::PlanningReady => {
+            "Issue must be taken by planner agent, any matching bot can take it"
+        }
+        Stage::Planning => "Issue is in planning, other bots ignore it",
+        Stage::WorkingReady => "Issue must be taken by worker agent, any matching bot can take it",
+        Stage::Working => "Issue is in work, other bots ignore it",
     }
 }
 
@@ -64,7 +67,13 @@ impl Zbobr {
         self.ensure_domain_repo_exists().await?;
 
         // Create milestones
-        let desired_stages = [Stage::Planning, Stage::Pending, Stage::Ready, Stage::Working];
+        let desired_stages = [
+            Stage::Pending,
+            Stage::PlanningReady,
+            Stage::Planning,
+            Stage::WorkingReady,
+            Stage::Working,
+        ];
         let existing = self.list_milestones().await?;
         let existing_titles: Vec<&str> = existing.iter().map(|(_, t)| t.as_str()).collect();
 
@@ -93,8 +102,12 @@ impl Zbobr {
 
         if !existing_labels.contains(&DONE_LABEL.to_string()) {
             tracing::info!("Creating label '{DONE_LABEL}'");
-            self.create_label(DONE_LABEL, DONE_LABEL_COLOR, "Issue implementation completed")
-                .await?;
+            self.create_label(
+                DONE_LABEL,
+                DONE_LABEL_COLOR,
+                "Issue implementation completed",
+            )
+            .await?;
         } else {
             tracing::info!("Label '{DONE_LABEL}' already exists");
         }
@@ -116,10 +129,7 @@ impl Zbobr {
         for file in files {
             let local_path = local_dir.join(&file.path);
             let content = tokio::fs::read_to_string(&local_path).await.map_err(|e| {
-                ZbobrError::Other(format!(
-                    "Failed to read {}: {e}",
-                    local_path.display()
-                ))
+                ZbobrError::Other(format!("Failed to read {}: {e}", local_path.display()))
             })?;
 
             let exists = self.repo_file_exists(&file.path).await?;
