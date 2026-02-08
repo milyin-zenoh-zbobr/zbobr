@@ -189,7 +189,7 @@ fn default_setup_dir(zbobr: &Zbobr) -> PathBuf {
     let repo = &zbobr.config().domain_repo;
     // Use the repo part after the slash, e.g. "Org/my-project" -> "my-project"
     let name = repo.split('/').nth(1).unwrap_or(repo);
-    PathBuf::from(name)
+    std::env::temp_dir().join(name)
 }
 
 /// Default resources directory: `resources/` next to the executable.
