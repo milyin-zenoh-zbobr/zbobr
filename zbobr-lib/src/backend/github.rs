@@ -738,8 +738,107 @@ impl Backend for GitHubBackend {
         Ok(())
     }
 
+    async fn setup_repository(&self, files: &[crate::SetupFile]) -> Result<(), ZbobrError> {
+        tracing::info!("Pushing setup to GitHub: {}", self.config.domain_repo);
+
+        // Ensure the domain repo exists
+        self.ensure_domain_repo_exists().await?;
+
+        // Create stages
+        let desired_stages = [
+            Stage::Pending,
+            Stage::PlanningReady,
+            Stage::Planning,
+            Stage::WorkingReady,
+            Stage::Working,
+        ];
+        let existing = self.list_stages().await?;
+        let existing_titles: Vec<&str> = existing.iter().map(|(_, t)| t.as_str()).collect();
+
+        for stage in &desired_stages {
+            let title = stage.milestone_name();
+            if existing_titles.contains(&title) {
+                tracing::info!("Stage '{title}' already exists");
+            } else {
+                tracing::info!("Creating stage '{title}'");
+                self.create_stage(title, stage_description(*stage)).await?;
+            }
+        }
+
+        // Delete extra stages
+        let desired_titles: Vec<&str> = desired_stages.iter().map(|s| s.milestone_name()).collect();
+        for (number, title) in &existing {
+            if !desired_titles.contains(&title.as_str()) {
+                tracing::info!("Deleting stage '{title}'");
+                self.delete_stage(*number).await?;
+            }
+        }
+
+        // Create labels
+        let existing_labels = self.list_labels().await?;
+
+        const DONE_LABEL: &str = "done";
+        const DONE_LABEL_COLOR: &str = "5319e7";
+        const MODEL_LABEL_COLOR: &str = "bfd4f2";
+
+        if !existing_labels.contains(&DONE_LABEL.to_string()) {
+            tracing::info!("Creating label '{DONE_LABEL}'");
+            self.create_label(
+                DONE_LABEL,
+                DONE_LABEL_COLOR,
+                "Task implementation completed",
+            )
+            .await?;
+        } else {
+            tracing::info!("Label '{DONE_LABEL}' already exists");
+        }
+
+        let model_label = format!("model:{}", self.config.default_model);
+        if !existing_labels.contains(&model_label) {
+            tracing::info!("Creating label '{model_label}'");
+            self.create_label(
+                &model_label,
+                MODEL_LABEL_COLOR,
+                &format!("Use {} model", self.config.default_model),
+            )
+            .await?;
+        } else {
+            tracing::info!("Label '{model_label}' already exists");
+        }
+
+        // Push files from provided list to GitHub
+        for file in files {
+            let exists = self.repo_file_exists(&file.path).await?;
+            if exists {
+                tracing::info!("File '{}' already exists in repo, skipping", file.path);
+            } else {
+                tracing::info!("Pushing '{}' to repo", file.path);
+                self.create_repo_file(
+                    &file.path,
+                    &file.content,
+                    &format!("Initialize {} from zbobr setup", file.path),
+                )
+                .await?;
+            }
+        }
+
+        tracing::info!("GitHub setup complete for {}", self.config.domain_repo);
+        Ok(())
+    }
+
     fn debug_state(&self) -> String {
         "GitHubBackend".to_string()
+    }
+}
+
+/// Stage descriptions.
+fn stage_description(stage: Stage) -> &'static str {
+    match stage {
+        Stage::Pending => "Task is under user's control, bot ignores it",
+        Stage::PlanningReady => "Task must be taken by planner agent, any matching bot can take it",
+        Stage::Planning => "Task is in planning, other bots ignore it",
+        Stage::WorkingReady => "Task must be taken by worker agent, any matching bot can take it",
+        Stage::Working => "Task is in work, other bots ignore it",
     }
 }
 

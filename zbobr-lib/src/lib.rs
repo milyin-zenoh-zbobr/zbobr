@@ -7,8 +7,7 @@ pub mod setup;
 pub mod task;
 
 pub use config::ZbobrConfig;
-pub use setup::SetupFile;
-pub use task::{Model, PlannerSession, Stage, Task, Tool, WorkerSession};
+pub use task::{Model, PlannerSession, SetupFile, Stage, Task, Tool, WorkerSession};
 
 use crate::backend::github::GitHubBackend;
 use crate::backend::stub::StubBackend;
@@ -151,6 +150,10 @@ impl Zbobr {
         self.backend
             .create_repo_file(path, content, commit_message)
             .await
+    }
+
+    pub async fn setup_repository(&self, files: &[SetupFile]) -> Result<(), ZbobrError> {
+        self.backend.setup_repository(files).await
     }
 
     pub async fn ensure_domain_repo_exists(&self) -> Result<(), ZbobrError> {

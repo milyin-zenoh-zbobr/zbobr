@@ -320,6 +320,29 @@ impl Backend for StubBackend {
         Ok(())
     }
 
+    async fn setup_repository(&self, files: &[crate::SetupFile]) -> Result<(), ZbobrError> {
+        let mut state = self.state.write().unwrap();
+
+        // Initialize stages
+        state.stages.clear();
+        state.stages.insert(Stage::Pending.to_string(), 1);
+        state.stages.insert(Stage::PlanningReady.to_string(), 2);
+        state.stages.insert(Stage::Planning.to_string(), 3);
+        state.stages.insert(Stage::WorkingReady.to_string(), 4);
+        state.stages.insert(Stage::Working.to_string(), 5);
+
+        // Initialize labels
+        state.labels.clear();
+        state.labels.insert("done".to_string());
+
+        // Initialize files
+        for file in files {
+            state.files.insert(file.path.clone(), file.content.clone());
+        }
+
+        Ok(())
+    }
+
     fn debug_state(&self) -> String {
         let state = self.state.read().unwrap();
         format!("{:?}", state.tasks)

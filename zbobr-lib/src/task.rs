@@ -1,5 +1,14 @@
 use crate::{Zbobr, ZbobrError};
 
+/// A file to create in the domain repository during setup.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SetupFile {
+    /// Path relative to the repo root (e.g., "README.md").
+    pub path: String,
+    /// File content (plain text).
+    pub content: String,
+}
+
 /// Workflow stage (maps to GitHub milestones internally).
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
