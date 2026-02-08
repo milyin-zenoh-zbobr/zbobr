@@ -8,7 +8,99 @@ struct RepoResponse {
     full_name: String,
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[allow(dead_code)]
+struct ContentsResponse {
+    sha: Option<String>,
+}
+
 impl Zbobr {
+    /// Check if a file exists in the domain repo.
+    pub(crate) async fn repo_file_exists(&self, path: &str) -> Result<bool, ZbobrError> {
+        let (owner, repo) = self.config.parse_repo()?;
+        let result = self
+            .octocrab
+            .get::<ContentsResponse, _, _>(
+                format!("/repos/{owner}/{repo}/contents/{path}"),
+                None::<&()>,
+            )
+            .await;
+        Ok(result.is_ok())
+    }
+
+    /// Create or update a file in the domain repo via the Contents API.
+    /// Content is provided as a plain string (will be base64-encoded).
+    /// Skips if the file already exists (no overwrite).
+    pub(crate) async fn create_repo_file(
+        &self,
+        path: &str,
+        content: &str,
+        commit_message: &str,
+    ) -> Result<(), ZbobrError> {
+        let (owner, repo) = self.config.parse_repo()?;
+        let encoded = base64_encode(content);
+        self.octocrab
+            .put(
+                format!("/repos/{owner}/{repo}/contents/{path}"),
+                Some(&serde_json::json!({
+                    "message": commit_message,
+                    "content": encoded,
+                })),
+            )
+            .await
+            .map(|_: serde_json::Value| ())?;
+        Ok(())
+    }
+
+    /// Ensure the domain repo exists; create it if not.
+    pub(crate) async fn ensure_domain_repo_exists(&self) -> Result<(), ZbobrError> {
+        let (owner, repo) = self.config.parse_repo()?;
+        let exists = self
+            .octocrab
+            .get::<RepoResponse, _, _>(format!("/repos/{owner}/{repo}"), None::<&()>)
+            .await
+            .is_ok();
+
+        if !exists {
+            tracing::info!("Domain repo {owner}/{repo} does not exist, creating...");
+            // Try creating as org repo first, fall back to user repo
+            let result = self
+                .octocrab
+                .post(
+                    format!("/orgs/{owner}/repos"),
+                    Some(&serde_json::json!({
+                        "name": repo,
+                        "auto_init": true,
+                    })),
+                )
+                .await;
+
+            match result {
+                Ok(_v) => {
+                    let _: serde_json::Value = _v;
+                    tracing::info!("Created org repo {owner}/{repo}");
+                }
+                Err(_) => {
+                    // Fall back to user repo
+                    self.octocrab
+                        .post(
+                            "/user/repos".to_string(),
+                            Some(&serde_json::json!({
+                                "name": repo,
+                                "auto_init": true,
+                            })),
+                        )
+                        .await
+                        .map(|_: serde_json::Value| ())?;
+                    tracing::info!("Created user repo {owner}/{repo}");
+                }
+            }
+            // Wait for repo init
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+        Ok(())
+    }
+
     /// Ensure a fork exists under fork_owner for the given target repo.
     /// Returns the fork's "owner/repo" string.
     pub(crate) async fn ensure_fork(&self, target_repo: &str) -> Result<String, ZbobrError> {
@@ -239,4 +331,31 @@ impl Zbobr {
         let pr_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
         Ok(pr_url)
     }
+}
+
+/// Simple base64 encoder (standard alphabet, with padding).
+fn base64_encode(input: &str) -> String {
+    const ALPHABET: &[u8; 64] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let bytes = input.as_bytes();
+    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let triple = (b0 << 16) | (b1 << 8) | b2;
+        out.push(ALPHABET[((triple >> 18) & 0x3F) as usize] as char);
+        out.push(ALPHABET[((triple >> 12) & 0x3F) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(ALPHABET[((triple >> 6) & 0x3F) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(ALPHABET[(triple & 0x3F) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
 }

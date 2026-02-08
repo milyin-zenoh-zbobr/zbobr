@@ -3,7 +3,7 @@ mod mcp;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use zbobr_lib::{Zbobr, ZbobrConfig, Stage};
+use zbobr_lib::{Zbobr, ZbobrConfig, SetupFile, Stage};
 
 #[derive(Parser)]
 #[command(name = "zbobr", about = "AI-powered issue orchestrator")]
@@ -128,6 +128,61 @@ fn load_config(cli: &Cli) -> Result<ZbobrConfig, zbobr_lib::ZbobrError> {
     Ok(config)
 }
 
+/// Default resources directory: `resources/` next to the executable.
+fn default_resources_dir() -> anyhow::Result<PathBuf> {
+    let exe = std::env::current_exe()?;
+    let exe_dir = exe
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Cannot determine executable directory"))?;
+    Ok(exe_dir.join("resources"))
+}
+
+/// Load a resource file from the resources directory.
+fn load_resource(name: &str) -> anyhow::Result<String> {
+    let path = default_resources_dir()?.join(name);
+    std::fs::read_to_string(&path)
+        .map_err(|e| anyhow::anyhow!("Failed to read resource {}: {e}", path.display()))
+}
+
+/// Build the list of files to create in the domain repo during setup.
+/// Template placeholders like {{DOMAIN_REPO}} are replaced with actual config values.
+fn build_setup_files(zbobr: &Zbobr) -> anyhow::Result<Vec<SetupFile>> {
+    let config = zbobr.config();
+
+    let readme = load_resource("README.md")?;
+    let repositories = load_resource("repositories.md")?;
+    let run_sh = load_resource("run.sh")?;
+    let run_cmd = load_resource("run.cmd")?;
+
+    let env_template = load_resource("zbobr.env")?;
+    let env_content = env_template
+        .replace("{{DOMAIN_REPO}}", &config.domain_repo)
+        .replace("{{FORK_OWNER}}", &config.fork_owner);
+
+    Ok(vec![
+        SetupFile {
+            path: "README.md".into(),
+            content: readme,
+        },
+        SetupFile {
+            path: "repositories.md".into(),
+            content: repositories,
+        },
+        SetupFile {
+            path: ".zbobr.env".into(),
+            content: env_content,
+        },
+        SetupFile {
+            path: "run.sh".into(),
+            content: run_sh,
+        },
+        SetupFile {
+            path: "run.cmd".into(),
+            content: run_cmd,
+        },
+    ])
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -144,7 +199,8 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Command::Setup { dry_run } => {
-            zbobr.setup_domain_project(dry_run).await?;
+            let files = build_setup_files(&zbobr)?;
+            zbobr.setup_domain_project(dry_run, &files).await?;
         }
         Command::Cleanup { dry_run } => {
             zbobr.cleanup_closed_tasks(dry_run).await?;

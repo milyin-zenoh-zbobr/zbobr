@@ -6,6 +6,7 @@ pub mod cleanup;
 pub mod task;
 
 pub use config::ZbobrConfig;
+pub use setup::SetupFile;
 pub use task::{Stage, Task, PlannerSession, WorkerSession};
 
 use std::sync::Arc;
