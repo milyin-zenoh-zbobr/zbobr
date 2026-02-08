@@ -400,15 +400,12 @@ impl Backend for GitHubBackend {
         };
 
         let (owner, repo) = self.parse_repo()?;
-        let mut params = vec![
+        let params = vec![
             ("milestone", stage_number.to_string()),
             ("state", "open".to_string()),
         ];
 
-        if let Some(t) = tool {
-            params.push(("labels", format!("tool:{}", t)));
-        }
-
+        // Fetch all issues for this milestone, don't filter by tool label at API level
         let issues: Vec<IssueResponse> = self
             .octocrab
             .get(format!("/repos/{owner}/{repo}/issues"), Some(&params))
@@ -422,7 +419,7 @@ impl Backend for GitHubBackend {
             };
 
             let body = issue.body.unwrap_or_default();
-            let tool = issue.labels.iter().find_map(|l| {
+            let task_tool = issue.labels.iter().find_map(|l| {
                 if let Some(name) = l.name.strip_prefix("tool:") {
                     match name {
                         "copilot" => Some(Tool::Copilot),
@@ -434,6 +431,18 @@ impl Backend for GitHubBackend {
                     None
                 }
             });
+
+            // Filter client-side: if tool filter is provided, only include tasks that:
+            // - have no tool label (can be taken by anyone), OR
+            // - have a matching tool label
+            if let Some(filter_tool) = tool {
+                if let Some(t) = task_tool {
+                    if t != filter_tool {
+                        continue; // Skip tasks with different tool label
+                    }
+                }
+                // If task_tool is None, include it (no label = any bot can take it)
+            }
 
             let model = issue.labels.iter().find_map(|l| {
                 if let Some(name) = l.name.strip_prefix("model:") {
@@ -461,7 +470,7 @@ impl Backend for GitHubBackend {
                 description: body,
                 discussion: vec![],
                 stage,
-                tool,
+                tool: task_tool,
                 model,
                 parent_task_id,
                 destination_repo,

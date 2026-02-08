@@ -461,71 +461,92 @@ async fn run_manager_loop(
         let current_tool = zbobr.config().cli_tool;
 
         // Check for PLANNING_READY tasks
-        match zbobr
+        let planning_tasks = match zbobr
             .list_tasks_by_stage(Stage::PlanningReady.milestone_name(), Some(current_tool))
             .await
         {
-            Ok(planning) => {
-                if let Some(task) = planning.first() {
-                    let task_model = task.model.clone().unwrap_or_else(|| model.clone());
-                    tracing::info!(
-                        "Found PLANNING_READY task #{} for tool {:?} - running planner",
-                        task.id,
-                        current_tool
-                    );
-                    if let Err(e) = run_role_session(
-                        zbobr,
-                        task.id,
-                        Role::Planner,
-                        Some(task_model),
-                        port,
-                        &planner_prompt,
-                    )
-                    .await
-                    {
-                        tracing::error!("Planner session failed: {e}");
-                    }
-                    continue;
-                }
+            Ok(tasks) => tasks,
+            Err(e) => {
+                tracing::error!("Failed to check PLANNING_READY tasks: {e}");
+                vec![]
             }
-            Err(e) => tracing::error!("Failed to check PLANNING_READY tasks: {e}"),
+        };
+
+        if let Some(task) = planning_tasks.first() {
+            let task_model = task.model.clone().unwrap_or_else(|| model.clone());
+            tracing::info!(
+                "Found PLANNING_READY task #{} (tool: {:?}) - running planner",
+                task.id,
+                task.tool
+            );
+            if let Err(e) = run_role_session(
+                zbobr,
+                task.id,
+                Role::Planner,
+                Some(task_model),
+                port,
+                &planner_prompt,
+            )
+            .await
+            {
+                tracing::error!("Planner session failed: {e}");
+            }
+            continue;
         }
 
         // Check for WORKING_READY tasks
-        match zbobr
+        let working_tasks = match zbobr
             .list_tasks_by_stage(Stage::WorkingReady.milestone_name(), Some(current_tool))
             .await
         {
-            Ok(ready) => {
-                if let Some(task) = ready.first() {
-                    let task_model = task.model.clone().unwrap_or_else(|| model.clone());
-                    tracing::info!(
-                        "Found WORKING_READY task #{} for tool {:?} - running worker",
-                        task.id,
-                        current_tool
-                    );
-                    if let Err(e) = run_role_session(
-                        zbobr,
-                        task.id,
-                        Role::Worker,
-                        Some(task_model),
-                        port,
-                        &worker_prompt,
-                    )
-                    .await
-                    {
-                        tracing::error!("Worker session failed: {e}");
-                    }
-                    continue;
-                }
+            Ok(tasks) => tasks,
+            Err(e) => {
+                tracing::error!("Failed to check WORKING_READY tasks: {e}");
+                vec![]
             }
-            Err(e) => tracing::error!("Failed to check WORKING_READY tasks: {e}"),
+        };
+
+        if let Some(task) = working_tasks.first() {
+            let task_model = task.model.clone().unwrap_or_else(|| model.clone());
+            tracing::info!(
+                "Found WORKING_READY task #{} (tool: {:?}) - running worker",
+                task.id,
+                task.tool
+            );
+            if let Err(e) = run_role_session(
+                zbobr,
+                task.id,
+                Role::Worker,
+                Some(task_model),
+                port,
+                &worker_prompt,
+            )
+            .await
+            {
+                tracing::error!("Worker session failed: {e}");
+            }
+            continue;
         }
 
+        // Log task statistics before sleeping
         tracing::info!(
-            "No processable tasks for tool {:?}. Sleeping {interval_secs}s...",
-            current_tool
+            "Task statistics for tool {:?}: PLANNING_READY={}, WORKING_READY={}",
+            current_tool,
+            planning_tasks.len(),
+            working_tasks.len()
         );
+
+        if !planning_tasks.is_empty() {
+            let summary: Vec<_> = planning_tasks.iter().map(|t| format!("#{} (tool: {:?})", t.id, t.tool)).collect();
+            tracing::info!("  PLANNING_READY tasks: {}", summary.join(", "));
+        }
+
+        if !working_tasks.is_empty() {
+            let summary: Vec<_> = working_tasks.iter().map(|t| format!("#{} (tool: {:?})", t.id, t.tool)).collect();
+            tracing::info!("  WORKING_READY tasks: {}", summary.join(", "));
+        }
+
+        tracing::info!("No processable tasks. Sleeping {interval_secs}s...");
         tokio::time::sleep(std::time::Duration::from_secs(interval_secs)).await;
     }
 }
