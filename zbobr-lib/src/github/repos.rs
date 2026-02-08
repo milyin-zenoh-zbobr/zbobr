@@ -70,6 +70,7 @@ impl Zbobr {
                     format!("/orgs/{owner}/repos"),
                     Some(&serde_json::json!({
                         "name": repo,
+                        "private": true,
                         "auto_init": true,
                     })),
                 )
@@ -78,7 +79,7 @@ impl Zbobr {
             match result {
                 Ok(_v) => {
                     let _: serde_json::Value = _v;
-                    tracing::info!("Created org repo {owner}/{repo}");
+                    tracing::info!("Created private org repo {owner}/{repo}");
                 }
                 Err(_) => {
                     // Fall back to user repo
@@ -87,12 +88,13 @@ impl Zbobr {
                             "/user/repos".to_string(),
                             Some(&serde_json::json!({
                                 "name": repo,
+                                "private": true,
                                 "auto_init": true,
                             })),
                         )
                         .await
                         .map(|_: serde_json::Value| ())?;
-                    tracing::info!("Created user repo {owner}/{repo}");
+                    tracing::info!("Created private user repo {owner}/{repo}");
                 }
             }
             // Wait for repo init
