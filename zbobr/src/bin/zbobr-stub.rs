@@ -3,13 +3,14 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::time::Duration;
 use zbobr_lib::mcp::{planner_tools, worker_tools, DescriptionParam, MessageParam, RepoParam};
+use zbobr_lib::task::Role;
 
 #[derive(Parser, Debug)]
 #[command(name = "zbobr-stub")]
 struct Args {
     /// Role to simulate: "planner" or "worker"
     #[arg(long)]
-    role: String,
+    role: Role,
 
     /// Task ID to connect to
     #[arg(long)]
@@ -170,7 +171,7 @@ async fn main() -> anyhow::Result<()> {
     let mcp = McpClient::new(mcp_url).await?;
     tracing::info!("MCP Handshake successful (session: {:?})", mcp.session_id);
 
-    if role == "planner" {
+    if *role == Role::Planner {
         tracing::info!("Stub: analyzing requirements...");
         tokio::time::sleep(Duration::from_secs(1)).await;
 

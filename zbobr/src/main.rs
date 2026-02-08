@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
-use zbobr_lib::task::{Model, Tool};
+use zbobr_lib::task::{Model, Role, Tool};
 use zbobr_lib::{SetupFile, Stage, Zbobr, ZbobrConfig};
 
 #[derive(Args, Clone)]
@@ -289,7 +289,7 @@ async fn main() -> anyhow::Result<()> {
                 .map(|m| m.parse::<Model>())
                 .transpose()
                 .map_err(anyhow::Error::msg)?;
-            run_role_session(&zbobr, task, "planner", model_enum, port, &prompt).await?;
+            run_role_session(&zbobr, task, Role::Planner, model_enum, port, &prompt).await?;
         }
         Command::Work { task, model, port } => {
             let prompt = load_prompt(&prompts.worker)?;
@@ -297,7 +297,7 @@ async fn main() -> anyhow::Result<()> {
                 .map(|m| m.parse::<Model>())
                 .transpose()
                 .map_err(anyhow::Error::msg)?;
-            run_role_session(&zbobr, task, "worker", model_enum, port, &prompt).await?;
+            run_role_session(&zbobr, task, Role::Worker, model_enum, port, &prompt).await?;
         }
         Command::Loop {
             interval,
@@ -330,7 +330,7 @@ async fn main() -> anyhow::Result<()> {
 async fn run_role_session(
     zbobr: &Zbobr,
     task_id: u64,
-    role: &str,
+    role: Role,
     model: Option<Model>,
     port: u16,
     prompt: &str,
@@ -338,7 +338,7 @@ async fn run_role_session(
     let model = model.unwrap_or_else(|| zbobr.config().default_model.clone());
 
     // Set stage
-    let stage = if role == "planner" {
+    let stage = if role == Role::Planner {
         Stage::Planning
     } else {
         Stage::Working
@@ -351,7 +351,7 @@ async fn run_role_session(
 
     // Start MCP server in background, scoped to this role and task
     let server_zbobr = zbobr.clone();
-    let server_role = role.to_string();
+    let server_role = role;
     let server_handle = tokio::spawn(async move {
         if let Err(e) =
             zbobr_lib::mcp::run_mcp_server(server_zbobr, port, server_role, Some(task_id)).await
@@ -417,7 +417,7 @@ async fn run_manager_loop(
         tokio::spawn(async move {
             tracing::info!("Starting Admin MCP on port {a_port}");
             if let Err(e) =
-                zbobr_lib::mcp::run_mcp_server(admin_zbobr, a_port, "admin".to_string(), None).await
+                zbobr_lib::mcp::run_mcp_server(admin_zbobr, a_port, Role::Admin, None).await
             {
                 tracing::error!("Admin MCP server error: {e}");
             }
@@ -453,7 +453,7 @@ async fn run_manager_loop(
                     if let Err(e) = run_role_session(
                         zbobr,
                         task.id,
-                        "planner",
+                        Role::Planner,
                         Some(task_model),
                         port,
                         &planner_prompt,
@@ -484,7 +484,7 @@ async fn run_manager_loop(
                     if let Err(e) = run_role_session(
                         zbobr,
                         task.id,
-                        "worker",
+                        Role::Worker,
                         Some(task_model),
                         port,
                         &worker_prompt,

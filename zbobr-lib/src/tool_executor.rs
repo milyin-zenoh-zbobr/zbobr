@@ -1,4 +1,4 @@
-use crate::task::{Model, Tool};
+use crate::task::{Model, Role, Tool};
 use async_trait::async_trait;
 use std::path::Path;
 
@@ -9,7 +9,7 @@ pub trait ToolExecutor: Send + Sync {
     ///
     /// # Arguments
     /// * `task_id` - The task ID
-    /// * `role` - The role name ("planner" or "worker")
+    /// * `role` - The role (Planner or Worker)
     /// * `model` - The AI model to use
     /// * `port` - The MCP server port
     /// * `prompt` - The prompt text for the tool
@@ -18,7 +18,7 @@ pub trait ToolExecutor: Send + Sync {
     async fn execute(
         &self,
         task_id: u64,
-        role: &str,
+        role: Role,
         model: &Model,
         port: u16,
         prompt: &str,
@@ -35,7 +35,7 @@ impl ToolExecutor for CopilotExecutor {
     async fn execute(
         &self,
         task_id: u64,
-        role: &str,
+        role: Role,
         model: &Model,
         _port: u16,
         prompt: &str,
@@ -92,7 +92,7 @@ impl ToolExecutor for ClaudeExecutor {
     async fn execute(
         &self,
         task_id: u64,
-        role: &str,
+        role: Role,
         model: &Model,
         _port: u16,
         prompt: &str,
@@ -151,14 +151,14 @@ impl ToolExecutor for StubExecutor {
     async fn execute(
         &self,
         task_id: u64,
-        role: &str,
+        role: Role,
         _model: &Model,
         _port: u16,
         _prompt: &str,
         _task_dir: &Path,
         mcp_url: &str,
     ) -> anyhow::Result<()> {
-        tracing::info!("Running STUB TOOL for {role} session");
+        tracing::info!("Running STUB TOOL for {} session", role);
 
         let exe = std::env::current_exe()?;
         // Assume zbobr-stub is next to zbobr executable
@@ -167,7 +167,7 @@ impl ToolExecutor for StubExecutor {
         let status = tokio::process::Command::new(stub_exe)
             .args([
                 "--role",
-                role,
+                role.as_str(),
                 "--task-id",
                 &task_id.to_string(),
                 "--mcp-url",

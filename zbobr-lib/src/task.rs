@@ -50,6 +50,48 @@ impl std::fmt::Display for Stage {
     }
 }
 
+/// Role for task execution.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+pub enum Role {
+    #[serde(rename = "planner")]
+    Planner,
+    #[serde(rename = "worker")]
+    Worker,
+    #[serde(rename = "admin")]
+    Admin,
+}
+
+impl Role {
+    /// Returns the role name as a string.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Role::Planner => "planner",
+            Role::Worker => "worker",
+            Role::Admin => "admin",
+        }
+    }
+}
+
+impl std::fmt::Display for Role {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for Role {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "planner" => Ok(Role::Planner),
+            "worker" => Ok(Role::Worker),
+            "admin" => Ok(Role::Admin),
+            _ => Err(format!("Unknown role: {}", s)),
+        }
+    }
+}
+
 /// AI Tool/Agent to use.
 #[derive(
     Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq, schemars::JsonSchema,

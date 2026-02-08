@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::task::{Model, Stage, Tool};
+use crate::task::{Model, Role, Stage, Tool};
 use crate::Zbobr;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -451,19 +451,19 @@ impl ServerHandler for AdminMcp {
 pub async fn run_mcp_server(
     zbobr: Zbobr,
     port: u16,
-    role: String,
+    role: Role,
     task_id: Option<u64>,
 ) -> Result<(), crate::ZbobrError> {
     let zbobr = Arc::new(zbobr);
     let path = if let Some(id) = task_id {
-        format!("/{role}/{id}")
+        format!("/{}/{}", role, id)
     } else {
-        format!("/{role}")
+        format!("/{}", role)
     };
 
     let z = zbobr.clone();
-    let router = match role.as_str() {
-        "planner" => {
+    let router = match role {
+        Role::Planner => {
             let id = task_id
                 .ok_or_else(|| crate::ZbobrError::Other("Planner needs task_id".to_string()))?;
             let svc = StreamableHttpService::new(
@@ -473,7 +473,7 @@ pub async fn run_mcp_server(
             );
             axum::Router::new().nest_service(&path, svc)
         }
-        "worker" => {
+        Role::Worker => {
             let id = task_id
                 .ok_or_else(|| crate::ZbobrError::Other("Worker needs task_id".to_string()))?;
             let svc = StreamableHttpService::new(
@@ -483,7 +483,7 @@ pub async fn run_mcp_server(
             );
             axum::Router::new().nest_service(&path, svc)
         }
-        "admin" => {
+        Role::Admin => {
             let svc = StreamableHttpService::new(
                 move || Ok(AdminMcp::new((*z).clone())),
                 Arc::new(LocalSessionManager::default()),
@@ -491,7 +491,6 @@ pub async fn run_mcp_server(
             );
             axum::Router::new().nest_service(&path, svc)
         }
-        _ => return Err(crate::ZbobrError::Other(format!("Unknown role: {role}"))),
     };
 
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
