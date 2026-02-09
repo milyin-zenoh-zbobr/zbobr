@@ -7,19 +7,9 @@
 
 ---
 
-## MCP Tools (session pre-scoped to a specific task)
+## MCP Tools
 
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `get_description` | — | Get task description with approved plan |
-| `get_discussion` | — | Get discussion messages and context |
-| `post_message` | `message: string` | Post a message to task discussion |
-| `get_work_branch_name` | — | Get the work branch name for this task (format: `{prefix}/{task_id}`) |
-| `request_branch` | `repo: string, branch: string` | Fork & clone repo (`owner/repo`), checkout specific branch, returns local path |
-| `request_branch_by_pr` | `pr: string` | Fork & clone repo from PR (URL or `owner/repo#123` format), checkout PR branch, returns local path |
-| `request_work_branch` | `repo: string` | Pull and checkout the work branch for a repo, returns local path |
-| `submit_work` | `path: string` | Push changes from local path and create PR, returns PR URL |
-| `mark_done` | — | Mark task as done |
+For workflow operations (pull repositories, read task and discussions, post reports, push results), use the MCP tools described in the API reference below.
 
 ---
 

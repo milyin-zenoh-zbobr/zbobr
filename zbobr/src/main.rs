@@ -109,6 +109,9 @@ enum Command {
         /// Port for the MCP server that the agent connects to
         #[arg(long, default_value = "3000")]
         port: u16,
+        /// Show the prompt that would be sent to the model instead of running
+        #[arg(long)]
+        show_prompt: bool,
     },
     /// Run worker role for a specific task (implements the plan, creates PR)
     Work {
@@ -120,6 +123,9 @@ enum Command {
         /// Port for the MCP server that the agent connects to
         #[arg(long, default_value = "3000")]
         port: u16,
+        /// Show the prompt that would be sent to the model instead of running
+        #[arg(long)]
+        show_prompt: bool,
     },
 }
 
@@ -161,6 +167,16 @@ fn load_prompts(paths: &[PathBuf]) -> anyhow::Result<String> {
         combined.push_str(&content);
     }
     Ok(combined)
+}
+
+/// Build full prompt with auto-generated API documentation appended.
+fn build_full_prompt(base_prompt: &str, role: Role) -> String {
+    let api_docs = match role {
+        Role::Planner => zbobr_lib::PlannerMcp::generate_api_docs(),
+        Role::Worker => zbobr_lib::WorkerMcp::generate_api_docs(),
+    };
+
+    format!("{}\n\n---\n\n{}", base_prompt, api_docs)
 }
 
 fn load_config(cli: &Cli) -> anyhow::Result<ZbobrConfig> {
@@ -304,21 +320,35 @@ async fn main() -> anyhow::Result<()> {
         Command::Cleanup { dry_run } => {
             zbobr.cleanup_closed_tasks(dry_run).await?;
         }
-        Command::Plan { task, model, port } => {
-            let prompt = load_prompts(&prompts.planner)?;
+        Command::Plan { task, model, port, show_prompt } => {
+            let base_prompt = load_prompts(&prompts.planner)?;
+            let full_prompt = build_full_prompt(&base_prompt, Role::Planner);
+
+            if show_prompt {
+                println!("{}", full_prompt);
+                return Ok(());
+            }
+
             let model_enum = model
                 .map(|m| m.parse::<Model>())
                 .transpose()
                 .map_err(anyhow::Error::msg)?;
-            run_role_session(&zbobr, task, Role::Planner, model_enum, port, &prompt).await?;
+            run_role_session(&zbobr, task, Role::Planner, model_enum, port, &full_prompt).await?;
         }
-        Command::Work { task, model, port } => {
-            let prompt = load_prompts(&prompts.worker)?;
+        Command::Work { task, model, port, show_prompt } => {
+            let base_prompt = load_prompts(&prompts.worker)?;
+            let full_prompt = build_full_prompt(&base_prompt, Role::Worker);
+
+            if show_prompt {
+                println!("{}", full_prompt);
+                return Ok(());
+            }
+
             let model_enum = model
                 .map(|m| m.parse::<Model>())
                 .transpose()
                 .map_err(anyhow::Error::msg)?;
-            run_role_session(&zbobr, task, Role::Worker, model_enum, port, &prompt).await?;
+            run_role_session(&zbobr, task, Role::Worker, model_enum, port, &full_prompt).await?;
         }
         Command::Loop {
             interval,
@@ -429,9 +459,11 @@ async fn run_manager_loop(
 ) -> anyhow::Result<()> {
     let model = model.unwrap_or_else(|| zbobr.config().default_model.clone());
 
-    // Load prompts once at loop start
-    let planner_prompt = load_prompts(&prompts.planner)?;
-    let worker_prompt = load_prompts(&prompts.worker)?;
+    // Load prompts once at loop start and append API docs
+    let planner_base = load_prompts(&prompts.planner)?;
+    let worker_base = load_prompts(&prompts.worker)?;
+    let planner_prompt = build_full_prompt(&planner_base, Role::Planner);
+    let worker_prompt = build_full_prompt(&worker_base, Role::Worker);
 
     tracing::info!("Manager loop started for {}", zbobr.config().domain_repo);
     tracing::info!("Poll interval: {interval_secs}s, Cleanup interval: {cleanup_interval_secs}s");

@@ -7,15 +7,9 @@
 
 ---
 
-## MCP Tools (session pre-scoped to a specific task)
+## MCP Tools
 
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `get_description` | — | Get task description (issue URL, requirements, acceptance criteria) |
-| `get_discussion` | — | Get discussion messages and context |
-| `post_message` | `message: string` | Post a message to task discussion |
-| `request_branch` | `repo: string, branch: string` | Clone repo for read-only investigation (`owner/repo`), checkout specific branch |
-| `request_branch_by_pr` | `pr: string` | Clone repo from PR (URL or `owner/repo#123` format), checkout PR branch for investigation |
+For workflow operations (pull repositories, read task and discussions, post questions or reports), use the MCP tools described in the API reference below.
 
 ---
 

@@ -8,6 +8,7 @@ use rmcp::model::{ServerCapabilities, ServerInfo};
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::StreamableHttpService;
 use rmcp::{tool, tool_handler, tool_router, ServerHandler};
+use serde_json::Value;
 
 /// Get the current hostname, or "unknown" if it cannot be determined.
 fn get_hostname() -> String {
@@ -148,6 +149,62 @@ mcp_tools! {
     DEBUG_STATE = "debug_state",
 }
 
+/// Generate concise API documentation from a tool router
+fn generate_api_docs_from_router<T: Send + Sync + 'static>(router: &ToolRouter<T>, role_name: &str) -> String {
+    let tools = router.list_all();
+
+    let mut doc = format!("## {} MCP API\n\n", role_name);
+    doc.push_str("Available tools (all pre-scoped to your task):\n\n");
+
+    for tool in tools {
+        doc.push_str(&format!("### `{}`\n\n", tool.name));
+        doc.push_str(&format!("{}\n\n", tool.description.as_deref().unwrap_or("No description")));
+
+        // Parameters
+        let schema = &tool.input_schema;
+        let properties_obj = schema.get("properties")
+            .and_then(|v: &Value| v.as_object());
+
+        if let Some(properties) = properties_obj {
+                if !properties.is_empty() {
+                    doc.push_str("**Parameters:**\n");
+                    for (name, prop_val) in properties {
+                        let required_arr = schema
+                            .get("required")
+                            .and_then(|v: &Value| v.as_array());
+                        let required = required_arr
+                            .map(|arr| arr.iter().any(|v: &Value| v.as_str() == Some(name.as_str())))
+                            .unwrap_or(false);
+                        let desc = match prop_val.get("description") {
+                            Some(v) => v.as_str().unwrap_or(""),
+                            None => "",
+                        };
+                        let type_str = match prop_val.get("type") {
+                            Some(v) => v.as_str().unwrap_or("any"),
+                            None => "any",
+                        };
+                        doc.push_str(&format!(
+                            "- `{}` ({}{}) - {}\n",
+                            name,
+                            type_str,
+                            if required { ", required" } else { "" },
+                            desc
+                        ));
+                    }
+                    doc.push('\n');
+                } else {
+                    doc.push_str("**Parameters:** None\n\n");
+                }
+            } else {
+                doc.push_str("**Parameters:** None\n\n");
+            }
+
+        doc.push_str("---\n\n");
+    }
+
+    doc
+}
+
 // -- Planner MCP service --
 
 #[derive(Clone)]
@@ -245,6 +302,14 @@ impl ServerHandler for PlannerMcp {
             ),
             ..Default::default()
         }
+    }
+}
+
+impl PlannerMcp {
+    /// Generate API documentation for planner tools
+    pub fn generate_api_docs() -> String {
+        let tools = Self::tool_router();
+        generate_api_docs_from_router(&tools, "Planner")
     }
 }
 
@@ -372,6 +437,14 @@ impl ServerHandler for WorkerMcp {
             ),
             ..Default::default()
         }
+    }
+}
+
+impl WorkerMcp {
+    /// Generate API documentation for worker tools
+    pub fn generate_api_docs() -> String {
+        let tools = Self::tool_router();
+        generate_api_docs_from_router(&tools, "Worker")
     }
 }
 
