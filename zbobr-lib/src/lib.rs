@@ -8,7 +8,7 @@ pub mod task;
 pub mod tool_executor;
 
 pub use config::ZbobrConfig;
-pub use task::{Model, PlannerSession, SetupFile, Stage, Task, Tool, WorkerSession};
+pub use task::{Model, SetupFile, Stage, Task, TaskSession, Tool};
 pub use tool_executor::{ClaudeExecutor, CopilotExecutor, StubExecutor, ToolExecutor};
 
 use crate::backend::github::GitHubBackend;
@@ -50,14 +50,9 @@ impl Zbobr {
         &self.config
     }
 
-    /// Create a PlannerSession bound to a specific task.
-    pub fn planner_session(&self, task_id: u64) -> PlannerSession {
-        PlannerSession::new(self.clone(), task_id)
-    }
-
-    /// Create a WorkerSession bound to a specific task.
-    pub fn worker_session(&self, task_id: u64) -> WorkerSession {
-        WorkerSession::new(self.clone(), task_id)
+    /// Create a TaskSession bound to a specific task.
+    pub fn task_session(&self, task_id: u64) -> TaskSession {
+        TaskSession::new(self.clone(), task_id)
     }
 
     // -- Delegate to Backend --

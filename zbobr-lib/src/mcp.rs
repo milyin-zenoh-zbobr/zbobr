@@ -169,7 +169,7 @@ impl PlannerMcp {
 
     #[tool(description = "Get the current description/plan for this task (read-only)")]
     async fn get_description(&self) -> String {
-        let session = self.zbobr.planner_session(self.task_id);
+        let session = self.zbobr.task_session(self.task_id);
         match session.get_description().await {
             Ok(desc) => desc,
             Err(e) => format!("Error: {e}"),
@@ -178,7 +178,7 @@ impl PlannerMcp {
 
     #[tool(description = "Get all discussion messages on this task")]
     async fn get_discussion(&self) -> String {
-        let session = self.zbobr.planner_session(self.task_id);
+        let session = self.zbobr.task_session(self.task_id);
         match session.get_discussion().await {
             Ok(msgs) => {
                 if msgs.is_empty() {
@@ -193,7 +193,7 @@ impl PlannerMcp {
 
     #[tool(description = "Post a message to the task discussion")]
     async fn post_message(&self, Parameters(params): Parameters<MessageParam>) -> String {
-        let session = self.zbobr.planner_session(self.task_id);
+        let session = self.zbobr.task_session(self.task_id);
         let hostname = get_hostname();
         match session.post_message(&params.message, Role::Planner.as_str(), &hostname).await {
             Ok(()) => "Message posted".to_string(),
@@ -205,8 +205,8 @@ impl PlannerMcp {
         description = "Clone a repository and checkout a specific branch for investigation (read-only). Returns the local path."
     )]
     async fn request_branch(&self, Parameters(params): Parameters<BranchParam>) -> String {
-        let session = self.zbobr.planner_session(self.task_id);
-        match session.request_branch(&params.repo, &params.branch).await {
+        let session = self.zbobr.task_session(self.task_id);
+        match session.request_branch_readonly(&params.repo, &params.branch).await {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
         }
@@ -216,8 +216,8 @@ impl PlannerMcp {
         description = "Clone a repository and checkout the branch from a PR (read-only). Takes PR URL or 'owner/repo#123' format. Returns the local path."
     )]
     async fn request_branch_by_pr(&self, Parameters(params): Parameters<PrParam>) -> String {
-        let session = self.zbobr.planner_session(self.task_id);
-        match session.request_branch_by_pr(&params.pr).await {
+        let session = self.zbobr.task_session(self.task_id);
+        match session.request_branch_by_pr(&params.pr, true).await {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
         }
@@ -227,8 +227,8 @@ impl PlannerMcp {
         description = "Request and checkout the work branch for a repository (read-only). Fetches the work branch if it exists. Returns the local path."
     )]
     async fn request_work_branch(&self, Parameters(params): Parameters<RepoParam>) -> String {
-        let session = self.zbobr.planner_session(self.task_id);
-        match session.request_work_branch(&params.repo).await {
+        let session = self.zbobr.task_session(self.task_id);
+        match session.request_work_branch(&params.repo, true).await {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
         }
@@ -269,7 +269,7 @@ impl WorkerMcp {
 
     #[tool(description = "Get the current description/plan for this task")]
     async fn get_description(&self) -> String {
-        let session = self.zbobr.worker_session(self.task_id);
+        let session = self.zbobr.task_session(self.task_id);
         match session.get_description().await {
             Ok(desc) => desc,
             Err(e) => format!("Error: {e}"),
@@ -278,7 +278,7 @@ impl WorkerMcp {
 
     #[tool(description = "Get all discussion messages on this task")]
     async fn get_discussion(&self) -> String {
-        let session = self.zbobr.worker_session(self.task_id);
+        let session = self.zbobr.task_session(self.task_id);
         match session.get_discussion().await {
             Ok(msgs) => {
                 if msgs.is_empty() {
@@ -293,7 +293,7 @@ impl WorkerMcp {
 
     #[tool(description = "Post a message to the task discussion")]
     async fn post_message(&self, Parameters(params): Parameters<MessageParam>) -> String {
-        let session = self.zbobr.worker_session(self.task_id);
+        let session = self.zbobr.task_session(self.task_id);
         let hostname = get_hostname();
         match session.post_message(&params.message, Role::Worker.as_str(), &hostname).await {
             Ok(()) => "Message posted".to_string(),
@@ -303,7 +303,7 @@ impl WorkerMcp {
 
     #[tool(description = "Get the work branch name that should be used for this task")]
     async fn get_work_branch_name(&self) -> String {
-        let session = self.zbobr.worker_session(self.task_id);
+        let session = self.zbobr.task_session(self.task_id);
         session.get_work_branch_name()
     }
 
@@ -311,7 +311,7 @@ impl WorkerMcp {
         description = "Fork and clone a repository, checkout a specific branch for implementation. Returns the local path with feature branch ready."
     )]
     async fn request_branch(&self, Parameters(params): Parameters<BranchParam>) -> String {
-        let session = self.zbobr.worker_session(self.task_id);
+        let session = self.zbobr.task_session(self.task_id);
         match session.request_branch(&params.repo, &params.branch).await {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
@@ -322,8 +322,8 @@ impl WorkerMcp {
         description = "Fork and clone a repository, checkout the branch from a PR for implementation. Takes PR URL or 'owner/repo#123' format. Returns the local path."
     )]
     async fn request_branch_by_pr(&self, Parameters(params): Parameters<PrParam>) -> String {
-        let session = self.zbobr.worker_session(self.task_id);
-        match session.request_branch_by_pr(&params.pr).await {
+        let session = self.zbobr.task_session(self.task_id);
+        match session.request_branch_by_pr(&params.pr, false).await {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
         }
@@ -333,8 +333,8 @@ impl WorkerMcp {
         description = "Request and checkout the work branch for a repository. Pulls the work branch from fork if it exists, otherwise creates it. Returns the local path."
     )]
     async fn request_work_branch(&self, Parameters(params): Parameters<RepoParam>) -> String {
-        let session = self.zbobr.worker_session(self.task_id);
-        match session.request_work_branch(&params.repo).await {
+        let session = self.zbobr.task_session(self.task_id);
+        match session.request_work_branch(&params.repo, false).await {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
         }
@@ -344,7 +344,7 @@ impl WorkerMcp {
         description = "Push changes and create a PR from the local repository. Takes the local path to the repository (from request_branch or request_branch_by_pr). Returns PR URL."
     )]
     async fn submit_work(&self, Parameters(params): Parameters<PathParam>) -> String {
-        let session = self.zbobr.worker_session(self.task_id);
+        let session = self.zbobr.task_session(self.task_id);
         match session.submit_work(&params.path).await {
             Ok(pr_url) => format!("PR created: {pr_url}"),
             Err(e) => format!("Error: {e}"),
@@ -353,7 +353,7 @@ impl WorkerMcp {
 
     #[tool(description = "Mark this task as done")]
     async fn mark_done(&self) -> String {
-        let session = self.zbobr.worker_session(self.task_id);
+        let session = self.zbobr.task_session(self.task_id);
         match session.mark_done().await {
             Ok(()) => "Task marked as done".to_string(),
             Err(e) => format!("Error: {e}"),
