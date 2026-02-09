@@ -48,7 +48,7 @@ impl ToolExecutor for CopilotExecutor {
         let mcp_config = serde_json::json!({
             "mcpServers": {
                 "zbobr": {
-                    "type": "sse",
+                    "type": "http",
                     "url": mcp_url,
                     "tools": ["*"]
                 }
@@ -139,7 +139,7 @@ impl ToolExecutor for ClaudeExecutor {
         let mcp_config = serde_json::json!({
             "mcpServers": {
                 "zbobr": {
-                    "type": "sse",
+                    "type": "http",
                     "url": mcp_url,
                     "tools": ["*"]
                 }
