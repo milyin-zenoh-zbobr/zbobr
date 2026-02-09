@@ -14,7 +14,8 @@
 | `get_description` | — | Get task description (issue URL, requirements, acceptance criteria) |
 | `get_discussion` | — | Get discussion messages and context |
 | `post_message` | `message: string` | Post a message to task discussion |
-| `request_repo` | `repo: string` | Clone repo for read-only investigation (`owner/repo`) |
+| `request_branch` | `repo: string, branch: string` | Clone repo for read-only investigation (`owner/repo`), checkout specific branch |
+| `request_branch_by_pr` | `pr: string` | Clone repo from PR (URL or `owner/repo#123` format), checkout PR branch for investigation |
 
 ---
 
@@ -27,10 +28,15 @@
 - Make reasonable assumptions if unclear (DO NOT ask the user)
 
 ### 2. Investigate
-- Call `request_repo` with `owner/repo` to clone target repos
-- **IMPORTANT:** `request_repo` handles ALL git operations (clone, pull, etc.)
+- **If task mentions a PR in an external repository:**
+  - Call `request_branch_by_pr` with the PR reference (URL or `owner/repo#123`)
+  - This will clone the repository and checkout the PR's branch for investigation
+- **Otherwise:**
+  - Call `request_branch` with `owner/repo` and branch name (e.g., "main", "develop")
+  - This will clone the repository and checkout the specified branch
+- **IMPORTANT:** These tools handle ALL git operations (clone, fetch, checkout, etc.)
 - **DO NOT** run git commands directly (git clone, git pull, etc.)
-- Trust the repo state provided by `request_repo` — it's always up-to-date
+- Trust the repo state provided by the tools — they're always up-to-date
 - Explore codebase: structure, patterns, conventions
 - Locate files requiring changes
 

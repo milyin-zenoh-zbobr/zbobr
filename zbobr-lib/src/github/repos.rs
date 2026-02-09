@@ -148,6 +148,7 @@ impl Zbobr {
     pub(crate) async fn clone_and_setup(
         &self,
         target_repo: &str,
+        branch: &str,
         task_id: u64,
     ) -> Result<PathBuf, ZbobrError> {
         let repo_name = target_repo
@@ -182,6 +183,27 @@ impl Zbobr {
                 .await?;
             if !fetch_status.success() {
                 tracing::warn!("Failed to fetch latest changes for {target_repo}, using existing state");
+            }
+        }
+
+        // Checkout the requested branch
+        tracing::info!("Checking out branch {branch}");
+        let checkout_status = tokio::process::Command::new("git")
+            .args(["checkout", branch])
+            .current_dir(&work_dir)
+            .status()
+            .await?;
+        if !checkout_status.success() {
+            // Try to checkout from origin if local branch doesn't exist
+            let checkout_remote_status = tokio::process::Command::new("git")
+                .args(["checkout", "-b", branch, &format!("origin/{branch}")])
+                .current_dir(&work_dir)
+                .status()
+                .await?;
+            if !checkout_remote_status.success() {
+                return Err(ZbobrError::Other(format!(
+                    "Failed to checkout branch {branch}"
+                )));
             }
         }
 
@@ -242,10 +264,11 @@ impl Zbobr {
         Ok(work_dir)
     }
 
-    /// Clone a repo for read-only investigation (no fork, no branch).
+    /// Clone a repo for read-only investigation and checkout specific branch (no fork).
     pub(crate) async fn clone_readonly(
         &self,
         target_repo: &str,
+        branch: &str,
         task_id: u64,
     ) -> Result<PathBuf, ZbobrError> {
         let repo_name = target_repo
@@ -267,6 +290,38 @@ impl Zbobr {
             if !status.success() {
                 return Err(ZbobrError::Other(format!(
                     "Failed to clone {target_repo}"
+                )));
+            }
+        } else {
+            // Fetch latest changes from origin if repo already exists
+            tracing::info!("Updating {target_repo} (read-only) in {}", work_dir.display());
+            let fetch_status = tokio::process::Command::new("git")
+                .args(["fetch", "origin"])
+                .current_dir(&work_dir)
+                .status()
+                .await?;
+            if !fetch_status.success() {
+                tracing::warn!("Failed to fetch latest changes for {target_repo}, using existing state");
+            }
+        }
+
+        // Checkout the requested branch
+        tracing::info!("Checking out branch {branch} (read-only)");
+        let checkout_status = tokio::process::Command::new("git")
+            .args(["checkout", branch])
+            .current_dir(&work_dir)
+            .status()
+            .await?;
+        if !checkout_status.success() {
+            // Try to checkout from origin if local branch doesn't exist
+            let checkout_remote_status = tokio::process::Command::new("git")
+                .args(["checkout", "-b", branch, &format!("origin/{branch}")])
+                .current_dir(&work_dir)
+                .status()
+                .await?;
+            if !checkout_remote_status.success() {
+                return Err(ZbobrError::Other(format!(
+                    "Failed to checkout branch {branch}"
                 )));
             }
         }
@@ -343,6 +398,87 @@ impl Zbobr {
 
         let pr_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
         Ok(pr_url)
+    }
+
+    /// Parse PR reference to (repo, branch).
+    /// Supports:
+    /// - "https://github.com/owner/repo/pull/123"
+    /// - "owner/repo#123"
+    pub(crate) async fn parse_pr_to_repo_branch(
+        &self,
+        pr_ref: &str,
+    ) -> Result<(String, String), ZbobrError> {
+        let (owner, repo, pr_number) = if pr_ref.starts_with("https://github.com/") {
+            // Parse URL format: https://github.com/owner/repo/pull/123
+            let parts: Vec<&str> = pr_ref
+                .trim_start_matches("https://github.com/")
+                .split('/')
+                .collect();
+            if parts.len() >= 4 && parts[2] == "pull" {
+                let owner = parts[0];
+                let repo = parts[1];
+                let pr_num = parts[3].parse::<u64>().map_err(|_| {
+                    ZbobrError::Other(format!("Invalid PR number in URL: {pr_ref}"))
+                })?;
+                (owner.to_string(), repo.to_string(), pr_num)
+            } else {
+                return Err(ZbobrError::Other(format!("Invalid PR URL format: {pr_ref}")));
+            }
+        } else if pr_ref.contains('#') {
+            // Parse short format: owner/repo#123
+            let parts: Vec<&str> = pr_ref.split('#').collect();
+            if parts.len() == 2 {
+                let repo_parts: Vec<&str> = parts[0].split('/').collect();
+                if repo_parts.len() == 2 {
+                    let owner = repo_parts[0];
+                    let repo = repo_parts[1];
+                    let pr_num = parts[1].parse::<u64>().map_err(|_| {
+                        ZbobrError::Other(format!("Invalid PR number: {}", parts[1]))
+                    })?;
+                    (owner.to_string(), repo.to_string(), pr_num)
+                } else {
+                    return Err(ZbobrError::Other(format!(
+                        "Invalid repo format in PR reference: {pr_ref}"
+                    )));
+                }
+            } else {
+                return Err(ZbobrError::Other(format!(
+                    "Invalid PR reference format: {pr_ref}"
+                )));
+            }
+        } else {
+            return Err(ZbobrError::Other(format!(
+                "PR reference must be a URL or owner/repo#number format: {pr_ref}"
+            )));
+        };
+
+        // Use gh CLI to get PR details (specifically the head branch)
+        let output = tokio::process::Command::new("gh")
+            .args([
+                "pr",
+                "view",
+                &pr_number.to_string(),
+                "--repo",
+                &format!("{owner}/{repo}"),
+                "--json",
+                "headRefName",
+                "--jq",
+                ".headRefName",
+            ])
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(ZbobrError::Other(format!(
+                "Failed to get PR branch for {owner}/{repo}#{pr_number}: {stderr}"
+            )));
+        }
+
+        let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let repo_full = format!("{owner}/{repo}");
+
+        Ok((repo_full, branch))
     }
 }
 

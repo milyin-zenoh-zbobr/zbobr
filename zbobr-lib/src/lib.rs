@@ -171,17 +171,28 @@ impl Zbobr {
     pub async fn clone_and_setup(
         &self,
         target_repo: &str,
+        branch: &str,
         task_id: u64,
     ) -> Result<PathBuf, ZbobrError> {
-        self.backend.clone_and_setup(target_repo, task_id).await
+        self.backend.clone_and_setup(target_repo, branch, task_id).await
     }
 
     pub async fn clone_readonly(
         &self,
         target_repo: &str,
+        branch: &str,
         task_id: u64,
     ) -> Result<PathBuf, ZbobrError> {
-        self.backend.clone_readonly(target_repo, task_id).await
+        self.backend.clone_readonly(target_repo, branch, task_id).await
+    }
+
+    /// Parse PR reference to (repo, branch).
+    /// Accepts formats:
+    /// - "https://github.com/owner/repo/pull/123"
+    /// - "owner/repo#123"
+    /// Returns (repo, branch_name)
+    pub async fn parse_pr_to_repo_branch(&self, pr_ref: &str) -> Result<(String, String), ZbobrError> {
+        self.backend.parse_pr_to_repo_branch(pr_ref).await
     }
 
     pub async fn push_and_create_pr(

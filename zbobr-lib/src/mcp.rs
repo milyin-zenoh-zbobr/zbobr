@@ -38,6 +38,20 @@ pub struct RepoParam {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct BranchParam {
+    #[schemars(description = "Target repository in owner/name format")]
+    pub repo: String,
+    #[schemars(description = "Branch name to checkout")]
+    pub branch: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct PrParam {
+    #[schemars(description = "Pull request reference (URL like 'https://github.com/owner/repo/pull/123' or 'owner/repo#123')")]
+    pub pr: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct TaskIdParam {
     #[schemars(description = "The task ID")]
     pub id: u64,
@@ -97,7 +111,8 @@ mcp_tools! {
     GET_DESCRIPTION = "get_description",
     GET_DISCUSSION = "get_discussion",
     POST_MESSAGE = "post_message",
-    REQUEST_REPO = "request_repo",
+    REQUEST_BRANCH = "request_branch",
+    REQUEST_BRANCH_BY_PR = "request_branch_by_pr",
 }
 
 mcp_tools! {
@@ -105,7 +120,8 @@ mcp_tools! {
     GET_DESCRIPTION = "get_description",
     GET_DISCUSSION = "get_discussion",
     POST_MESSAGE = "post_message",
-    REQUEST_REPO = "request_repo",
+    REQUEST_BRANCH = "request_branch",
+    REQUEST_BRANCH_BY_PR = "request_branch_by_pr",
     SUBMIT_WORK = "submit_work",
     MARK_DONE = "mark_done",
 }
@@ -177,11 +193,22 @@ impl PlannerMcp {
     }
 
     #[tool(
-        description = "Clone a repository for investigation (read-only). Returns the local path."
+        description = "Clone a repository and checkout a specific branch for investigation (read-only). Returns the local path."
     )]
-    async fn request_repo(&self, Parameters(params): Parameters<RepoParam>) -> String {
+    async fn request_branch(&self, Parameters(params): Parameters<BranchParam>) -> String {
         let session = self.zbobr.planner_session(self.task_id);
-        match session.request_repo(&params.repo).await {
+        match session.request_branch(&params.repo, &params.branch).await {
+            Ok(path) => path,
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    #[tool(
+        description = "Clone a repository and checkout the branch from a PR (read-only). Takes PR URL or 'owner/repo#123' format. Returns the local path."
+    )]
+    async fn request_branch_by_pr(&self, Parameters(params): Parameters<PrParam>) -> String {
+        let session = self.zbobr.planner_session(self.task_id);
+        match session.request_branch_by_pr(&params.pr).await {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
         }
@@ -255,11 +282,22 @@ impl WorkerMcp {
     }
 
     #[tool(
-        description = "Fork and clone a repository for implementation. Returns the local path with feature branch ready."
+        description = "Fork and clone a repository, checkout a specific branch for implementation. Returns the local path with feature branch ready."
     )]
-    async fn request_repo(&self, Parameters(params): Parameters<RepoParam>) -> String {
+    async fn request_branch(&self, Parameters(params): Parameters<BranchParam>) -> String {
         let session = self.zbobr.worker_session(self.task_id);
-        match session.request_repo(&params.repo).await {
+        match session.request_branch(&params.repo, &params.branch).await {
+            Ok(path) => path,
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    #[tool(
+        description = "Fork and clone a repository, checkout the branch from a PR for implementation. Takes PR URL or 'owner/repo#123' format. Returns the local path."
+    )]
+    async fn request_branch_by_pr(&self, Parameters(params): Parameters<PrParam>) -> String {
+        let session = self.zbobr.worker_session(self.task_id);
+        match session.request_branch_by_pr(&params.pr).await {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
         }

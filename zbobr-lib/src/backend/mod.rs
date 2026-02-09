@@ -74,13 +74,16 @@ pub trait Backend: Send + Sync {
     /// Ensure the domain repo exists.
     async fn ensure_domain_repo_exists(&self) -> Result<(), ZbobrError>;
 
-    /// Clone a repo into the workspace, set up fork remote and feature branch.
+    /// Clone a repo into the workspace, checkout specific branch, set up fork remote.
     /// Returns the local path.
-    async fn clone_and_setup(&self, target_repo: &str, task_id: u64)
+    async fn clone_and_setup(&self, target_repo: &str, branch: &str, task_id: u64)
         -> Result<PathBuf, ZbobrError>;
 
-    /// Clone a repo for read-only investigation (no fork, no branch).
-    async fn clone_readonly(&self, target_repo: &str, task_id: u64) -> Result<PathBuf, ZbobrError>;
+    /// Clone a repo and checkout specific branch for read-only investigation (no fork).
+    async fn clone_readonly(&self, target_repo: &str, branch: &str, task_id: u64) -> Result<PathBuf, ZbobrError>;
+
+    /// Parse PR reference (URL or owner/repo#123) to (repo, branch).
+    async fn parse_pr_to_repo_branch(&self, pr_ref: &str) -> Result<(String, String), ZbobrError>;
 
     /// Push the current branch to the fork remote and create a PR.
     async fn push_and_create_pr(

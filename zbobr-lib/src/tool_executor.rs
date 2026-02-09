@@ -71,6 +71,7 @@ impl ToolExecutor for CopilotExecutor {
             &mcp_config_str,
             "--no-ask-user",
             "--allow-all-tools",
+            "--allow-all-urls",
             "-p",
             prompt,
         ];
@@ -161,6 +162,8 @@ impl ToolExecutor for ClaudeExecutor {
             &mcp_config_str,
             "--permission-mode",
             "dontAsk",
+            "--tools",
+            "default",
             "-p",
             prompt,
         ];

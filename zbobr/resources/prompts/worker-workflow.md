@@ -14,7 +14,8 @@
 | `get_description` | — | Get task description with approved plan |
 | `get_discussion` | — | Get discussion messages and context |
 | `post_message` | `message: string` | Post a message to task discussion |
-| `request_repo` | `repo: string` | Fork & clone repo (`owner/repo`), returns local path with feature branch |
+| `request_branch` | `repo: string, branch: string` | Fork & clone repo (`owner/repo`), checkout specific branch, returns local path with feature branch |
+| `request_branch_by_pr` | `pr: string` | Fork & clone repo from PR (URL or `owner/repo#123` format), checkout PR branch, returns local path |
 | `submit_work` | `repo: string` | Push changes and create PR for `owner/repo`, returns PR URL |
 | `mark_done` | — | Mark task as done |
 
@@ -27,10 +28,15 @@
 2. Call `get_discussion` for additional context
 
 ### 2. Set up
-1. Call `request_repo` with `owner/repo` to fork, clone, and create feature branch
-2. **IMPORTANT:** `request_repo` handles ALL git setup (fork, clone, branch creation)
-3. **DO NOT** run git clone/pull commands directly — use MCP tools only
-4. `cd` into the returned local path
+1. **If task mentions a PR in an external repository:**
+   - Call `request_branch_by_pr` with the PR reference (URL or `owner/repo#123`)
+   - This will fork, clone the repository, and checkout the PR's branch
+2. **Otherwise:**
+   - Call `request_branch` with `owner/repo` and branch name (e.g., "main", "develop")
+   - This will fork, clone the repository, and checkout the specified branch
+3. **IMPORTANT:** These tools handle ALL git setup (fork, clone, branch checkout)
+4. **DO NOT** run git clone/pull commands directly — use MCP tools only
+5. `cd` into the returned local path
 
 ### 3. Implement
 1. Follow the plan systematically

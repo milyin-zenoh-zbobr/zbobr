@@ -322,10 +322,17 @@ impl PlannerSession {
         self.zbobr.post_task_comment(self.task_id, msg, role, hostname).await
     }
 
-    /// Clone target repo locally for investigation (read-only).
-    pub async fn request_repo(&self, repo: &str) -> Result<String, ZbobrError> {
-        let path = self.zbobr.clone_readonly(repo, self.task_id).await?;
+    /// Clone target repo and checkout specific branch for investigation (read-only).
+    pub async fn request_branch(&self, repo: &str, branch: &str) -> Result<String, ZbobrError> {
+        let path = self.zbobr.clone_readonly(repo, branch, self.task_id).await?;
         Ok(path.to_string_lossy().to_string())
+    }
+
+    /// Helper: Clone repo and checkout branch from PR (parses PR reference).
+    /// PR format: "https://github.com/owner/repo/pull/123" or "owner/repo#123"
+    pub async fn request_branch_by_pr(&self, pr: &str) -> Result<String, ZbobrError> {
+        let (repo, branch) = self.zbobr.parse_pr_to_repo_branch(pr).await?;
+        self.request_branch(&repo, &branch).await
     }
 }
 
@@ -365,10 +372,17 @@ impl WorkerSession {
         self.zbobr.post_task_comment(self.task_id, msg, role, hostname).await
     }
 
-    /// Fork target repo, clone locally, create branch, return local path.
-    pub async fn request_repo(&self, repo: &str) -> Result<String, ZbobrError> {
-        let path = self.zbobr.clone_and_setup(repo, self.task_id).await?;
+    /// Fork target repo, clone locally, checkout specific branch, return local path.
+    pub async fn request_branch(&self, repo: &str, branch: &str) -> Result<String, ZbobrError> {
+        let path = self.zbobr.clone_and_setup(repo, branch, self.task_id).await?;
         Ok(path.to_string_lossy().to_string())
+    }
+
+    /// Helper: Fork, clone repo and checkout branch from PR (parses PR reference).
+    /// PR format: "https://github.com/owner/repo/pull/123" or "owner/repo#123"
+    pub async fn request_branch_by_pr(&self, pr: &str) -> Result<String, ZbobrError> {
+        let (repo, branch) = self.zbobr.parse_pr_to_repo_branch(pr).await?;
+        self.request_branch(&repo, &branch).await
     }
 
     /// Push changes and create PR from the prepared branch.

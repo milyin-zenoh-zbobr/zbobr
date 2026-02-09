@@ -247,6 +247,7 @@ impl Backend for StubBackend {
     async fn clone_and_setup(
         &self,
         target_repo: &str,
+        _branch: &str,
         task_id: u64,
     ) -> Result<PathBuf, ZbobrError> {
         let repo_name = target_repo.split('/').nth(1).unwrap_or(target_repo);
@@ -280,8 +281,30 @@ impl Backend for StubBackend {
         Ok(work_dir)
     }
 
-    async fn clone_readonly(&self, target_repo: &str, task_id: u64) -> Result<PathBuf, ZbobrError> {
-        self.clone_and_setup(target_repo, task_id).await
+    async fn clone_readonly(&self, target_repo: &str, branch: &str, task_id: u64) -> Result<PathBuf, ZbobrError> {
+        self.clone_and_setup(target_repo, branch, task_id).await
+    }
+
+    async fn parse_pr_to_repo_branch(&self, pr_ref: &str) -> Result<(String, String), ZbobrError> {
+        // Stub implementation: just parse the format and return stub values
+        if pr_ref.starts_with("https://github.com/") {
+            let parts: Vec<&str> = pr_ref
+                .trim_start_matches("https://github.com/")
+                .split('/')
+                .collect();
+            if parts.len() >= 4 && parts[2] == "pull" {
+                let repo = format!("{}/{}", parts[0], parts[1]);
+                return Ok((repo, "stub-branch".to_string()));
+            }
+        } else if pr_ref.contains('#') {
+            let parts: Vec<&str> = pr_ref.split('#').collect();
+            if parts.len() == 2 {
+                return Ok((parts[0].to_string(), "stub-branch".to_string()));
+            }
+        }
+        Err(ZbobrError::Other(format!(
+            "Invalid PR reference format: {pr_ref}"
+        )))
     }
 
     async fn push_and_create_pr(
