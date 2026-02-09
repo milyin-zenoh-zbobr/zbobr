@@ -70,7 +70,7 @@ impl ToolExecutor for CopilotExecutor {
             "--no-ask-user",
             "--allow-all-tools",
             "--silent",
-            "-i",
+            "-p",
             prompt,
         ];
         tracing::debug!("Copilot command: copilot {}", args.join(" "));
@@ -131,7 +131,7 @@ impl ToolExecutor for ClaudeExecutor {
             &mcp_config_str,
             "--permission-mode",
             "dontAsk",
-            "-i",
+            "-p",
             prompt,
         ];
         tracing::debug!("Claude command: claude {}", args.join(" "));
