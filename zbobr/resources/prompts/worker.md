@@ -9,7 +9,7 @@
 
 ## MCP Tools
 
-For workflow operations (pull repositories, read task and discussions, post reports, push results), use the MCP tools described in the API reference below.
+For workflow operations (pull repositories, read task and discussions, post reports, push work branches), use the MCP tools described in the API reference below.
 
 ---
 
@@ -21,17 +21,17 @@ For workflow operations (pull repositories, read task and discussions, post repo
 
 ### 2. Set up
 1. **If task mentions a PR in an external repository:**
-   - Call `request_branch_by_pr` with the PR reference (URL or `owner/repo#123`)
+   - Call `pull_branch_by_pr` with the PR reference (URL or `owner/repo#123`)
    - This will fork, clone the repository, and checkout the PR's branch
-   - Save the returned local path for later use with `submit_work`
+   - Save the returned local path for later use with `push_work_branch`
 2. **Otherwise:**
-   - Call `request_branch` with `owner/repo` and branch name (e.g., "main", "develop")
+   - Call `pull_branch` with `owner/repo` and branch name (e.g., "main", "develop")
    - This will fork, clone the repository, and checkout the specified branch
-   - Save the returned local path for later use with `submit_work`
+   - Save the returned local path for later use with `push_work_branch`
 3. **If you need to work on an existing work branch:**
-   - Call `request_work_branch` with `owner/repo`
-   - This will checkout the work branch (format: `{prefix}/{task_id}`)
-   - The branch will be pulled from fork if it exists, or created if not
+   - Call `pull_work_branch` with `owner/repo`
+   - If a branch named by `get_work_branch_name` exists in the fork, it will be pulled
+   - If the branch doesn't exist, the main repo branch is pulled and work branch name is created locally
 4. **IMPORTANT:** These tools handle ALL git setup (fork, clone, branch checkout)
 5. **DO NOT** run git clone/pull commands directly — use MCP tools only
 6. `cd` into the returned local path
@@ -43,12 +43,12 @@ For workflow operations (pull repositories, read task and discussions, post repo
 4. Commit changes with clear messages
 
 ### 4. Submit
-1. Call `submit_work` with the local path (from `request_branch`, `request_branch_by_pr`, or `request_work_branch`)
+1. Call `push_work_branch` with the local path (from `pull_branch`, `pull_branch_by_pr`, or `pull_work_branch`)
    - The tool will:
-     - Check if current branch matches the expected work branch name
+     - Check if current branch matches the expected work branch name (from `get_work_branch_name`)
      - If not, create the work branch from current branch
-     - Push to fork
-     - Create PR to the base branch that was originally requested
+     - Push to fork with the work branch name
+     - Create PR to the base branch that was originally pulled
 2. Call `post_message` to summarize what was done
 3. Call `mark_done` to mark task complete
 

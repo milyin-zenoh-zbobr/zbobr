@@ -23,11 +23,11 @@ For workflow operations (pull repositories, read task and discussions, post ques
 
 ### 2. Investigate
 - **If task mentions a PR in an external repository:**
-  - Call `request_branch_by_pr` with the PR reference (URL or `owner/repo#123`)
-  - This will clone the repository and checkout the PR's branch for investigation
+  - Call `pull_branch_by_pr` with the PR reference (URL or `owner/repo#123`)
+  - This will pull the repository and checkout the PR's branch for investigation
 - **Otherwise:**
-  - Call `request_branch` with `owner/repo` and branch name (e.g., "main", "develop")
-  - This will clone the repository and checkout the specified branch
+  - Call `pull_branch` with `owner/repo` and branch name (e.g., "main", "develop")
+  - This will pull the repository and checkout the specified branch
 - **IMPORTANT:** These tools handle ALL git operations (clone, fetch, checkout, etc.)
 - **DO NOT** run git commands directly (git clone, git pull, etc.)
 - Trust the repo state provided by the tools — they're always up-to-date

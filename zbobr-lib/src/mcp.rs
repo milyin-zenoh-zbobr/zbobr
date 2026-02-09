@@ -118,9 +118,9 @@ mcp_tools! {
     GET_DESCRIPTION = "get_description",
     GET_DISCUSSION = "get_discussion",
     POST_MESSAGE = "post_message",
-    REQUEST_BRANCH = "request_branch",
-    REQUEST_BRANCH_BY_PR = "request_branch_by_pr",
-    REQUEST_WORK_BRANCH = "request_work_branch",
+    PULL_BRANCH = "pull_branch",
+    PULL_BRANCH_BY_PR = "pull_branch_by_pr",
+    PULL_WORK_BRANCH = "pull_work_branch",
 }
 
 mcp_tools! {
@@ -129,10 +129,10 @@ mcp_tools! {
     GET_DISCUSSION = "get_discussion",
     POST_MESSAGE = "post_message",
     GET_WORK_BRANCH_NAME = "get_work_branch_name",
-    REQUEST_BRANCH = "request_branch",
-    REQUEST_BRANCH_BY_PR = "request_branch_by_pr",
-    REQUEST_WORK_BRANCH = "request_work_branch",
-    SUBMIT_WORK = "submit_work",
+    PULL_BRANCH = "pull_branch",
+    PULL_BRANCH_BY_PR = "pull_branch_by_pr",
+    PULL_WORK_BRANCH = "pull_work_branch",
+    PUSH_WORK_BRANCH = "push_work_branch",
     MARK_DONE = "mark_done",
 }
 
@@ -259,9 +259,9 @@ impl PlannerMcp {
     }
 
     #[tool(
-        description = "Clone a repository and checkout a specific branch for investigation (read-only). Returns the local path."
+        description = "Pull a repository and checkout a specific branch for investigation (read-only). Returns the local path."
     )]
-    async fn request_branch(&self, Parameters(params): Parameters<BranchParam>) -> String {
+    async fn pull_branch(&self, Parameters(params): Parameters<BranchParam>) -> String {
         let session = self.zbobr.task_session(self.task_id);
         match session.request_branch_readonly(&params.repo, &params.branch).await {
             Ok(path) => path,
@@ -270,9 +270,9 @@ impl PlannerMcp {
     }
 
     #[tool(
-        description = "Clone a repository and checkout the branch from a PR (read-only). Takes PR URL or 'owner/repo#123' format. Returns the local path."
+        description = "Pull a repository and checkout the branch from a PR (read-only). Takes PR URL or 'owner/repo#123' format. Returns the local path."
     )]
-    async fn request_branch_by_pr(&self, Parameters(params): Parameters<PrParam>) -> String {
+    async fn pull_branch_by_pr(&self, Parameters(params): Parameters<PrParam>) -> String {
         let session = self.zbobr.task_session(self.task_id);
         match session.request_branch_by_pr(&params.pr, true).await {
             Ok(path) => path,
@@ -281,9 +281,9 @@ impl PlannerMcp {
     }
 
     #[tool(
-        description = "Request and checkout the work branch for a repository. Forks if needed, fetches from fork, creates branch if it doesn't exist. Returns the local path."
+        description = "Pull the work branch for a repository. If the work branch (named by get_work_branch_name) exists in the fork, it will be pulled; otherwise, the main repository branch will be pulled and the work branch will be created locally. Returns the local path."
     )]
-    async fn request_work_branch(&self, Parameters(params): Parameters<RepoParam>) -> String {
+    async fn pull_work_branch(&self, Parameters(params): Parameters<RepoParam>) -> String {
         let session = self.zbobr.task_session(self.task_id);
         match session.request_work_branch(&params.repo).await {
             Ok(path) => path,
@@ -373,9 +373,9 @@ impl WorkerMcp {
     }
 
     #[tool(
-        description = "Fork and clone a repository, checkout a specific branch for implementation. Returns the local path with feature branch ready."
+        description = "Pull a repository (forking if needed) and checkout a specific branch for implementation. Returns the local path with feature branch ready."
     )]
-    async fn request_branch(&self, Parameters(params): Parameters<BranchParam>) -> String {
+    async fn pull_branch(&self, Parameters(params): Parameters<BranchParam>) -> String {
         let session = self.zbobr.task_session(self.task_id);
         match session.request_branch(&params.repo, &params.branch).await {
             Ok(path) => path,
@@ -384,9 +384,9 @@ impl WorkerMcp {
     }
 
     #[tool(
-        description = "Fork and clone a repository, checkout the branch from a PR for implementation. Takes PR URL or 'owner/repo#123' format. Returns the local path."
+        description = "Pull a repository (forking if needed) and checkout the branch from a PR for implementation. Takes PR URL or 'owner/repo#123' format. Returns the local path."
     )]
-    async fn request_branch_by_pr(&self, Parameters(params): Parameters<PrParam>) -> String {
+    async fn pull_branch_by_pr(&self, Parameters(params): Parameters<PrParam>) -> String {
         let session = self.zbobr.task_session(self.task_id);
         match session.request_branch_by_pr(&params.pr, false).await {
             Ok(path) => path,
@@ -395,9 +395,9 @@ impl WorkerMcp {
     }
 
     #[tool(
-        description = "Request and checkout the work branch for a repository. Forks if needed, fetches from fork, creates branch if it doesn't exist. Returns the local path."
+        description = "Pull the work branch for a repository. If the work branch (named by get_work_branch_name) exists in the fork, it will be pulled; otherwise, the main repository branch will be pulled and the work branch will be created locally. Returns the local path."
     )]
-    async fn request_work_branch(&self, Parameters(params): Parameters<RepoParam>) -> String {
+    async fn pull_work_branch(&self, Parameters(params): Parameters<RepoParam>) -> String {
         let session = self.zbobr.task_session(self.task_id);
         match session.request_work_branch(&params.repo).await {
             Ok(path) => path,
@@ -406,9 +406,9 @@ impl WorkerMcp {
     }
 
     #[tool(
-        description = "Push changes and create a PR from the local repository. Takes the local path to the repository (from request_branch or request_branch_by_pr). Returns PR URL."
+        description = "Push the current branch in the repository to the fork with the work branch name (from get_work_branch_name) and create a PR. Takes the local path to the repository (from pull_branch, pull_branch_by_pr, or pull_work_branch). Returns PR URL."
     )]
-    async fn submit_work(&self, Parameters(params): Parameters<PathParam>) -> String {
+    async fn push_work_branch(&self, Parameters(params): Parameters<PathParam>) -> String {
         let session = self.zbobr.task_session(self.task_id);
         match session.submit_work(&params.path).await {
             Ok(pr_url) => format!("PR created: {pr_url}"),
