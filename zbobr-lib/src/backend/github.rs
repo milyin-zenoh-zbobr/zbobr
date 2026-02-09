@@ -676,18 +676,51 @@ impl Backend for GitHubBackend {
                 return Err(ZbobrError::Other(format!("Failed to clone {target_repo}")));
             }
         } else {
-            // Pull latest changes if repo already exists
+            // Fetch latest changes and reset to default branch if repo already exists
             tracing::info!(
                 "Updating {target_repo} in {}",
                 work_dir.display()
             );
-            let status = tokio::process::Command::new("git")
-                .args(["pull", "--ff-only"])
+
+            // Fetch all updates from origin
+            let fetch_status = tokio::process::Command::new("git")
+                .args(["fetch", "origin"])
                 .current_dir(&work_dir)
                 .status()
                 .await?;
-            if !status.success() {
-                tracing::warn!("Failed to pull latest changes for {target_repo}, using existing state");
+
+            if fetch_status.success() {
+                // Get the default branch name
+                let default_branch_output = tokio::process::Command::new("git")
+                    .args(["symbolic-ref", "refs/remotes/origin/HEAD", "--short"])
+                    .current_dir(&work_dir)
+                    .output()
+                    .await?;
+
+                if default_branch_output.status.success() {
+                    let default_branch = String::from_utf8_lossy(&default_branch_output.stdout)
+                        .trim()
+                        .strip_prefix("origin/")
+                        .unwrap_or("main")
+                        .to_string();
+
+                    // Checkout and reset to default branch
+                    let _ = tokio::process::Command::new("git")
+                        .args(["checkout", &default_branch])
+                        .current_dir(&work_dir)
+                        .status()
+                        .await;
+
+                    let _ = tokio::process::Command::new("git")
+                        .args(["reset", "--hard", &format!("origin/{}", default_branch)])
+                        .current_dir(&work_dir)
+                        .status()
+                        .await;
+                } else {
+                    tracing::warn!("Could not determine default branch for {target_repo}, using existing state");
+                }
+            } else {
+                tracing::warn!("Failed to fetch latest changes for {target_repo}, using existing state");
             }
         }
 

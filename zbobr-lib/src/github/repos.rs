@@ -173,15 +173,15 @@ impl Zbobr {
                 )));
             }
         } else {
-            // Pull latest changes from origin if repo already exists
+            // Fetch latest changes from origin if repo already exists
             tracing::info!("Updating {target_repo} in {}", work_dir.display());
-            let status = tokio::process::Command::new("git")
-                .args(["pull", "origin", "--ff-only"])
+            let fetch_status = tokio::process::Command::new("git")
+                .args(["fetch", "origin"])
                 .current_dir(&work_dir)
                 .status()
                 .await?;
-            if !status.success() {
-                tracing::warn!("Failed to pull latest changes for {target_repo}, using existing state");
+            if !fetch_status.success() {
+                tracing::warn!("Failed to fetch latest changes for {target_repo}, using existing state");
             }
         }
 
