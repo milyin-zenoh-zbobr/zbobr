@@ -1,6 +1,8 @@
 use crate::task::{Model, Role, Tool};
 use async_trait::async_trait;
 use std::path::Path;
+use std::process::Stdio;
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 /// Trait for executing AI tools with specific configurations.
 #[async_trait]
@@ -75,11 +77,40 @@ impl ToolExecutor for CopilotExecutor {
         ];
         tracing::debug!("Copilot command: copilot {}", args.join(" "));
 
-        let status = tokio::process::Command::new("copilot")
+        let mut child = tokio::process::Command::new("copilot")
             .args(args)
             .current_dir(task_dir)
-            .status()
-            .await?;
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+
+        let stdout = child.stdout.take().expect("stdout was piped");
+        let stderr = child.stderr.take().expect("stderr was piped");
+
+        // Spawn tasks to stream stdout and stderr
+        let stdout_task = tokio::spawn(async move {
+            let reader = BufReader::new(stdout);
+            let mut lines = reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                tracing::info!("[copilot] {}", line);
+            }
+        });
+
+        let stderr_task = tokio::spawn(async move {
+            let reader = BufReader::new(stderr);
+            let mut lines = reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                tracing::warn!("[copilot] {}", line);
+            }
+        });
+
+        // Wait for process to complete
+        let status = child.wait().await?;
+
+        // Wait for output tasks to finish
+        let _ = tokio::join!(stdout_task, stderr_task);
+
+        tracing::debug!("Copilot finished execution with status: {status}");
 
         if !status.success() {
             tracing::warn!("copilot exited with status: {status}");
@@ -138,11 +169,40 @@ impl ToolExecutor for ClaudeExecutor {
 
         // Note: Claude CLI execution is not yet fully implemented
         // This is a placeholder for future implementation
-        let status = tokio::process::Command::new("claude")
+        let mut child = tokio::process::Command::new("claude")
             .args(args)
             .current_dir(task_dir)
-            .status()
-            .await?;
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+
+        let stdout = child.stdout.take().expect("stdout was piped");
+        let stderr = child.stderr.take().expect("stderr was piped");
+
+        // Spawn tasks to stream stdout and stderr
+        let stdout_task = tokio::spawn(async move {
+            let reader = BufReader::new(stdout);
+            let mut lines = reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                tracing::info!("[claude] {}", line);
+            }
+        });
+
+        let stderr_task = tokio::spawn(async move {
+            let reader = BufReader::new(stderr);
+            let mut lines = reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                tracing::warn!("[claude] {}", line);
+            }
+        });
+
+        // Wait for process to complete
+        let status = child.wait().await?;
+
+        // Wait for output tasks to finish
+        let _ = tokio::join!(stdout_task, stderr_task);
+
+        tracing::debug!("Claude finished execution with status: {status}");
 
         if !status.success() {
             tracing::warn!("claude exited with status: {status}");
@@ -173,7 +233,7 @@ impl ToolExecutor for StubExecutor {
         // Assume zbobr-stub is next to zbobr executable
         let stub_exe = exe.parent().unwrap().join("zbobr-stub");
 
-        let status = tokio::process::Command::new(stub_exe)
+        let mut child = tokio::process::Command::new(stub_exe)
             .args([
                 "--role",
                 role.as_str(),
@@ -182,8 +242,37 @@ impl ToolExecutor for StubExecutor {
                 "--mcp-url",
                 mcp_url,
             ])
-            .status()
-            .await?;
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+
+        let stdout = child.stdout.take().expect("stdout was piped");
+        let stderr = child.stderr.take().expect("stderr was piped");
+
+        // Spawn tasks to stream stdout and stderr
+        let stdout_task = tokio::spawn(async move {
+            let reader = BufReader::new(stdout);
+            let mut lines = reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                tracing::info!("[stub] {}", line);
+            }
+        });
+
+        let stderr_task = tokio::spawn(async move {
+            let reader = BufReader::new(stderr);
+            let mut lines = reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                tracing::warn!("[stub] {}", line);
+            }
+        });
+
+        // Wait for process to complete
+        let status = child.wait().await?;
+
+        // Wait for output tasks to finish
+        let _ = tokio::join!(stdout_task, stderr_task);
+
+        tracing::debug!("Stub tool finished execution with status: {status}");
 
         if !status.success() {
             tracing::warn!("Stub tool exited with status: {status}");
