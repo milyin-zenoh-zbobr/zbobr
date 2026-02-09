@@ -160,7 +160,7 @@ impl Zbobr {
 
         tokio::fs::create_dir_all(&issue_dir).await?;
 
-        // Clone if not already present
+        // Clone if not already present, or update if it exists
         if !work_dir.exists() {
             tracing::info!("Cloning {target_repo} into {}", work_dir.display());
             let status = tokio::process::Command::new("gh")
@@ -171,6 +171,17 @@ impl Zbobr {
                 return Err(ZbobrError::Other(format!(
                     "Failed to clone {target_repo}"
                 )));
+            }
+        } else {
+            // Pull latest changes from origin if repo already exists
+            tracing::info!("Updating {target_repo} in {}", work_dir.display());
+            let status = tokio::process::Command::new("git")
+                .args(["pull", "origin", "--ff-only"])
+                .current_dir(&work_dir)
+                .status()
+                .await?;
+            if !status.success() {
+                tracing::warn!("Failed to pull latest changes for {target_repo}, using existing state");
             }
         }
 

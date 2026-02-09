@@ -28,6 +28,9 @@
 
 ### 2. Investigate
 - Call `request_repo` with `owner/repo` to clone target repos
+- **IMPORTANT:** `request_repo` handles ALL git operations (clone, pull, etc.)
+- **DO NOT** run git commands directly (git clone, git pull, etc.)
+- Trust the repo state provided by `request_repo` — it's always up-to-date
 - Explore codebase: structure, patterns, conventions
 - Locate files requiring changes
 
@@ -39,6 +42,12 @@
 ### 4. Document
 - Write plan following the format below
 - Be thorough but concise
+
+### 5. Submit
+- **REQUIRED:** Call `post_message` with your complete implementation plan
+- Post the plan in markdown format (use the template below)
+- This posts the plan as a comment on the task for review
+- DO NOT skip this step — the plan must be posted to proceed
 
 ---
 
@@ -72,8 +81,11 @@ Potential issues or alternatives considered
 ## Key Points
 
 - **Forbidden:** Asking user for URLs, clarifications, or additional info
+- **Forbidden:** Running git commands directly (git clone, git pull, etc.) — use MCP tools only
 - **Required:** Start with `get_description`, work with what's provided
-- Session ends automatically after planning — orchestrator handles stage transitions
+- **Required:** End with `post_message` to submit your plan — this is critical!
+- **Required:** Use only the provided MCP tools for git operations
+- Session ends automatically after you submit the plan
 - Focus on "what" and "why", not detailed "how"
 - Highlight any uncertainties or risks
 ```

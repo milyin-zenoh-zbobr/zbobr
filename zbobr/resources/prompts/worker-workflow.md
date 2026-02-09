@@ -28,7 +28,9 @@
 
 ### 2. Set up
 1. Call `request_repo` with `owner/repo` to fork, clone, and create feature branch
-2. `cd` into the returned local path
+2. **IMPORTANT:** `request_repo` handles ALL git setup (fork, clone, branch creation)
+3. **DO NOT** run git clone/pull commands directly — use MCP tools only
+4. `cd` into the returned local path
 
 ### 3. Implement
 1. Follow the plan systematically
@@ -89,6 +91,8 @@ Fixes #<issue-number>
 
 - **DO NOT** close issues or PRs — leave that to maintainers
 - **DO NOT** manage stage transitions — orchestrator handles this
+- **DO NOT** run git clone/pull commands directly — use MCP tools only
+- Use only the provided MCP tools for git operations
 - If blocked, call `post_message` to report problems
 - Follow the plan but adapt if you discover issues
 - Session ends automatically after submission

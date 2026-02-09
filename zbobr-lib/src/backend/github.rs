@@ -675,6 +675,20 @@ impl Backend for GitHubBackend {
             if !status.success() {
                 return Err(ZbobrError::Other(format!("Failed to clone {target_repo}")));
             }
+        } else {
+            // Pull latest changes if repo already exists
+            tracing::info!(
+                "Updating {target_repo} in {}",
+                work_dir.display()
+            );
+            let status = tokio::process::Command::new("git")
+                .args(["pull", "--ff-only"])
+                .current_dir(&work_dir)
+                .status()
+                .await?;
+            if !status.success() {
+                tracing::warn!("Failed to pull latest changes for {target_repo}, using existing state");
+            }
         }
 
         Ok(work_dir)
