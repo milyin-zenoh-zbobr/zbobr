@@ -224,11 +224,11 @@ impl PlannerMcp {
     }
 
     #[tool(
-        description = "Request and checkout the work branch for a repository (read-only). Fetches the work branch if it exists. Returns the local path."
+        description = "Request and checkout the work branch for a repository. Forks if needed, fetches from fork, creates branch if it doesn't exist. Returns the local path."
     )]
     async fn request_work_branch(&self, Parameters(params): Parameters<RepoParam>) -> String {
         let session = self.zbobr.task_session(self.task_id);
-        match session.request_work_branch(&params.repo, true).await {
+        match session.request_work_branch(&params.repo).await {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
         }
@@ -330,11 +330,11 @@ impl WorkerMcp {
     }
 
     #[tool(
-        description = "Request and checkout the work branch for a repository. Pulls the work branch from fork if it exists, otherwise creates it. Returns the local path."
+        description = "Request and checkout the work branch for a repository. Forks if needed, fetches from fork, creates branch if it doesn't exist. Returns the local path."
     )]
     async fn request_work_branch(&self, Parameters(params): Parameters<RepoParam>) -> String {
         let session = self.zbobr.task_session(self.task_id);
-        match session.request_work_branch(&params.repo, false).await {
+        match session.request_work_branch(&params.repo).await {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
         }

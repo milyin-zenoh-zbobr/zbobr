@@ -392,12 +392,12 @@ impl TaskSession {
     }
 
     /// Request and checkout the work branch for a repository.
-    /// For planner (readonly=true): fetches from origin
-    /// For worker (readonly=false): fetches from fork, creates if needed
-    pub async fn request_work_branch(&self, repo: &str, readonly: bool) -> Result<String, ZbobrError> {
+    /// Always forks the repo if not done yet and fetches from fork.
+    /// Creates the work branch if it doesn't exist.
+    pub async fn request_work_branch(&self, repo: &str) -> Result<String, ZbobrError> {
         let work_branch = self.get_work_branch_name();
 
-        // Check if we have a tracked repo - if not, clone it first
+        // Check if we have a tracked repo - if not, clone and fork it first
         let work_dir_opt = {
             let tracked = self.tracked_repos.lock().unwrap();
             tracked.get(repo).map(|r| r.local_path.clone())
@@ -406,69 +406,37 @@ impl TaskSession {
         let work_dir = if let Some(dir) = work_dir_opt {
             dir
         } else {
-            // Repo not cloned yet - clone with default branch first
-            let path_str = if readonly {
-                self.request_branch_readonly(repo, "main").await?
-            } else {
-                self.request_branch(repo, "main").await?
-            };
+            // Repo not cloned yet - clone with fork and default branch first
+            let path_str = self.request_branch(repo, "main").await?;
             std::path::PathBuf::from(path_str)
         };
 
-        if readonly {
-            // Planner mode: fetch from origin
-            let fetch_status = tokio::process::Command::new("git")
-                .args(["fetch", "origin", &format!("{work_branch}:{work_branch}")])
+        // Fetch from fork
+        let _ = tokio::process::Command::new("git")
+            .args(["fetch", "fork", &format!("{work_branch}:{work_branch}")])
+            .current_dir(&work_dir)
+            .status()
+            .await;
+
+        // Checkout or create the work branch
+        let checkout_status = tokio::process::Command::new("git")
+            .args(["checkout", &work_branch])
+            .current_dir(&work_dir)
+            .status()
+            .await?;
+
+        if !checkout_status.success() {
+            // Branch doesn't exist locally, create it
+            let create_status = tokio::process::Command::new("git")
+                .args(["checkout", "-b", &work_branch])
                 .current_dir(&work_dir)
                 .status()
                 .await?;
 
-            if fetch_status.success() {
-                // Branch exists on origin, checkout
-                let checkout_status = tokio::process::Command::new("git")
-                    .args(["checkout", &work_branch])
-                    .current_dir(&work_dir)
-                    .status()
-                    .await?;
-
-                if !checkout_status.success() {
-                    return Err(ZbobrError::Other(format!(
-                        "Failed to checkout work branch {work_branch}"
-                    )));
-                }
-            } else {
+            if !create_status.success() {
                 return Err(ZbobrError::Other(format!(
-                    "Work branch {work_branch} does not exist in {repo}"
+                    "Failed to create work branch {work_branch}"
                 )));
-            }
-        } else {
-            // Worker mode: fetch from fork, create if needed
-            let _ = tokio::process::Command::new("git")
-                .args(["fetch", "fork", &format!("{work_branch}:{work_branch}")])
-                .current_dir(&work_dir)
-                .status()
-                .await;
-
-            // Checkout or create the work branch
-            let checkout_status = tokio::process::Command::new("git")
-                .args(["checkout", &work_branch])
-                .current_dir(&work_dir)
-                .status()
-                .await?;
-
-            if !checkout_status.success() {
-                // Branch doesn't exist locally, create it
-                let create_status = tokio::process::Command::new("git")
-                    .args(["checkout", "-b", &work_branch])
-                    .current_dir(&work_dir)
-                    .status()
-                    .await?;
-
-                if !create_status.success() {
-                    return Err(ZbobrError::Other(format!(
-                        "Failed to create work branch {work_branch}"
-                    )));
-                }
             }
         }
 
