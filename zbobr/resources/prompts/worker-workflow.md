@@ -14,9 +14,11 @@
 | `get_description` | — | Get task description with approved plan |
 | `get_discussion` | — | Get discussion messages and context |
 | `post_message` | `message: string` | Post a message to task discussion |
-| `request_branch` | `repo: string, branch: string` | Fork & clone repo (`owner/repo`), checkout specific branch, returns local path with feature branch |
+| `get_work_branch_name` | — | Get the work branch name for this task (format: `{prefix}/{task_id}`) |
+| `request_branch` | `repo: string, branch: string` | Fork & clone repo (`owner/repo`), checkout specific branch, returns local path |
 | `request_branch_by_pr` | `pr: string` | Fork & clone repo from PR (URL or `owner/repo#123` format), checkout PR branch, returns local path |
-| `submit_work` | `repo: string` | Push changes and create PR for `owner/repo`, returns PR URL |
+| `request_work_branch` | `repo: string` | Pull and checkout the work branch for a repo, returns local path |
+| `submit_work` | `path: string` | Push changes from local path and create PR, returns PR URL |
 | `mark_done` | — | Mark task as done |
 
 ---
@@ -31,12 +33,18 @@
 1. **If task mentions a PR in an external repository:**
    - Call `request_branch_by_pr` with the PR reference (URL or `owner/repo#123`)
    - This will fork, clone the repository, and checkout the PR's branch
+   - Save the returned local path for later use with `submit_work`
 2. **Otherwise:**
    - Call `request_branch` with `owner/repo` and branch name (e.g., "main", "develop")
    - This will fork, clone the repository, and checkout the specified branch
-3. **IMPORTANT:** These tools handle ALL git setup (fork, clone, branch checkout)
-4. **DO NOT** run git clone/pull commands directly — use MCP tools only
-5. `cd` into the returned local path
+   - Save the returned local path for later use with `submit_work`
+3. **If you need to work on an existing work branch:**
+   - Call `request_work_branch` with `owner/repo`
+   - This will checkout the work branch (format: `{prefix}/{task_id}`)
+   - The branch will be pulled from fork if it exists, or created if not
+4. **IMPORTANT:** These tools handle ALL git setup (fork, clone, branch checkout)
+5. **DO NOT** run git clone/pull commands directly — use MCP tools only
+6. `cd` into the returned local path
 
 ### 3. Implement
 1. Follow the plan systematically
@@ -45,7 +53,12 @@
 4. Commit changes with clear messages
 
 ### 4. Submit
-1. Call `submit_work` with target `owner/repo` to push and create PR
+1. Call `submit_work` with the local path (from `request_branch`, `request_branch_by_pr`, or `request_work_branch`)
+   - The tool will:
+     - Check if current branch matches the expected work branch name
+     - If not, create the work branch from current branch
+     - Push to fork
+     - Create PR to the base branch that was originally requested
 2. Call `post_message` to summarize what was done
 3. Call `mark_done` to mark task complete
 

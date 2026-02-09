@@ -38,6 +38,12 @@ pub struct RepoParam {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct PathParam {
+    #[schemars(description = "Local filesystem path to repository")]
+    pub path: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct BranchParam {
     #[schemars(description = "Target repository in owner/name format")]
     pub repo: String,
@@ -113,6 +119,7 @@ mcp_tools! {
     POST_MESSAGE = "post_message",
     REQUEST_BRANCH = "request_branch",
     REQUEST_BRANCH_BY_PR = "request_branch_by_pr",
+    REQUEST_WORK_BRANCH = "request_work_branch",
 }
 
 mcp_tools! {
@@ -120,8 +127,10 @@ mcp_tools! {
     GET_DESCRIPTION = "get_description",
     GET_DISCUSSION = "get_discussion",
     POST_MESSAGE = "post_message",
+    GET_WORK_BRANCH_NAME = "get_work_branch_name",
     REQUEST_BRANCH = "request_branch",
     REQUEST_BRANCH_BY_PR = "request_branch_by_pr",
+    REQUEST_WORK_BRANCH = "request_work_branch",
     SUBMIT_WORK = "submit_work",
     MARK_DONE = "mark_done",
 }
@@ -213,6 +222,17 @@ impl PlannerMcp {
             Err(e) => format!("Error: {e}"),
         }
     }
+
+    #[tool(
+        description = "Request and checkout the work branch for a repository (read-only). Fetches the work branch if it exists. Returns the local path."
+    )]
+    async fn request_work_branch(&self, Parameters(params): Parameters<RepoParam>) -> String {
+        let session = self.zbobr.planner_session(self.task_id);
+        match session.request_work_branch(&params.repo).await {
+            Ok(path) => path,
+            Err(e) => format!("Error: {e}"),
+        }
+    }
 }
 
 #[tool_handler]
@@ -281,6 +301,12 @@ impl WorkerMcp {
         }
     }
 
+    #[tool(description = "Get the work branch name that should be used for this task")]
+    async fn get_work_branch_name(&self) -> String {
+        let session = self.zbobr.worker_session(self.task_id);
+        session.get_work_branch_name()
+    }
+
     #[tool(
         description = "Fork and clone a repository, checkout a specific branch for implementation. Returns the local path with feature branch ready."
     )]
@@ -304,11 +330,22 @@ impl WorkerMcp {
     }
 
     #[tool(
-        description = "Push changes and create a PR from the feature branch. Takes the target repo (owner/name)."
+        description = "Request and checkout the work branch for a repository. Pulls the work branch from fork if it exists, otherwise creates it. Returns the local path."
     )]
-    async fn submit_work(&self, Parameters(params): Parameters<RepoParam>) -> String {
+    async fn request_work_branch(&self, Parameters(params): Parameters<RepoParam>) -> String {
         let session = self.zbobr.worker_session(self.task_id);
-        match session.submit_work(&params.repo).await {
+        match session.request_work_branch(&params.repo).await {
+            Ok(path) => path,
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    #[tool(
+        description = "Push changes and create a PR from the local repository. Takes the local path to the repository (from request_branch or request_branch_by_pr). Returns PR URL."
+    )]
+    async fn submit_work(&self, Parameters(params): Parameters<PathParam>) -> String {
+        let session = self.zbobr.worker_session(self.task_id);
+        match session.submit_work(&params.path).await {
             Ok(pr_url) => format!("PR created: {pr_url}"),
             Err(e) => format!("Error: {e}"),
         }
@@ -576,6 +613,7 @@ mod tests {
             cli_tool: Tool::Stub,
             planner_prompts: vec![],
             worker_prompts: vec![],
+            work_branch_prefix: "zbobr_fix".to_string(),
         };
         let zbobr = Zbobr::new(config).unwrap();
         let admin = AdminMcp::new(zbobr);
@@ -605,6 +643,7 @@ mod tests {
             cli_tool: Tool::Stub,
             planner_prompts: vec![],
             worker_prompts: vec![],
+            work_branch_prefix: "zbobr_fix".to_string(),
         };
         let zbobr = Zbobr::new(config).unwrap();
         let planner = PlannerMcp::new(zbobr, 123);
@@ -634,6 +673,7 @@ mod tests {
             cli_tool: Tool::Stub,
             planner_prompts: vec![],
             worker_prompts: vec![],
+            work_branch_prefix: "zbobr_fix".to_string(),
         };
         let zbobr = Zbobr::new(config).unwrap();
         let worker = WorkerMcp::new(zbobr, 123);

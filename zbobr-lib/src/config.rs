@@ -32,6 +32,8 @@ pub struct ZbobrConfig {
     pub planner_prompts: Vec<PathBuf>,
     /// Semicolon-separated list of custom prompt files for worker agent.
     pub worker_prompts: Vec<PathBuf>,
+    /// Prefix for work branches (default: "zbobr_fix").
+    pub work_branch_prefix: String,
 }
 
 impl ZbobrConfig {
@@ -97,6 +99,9 @@ impl ZbobrConfig {
             .map(PathBuf::from)
             .collect();
 
+        let work_branch_prefix = std::env::var("ZBOBR_WORK_BRANCH_PREFIX")
+            .unwrap_or_else(|_| "zbobr_fix".to_string());
+
         Ok(Self {
             domain_repo,
             fork_owner,
@@ -107,6 +112,7 @@ impl ZbobrConfig {
             cli_tool,
             planner_prompts,
             worker_prompts,
+            work_branch_prefix,
         })
     }
 
@@ -156,6 +162,7 @@ mod tests {
             cli_tool: Tool::Copilot,
             planner_prompts: vec![],
             worker_prompts: vec![],
+            work_branch_prefix: "zbobr_fix".to_string(),
         }
     }
 

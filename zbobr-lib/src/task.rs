@@ -1,3 +1,5 @@
+use std::{collections::HashMap, sync::{Arc, Mutex}};
+
 use crate::{Zbobr, ZbobrError};
 
 /// A file to create in the domain repository during setup.
@@ -290,15 +292,25 @@ pub struct Task {
 pub struct PlannerSession {
     zbobr: Zbobr,
     task_id: u64,
+    tracked_repos: Arc<Mutex<HashMap<String, TrackedRepo>>>,
 }
 
 impl PlannerSession {
     pub(crate) fn new(zbobr: Zbobr, task_id: u64) -> Self {
-        Self { zbobr, task_id }
+        Self {
+            zbobr,
+            task_id,
+            tracked_repos: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
     pub fn task_id(&self) -> u64 {
         self.task_id
+    }
+
+    /// Get the work branch name for this task.
+    pub fn get_work_branch_name(&self) -> String {
+        format!("{}/{}", self.zbobr.config().work_branch_prefix, self.task_id)
     }
 
     /// Get the current task description.
@@ -325,7 +337,20 @@ impl PlannerSession {
     /// Clone target repo and checkout specific branch for investigation (read-only).
     pub async fn request_branch(&self, repo: &str, branch: &str) -> Result<String, ZbobrError> {
         let path = self.zbobr.clone_readonly(repo, branch, self.task_id).await?;
-        Ok(path.to_string_lossy().to_string())
+        let path_str = path.to_string_lossy().to_string();
+
+        // Track this repo and branch
+        let mut tracked = self.tracked_repos.lock().unwrap();
+        tracked.insert(
+            repo.to_string(),
+            TrackedRepo {
+                repo: repo.to_string(),
+                branch: branch.to_string(),
+                local_path: path,
+            },
+        );
+
+        Ok(path_str)
     }
 
     /// Helper: Clone repo and checkout branch from PR (parses PR reference).
@@ -334,21 +359,87 @@ impl PlannerSession {
         let (repo, branch) = self.zbobr.parse_pr_to_repo_branch(pr).await?;
         self.request_branch(&repo, &branch).await
     }
+
+    /// Request and checkout the work branch for a repository (read-only).
+    /// This fetches the work branch if it exists in the origin.
+    pub async fn request_work_branch(&self, repo: &str) -> Result<String, ZbobrError> {
+        let work_branch = self.get_work_branch_name();
+
+        // First check if we have a tracked repo - if not, clone it first
+        let work_dir_opt = {
+            let tracked = self.tracked_repos.lock().unwrap();
+            tracked.get(repo).map(|r| r.local_path.clone())
+        }; // Lock released here
+
+        if let Some(work_dir) = work_dir_opt {
+            // Repo already cloned, try to checkout the work branch
+            // Try to fetch and checkout the work branch
+            let fetch_status = tokio::process::Command::new("git")
+                .args(["fetch", "origin", &format!("{work_branch}:{work_branch}")])
+                .current_dir(&work_dir)
+                .status()
+                .await?;
+
+            if fetch_status.success() {
+                // Branch exists on origin, checkout
+                let checkout_status = tokio::process::Command::new("git")
+                    .args(["checkout", &work_branch])
+                    .current_dir(&work_dir)
+                    .status()
+                    .await?;
+
+                if !checkout_status.success() {
+                    return Err(ZbobrError::Other(format!(
+                        "Failed to checkout work branch {work_branch}"
+                    )));
+                }
+            } else {
+                return Err(ZbobrError::Other(format!(
+                    "Work branch {work_branch} does not exist in {repo}"
+                )));
+            }
+
+            Ok(work_dir.to_string_lossy().to_string())
+        } else {
+            // Repo not cloned yet - clone with default branch first
+            self.request_branch(repo, "main").await?;
+            // Now call recursively using Box::pin to avoid infinite size
+            Box::pin(self.request_work_branch(repo)).await
+        }
+    }
+}
+
+/// Tracked repository information for a worker session.
+#[derive(Debug, Clone)]
+struct TrackedRepo {
+    repo: String,
+    branch: String,
+    local_path: std::path::PathBuf,
 }
 
 /// Worker session bound to a specific task.
 pub struct WorkerSession {
     zbobr: Zbobr,
     task_id: u64,
+    tracked_repos: Arc<Mutex<HashMap<String, TrackedRepo>>>,
 }
 
 impl WorkerSession {
     pub(crate) fn new(zbobr: Zbobr, task_id: u64) -> Self {
-        Self { zbobr, task_id }
+        Self {
+            zbobr,
+            task_id,
+            tracked_repos: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
     pub fn task_id(&self) -> u64 {
         self.task_id
+    }
+
+    /// Get the work branch name for this task.
+    pub fn get_work_branch_name(&self) -> String {
+        format!("{}/{}", self.zbobr.config().work_branch_prefix, self.task_id)
     }
 
     /// Get the current task description.
@@ -375,7 +466,20 @@ impl WorkerSession {
     /// Fork target repo, clone locally, checkout specific branch, return local path.
     pub async fn request_branch(&self, repo: &str, branch: &str) -> Result<String, ZbobrError> {
         let path = self.zbobr.clone_and_setup(repo, branch, self.task_id).await?;
-        Ok(path.to_string_lossy().to_string())
+        let path_str = path.to_string_lossy().to_string();
+
+        // Track this repo and branch for later submit_work
+        let mut tracked = self.tracked_repos.lock().unwrap();
+        tracked.insert(
+            repo.to_string(),
+            TrackedRepo {
+                repo: repo.to_string(),
+                branch: branch.to_string(),
+                local_path: path,
+            },
+        );
+
+        Ok(path_str)
     }
 
     /// Helper: Fork, clone repo and checkout branch from PR (parses PR reference).
@@ -385,11 +489,168 @@ impl WorkerSession {
         self.request_branch(&repo, &branch).await
     }
 
-    /// Push changes and create PR from the prepared branch.
-    pub async fn submit_work(&self, target_repo: &str) -> Result<String, ZbobrError> {
-        self.zbobr
-            .push_and_create_pr(target_repo, self.task_id)
-            .await
+    /// Request and checkout the work branch for a repository.
+    /// This pulls the work branch from the fork if it exists, otherwise creates it.
+    pub async fn request_work_branch(&self, repo: &str) -> Result<String, ZbobrError> {
+        let work_branch = self.get_work_branch_name();
+
+        // First check if we have a tracked repo - if not, we need to clone it first
+        let work_dir_opt = {
+            let tracked = self.tracked_repos.lock().unwrap();
+            tracked.get(repo).map(|r| r.local_path.clone())
+        }; // Lock released here
+
+        if let Some(work_dir) = work_dir_opt {
+            // Repo already cloned, just checkout/create the work branch
+
+            // Try to fetch the work branch from fork
+            let _ = tokio::process::Command::new("git")
+                .args(["fetch", "fork", &format!("{work_branch}:{work_branch}")])
+                .current_dir(&work_dir)
+                .status()
+                .await;
+
+            // Checkout or create the work branch
+            let checkout_status = tokio::process::Command::new("git")
+                .args(["checkout", &work_branch])
+                .current_dir(&work_dir)
+                .status()
+                .await?;
+
+            if !checkout_status.success() {
+                // Branch doesn't exist locally, create it
+                let create_status = tokio::process::Command::new("git")
+                    .args(["checkout", "-b", &work_branch])
+                    .current_dir(&work_dir)
+                    .status()
+                    .await?;
+
+                if !create_status.success() {
+                    return Err(ZbobrError::Other(format!(
+                        "Failed to create work branch {work_branch}"
+                    )));
+                }
+            }
+
+            Ok(work_dir.to_string_lossy().to_string())
+        } else {
+            // Repo not cloned yet - use default branch (main) for initial clone
+            self.request_branch(repo, "main").await?;
+            // Now recursively call using Box::pin to avoid infinite size
+            Box::pin(self.request_work_branch(repo)).await
+        }
+    }
+
+    /// Push changes and create PR from the local repository path.
+    /// The path should point to a repository obtained from request_branch or request_branch_by_pr.
+    pub async fn submit_work(&self, path: &str) -> Result<String, ZbobrError> {
+        let work_dir = std::path::PathBuf::from(path);
+
+        if !work_dir.exists() {
+            return Err(ZbobrError::Other(format!(
+                "Work directory does not exist: {}",
+                work_dir.display()
+            )));
+        }
+
+        // Find which tracked repo this path corresponds to
+        let (target_repo, base_branch) = {
+            let tracked = self.tracked_repos.lock().unwrap();
+            let tracked_repo = tracked
+                .values()
+                .find(|r| r.local_path == work_dir)
+                .ok_or_else(|| {
+                    ZbobrError::Other(format!(
+                        "Path {} was not obtained from request_branch or request_branch_by_pr",
+                        path
+                    ))
+                })?;
+
+            (tracked_repo.repo.clone(), tracked_repo.branch.clone())
+        }; // Lock released here
+
+        // Get current branch name
+        let output = tokio::process::Command::new("git")
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+            .current_dir(&work_dir)
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            return Err(ZbobrError::Other("Failed to get current branch".into()));
+        }
+
+        let current_branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let work_branch = self.get_work_branch_name();
+
+        // If not on the work branch, create it from current
+        if current_branch != work_branch {
+            tracing::info!(
+                "Current branch '{}' doesn't match expected '{}', creating work branch",
+                current_branch,
+                work_branch
+            );
+
+            let status = tokio::process::Command::new("git")
+                .args(["checkout", "-b", &work_branch])
+                .current_dir(&work_dir)
+                .status()
+                .await?;
+
+            if !status.success() {
+                return Err(ZbobrError::Other(format!(
+                    "Failed to create work branch {work_branch}"
+                )));
+            }
+        }
+
+        // Push to fork
+        tracing::info!("Pushing {} to fork", work_branch);
+        let status = tokio::process::Command::new("git")
+            .args(["push", "-u", "fork", "HEAD", "--force"])
+            .current_dir(&work_dir)
+            .status()
+            .await?;
+
+        if !status.success() {
+            return Err(ZbobrError::Other("Failed to push to fork".into()));
+        }
+
+        // Create PR using gh CLI
+        let task = self.zbobr.get_task(self.task_id).await?;
+        let pr_title = format!("Fix #{}: {}", self.task_id, task.title);
+        let pr_body = format!("Resolves #{}\n\nImplementation for: {}", self.task_id, task.title);
+
+        // PR base is fork_owner/repo:base_branch
+        let fork_owner = &self.zbobr.config().fork_owner;
+        let base = format!("{}:{}", fork_owner, base_branch);
+
+        let output = tokio::process::Command::new("gh")
+            .args([
+                "pr",
+                "create",
+                "--repo",
+                &target_repo,
+                "--head",
+                &format!("{}:{}", fork_owner, work_branch),
+                "--base",
+                &base,
+                "--title",
+                &pr_title,
+                "--body",
+                &pr_body,
+            ])
+            .current_dir(&work_dir)
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(ZbobrError::Other(format!("Failed to create PR: {stderr}")));
+        }
+
+        let pr_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Ok(pr_url)
     }
 
     /// Mark task as done (sets done flag and transitions to Pending).
