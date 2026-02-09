@@ -384,7 +384,8 @@ async fn run_role_session(
     });
 
     // Give server time to start
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+    tracing::info!("MCP server should be ready, starting CLI tool...");
 
     // Execute the tool using the ToolExecutor trait with Ctrl+C handling
     let cli_tool = zbobr.config().cli_tool;

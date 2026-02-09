@@ -476,16 +476,24 @@ pub async fn run_role_mcp_server(
 
     let router = match role {
         Role::Planner => {
+            tracing::info!("Creating PlannerMcp service for task {task_id} at path {path}");
             let svc = StreamableHttpService::new(
-                move || Ok(PlannerMcp::new(zbobr.clone(), task_id)),
+                move || {
+                    tracing::debug!("Creating new PlannerMcp instance for task {task_id}");
+                    Ok(PlannerMcp::new(zbobr.clone(), task_id))
+                },
                 Arc::new(LocalSessionManager::default()),
                 Default::default(),
             );
             axum::Router::new().nest_service(&path, svc)
         }
         Role::Worker => {
+            tracing::info!("Creating WorkerMcp service for task {task_id} at path {path}");
             let svc = StreamableHttpService::new(
-                move || Ok(WorkerMcp::new(zbobr.clone(), task_id)),
+                move || {
+                    tracing::debug!("Creating new WorkerMcp instance for task {task_id}");
+                    Ok(WorkerMcp::new(zbobr.clone(), task_id))
+                },
                 Arc::new(LocalSessionManager::default()),
                 Default::default(),
             );
