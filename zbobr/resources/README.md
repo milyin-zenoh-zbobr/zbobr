@@ -71,8 +71,8 @@ ZBOBR_WORKSPACE=./workspace
 
 # Optional: Custom prompt files for agents (semicolon-separated paths)
 # Paths are relative to the directory where run.sh is executed
-ZBOBR_PLANNER_PROMPTS=prompts/common.md;prompts/repositories.md;prompts/planner.md
-ZBOBR_WORKER_PROMPTS=prompts/common.md;prompts/worker.md
+ZBOBR_PLANNER_PROMPTS=prompts/planner.md;prompts/repositories.md;prompts/common.md
+ZBOBR_WORKER_PROMPTS=prompts/worker.md;prompts/common.md
 ```
 
 **GitHub Token**: Set `GH_TOKEN` in your environment (not in `.zbobr.env`):
@@ -98,15 +98,13 @@ The `prompts/` directory contains markdown files that provide context, guideline
 |------|---------|---------|
 | `common.md` | Planner & Worker | Shared context about project architecture, conventions, and domain knowledge |
 | `repositories.md` | Planner | Lists target repositories and repository-specific notes |
-| `planner.md` | Planner | Domain-specific prompts for the planning phase |
-| `worker.md` | Worker | Domain-specific prompts for the implementation phase |
-| `planner-workflow.md` | Planner | Technical workflow and MCP API documentation |
-| `worker-workflow.md` | Worker | Technical workflow and MCP API documentation |
+| `planner.md` | Planner | Core planner instructions including workflow, MCP tools, and output format |
+| `worker.md` | Worker | Core worker instructions including workflow, MCP tools, and output format |
 
 ### Default Configuration
 
-- **Planner agents** receive: `common.md`, `repositories.md`, and `planner.md`
-- **Worker agents** receive: `common.md` and `worker.md`
+- **Planner agents** receive: `planner.md`, `repositories.md`, and `common.md`
+- **Worker agents** receive: `worker.md` and `common.md`
 
 ### Customizing Prompts
 
@@ -114,8 +112,8 @@ You can customize which files are used by editing `.zbobr.env`:
 
 ```bash
 # Semicolon-separated list of prompt files
-ZBOBR_PLANNER_PROMPTS=prompts/common.md;prompts/repositories.md;prompts/planner.md
-ZBOBR_WORKER_PROMPTS=prompts/common.md;prompts/worker.md
+ZBOBR_PLANNER_PROMPTS=prompts/planner.md;prompts/repositories.md;prompts/common.md
+ZBOBR_WORKER_PROMPTS=prompts/worker.md;prompts/common.md
 ```
 
 ### Editing Prompts
@@ -139,17 +137,14 @@ ZBOBR_WORKER_PROMPTS=prompts/common.md;prompts/worker.md
 - Deployment information
 
 **In planner.md**:
+- Core planner workflow and MCP tool usage
 - How to structure implementation plans
-- What level of detail to include
-- Specific investigation approaches
-- Planning output format preferences
+- Investigation approaches and planning standards
 
 **In worker.md**:
-- Code quality expectations
-- Testing requirements
-- Commit message format
-- PR description template
-- When to ask for guidance
+- Core worker workflow and MCP tool usage
+- Code quality and testing requirements
+- Commit message and PR description standards
 
 
 ## Workflow Deep Dive

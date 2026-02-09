@@ -13,8 +13,8 @@ fn main() {
 
     // Copy workflow prompt files next to the binary
     copy_dir("resources/prompts", &target_dir.join("prompts"), &[
-        "planner-workflow.md",
-        "worker-workflow.md",
+        "planner.md",
+        "worker.md",
     ]);
 
     // Copy resource files next to the binary

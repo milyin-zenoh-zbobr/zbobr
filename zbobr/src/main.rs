@@ -251,8 +251,6 @@ fn build_setup_files(zbobr: &Zbobr) -> anyhow::Result<Vec<SetupFile>> {
         "prompts/repositories.md",
         "prompts/planner.md",
         "prompts/worker.md",
-        "prompts/planner-workflow.md",
-        "prompts/worker-workflow.md",
     ];
 
     for file_name in &prompts {
