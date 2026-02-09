@@ -83,7 +83,7 @@ impl ZbobrConfig {
         // Parse semicolon-separated prompt file paths
         let planner_prompts = std::env::var("ZBOBR_PLANNER_PROMPTS")
             .unwrap_or_else(|_| {
-                "prompts/planner.md;prompts/repositories.md;prompts/common.md".into()
+                "prompts/planner.md;prompts/common.md".into()
             })
             .split(';')
             .filter(|s| !s.is_empty())

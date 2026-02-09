@@ -22,6 +22,11 @@ struct GlobalArgs {
     #[arg(long, global = true)]
     workspace: Option<PathBuf>,
 
+    /// Base directory for prompt files (prompt paths are resolved relative to this)
+    /// Can also be set via ZBOBR_PROMPTS_PATH env var
+    #[arg(long, env = "ZBOBR_PROMPTS_PATH", global = true)]
+    prompts_path: Option<PathBuf>,
+
     /// Semicolon-separated list of prompt files for planner role
     #[arg(long, env = "ZBOBR_PLANNER_PROMPTS", global = true, value_delimiter = ';')]
     planner_prompts: Option<Vec<PathBuf>>,
@@ -131,12 +136,13 @@ enum Command {
 
 /// Resolved prompt file paths for planner and worker.
 struct Prompts {
+    base_path: Option<PathBuf>,
     planner: Vec<PathBuf>,
     worker: Vec<PathBuf>,
 }
 
 /// Resolve prompt paths: CLI arg > config env var.
-/// Paths are resolved relative to current directory.
+/// Paths are resolved relative to prompts_path if provided, otherwise relative to current directory.
 fn resolve_prompts(cli: &Cli, config: &ZbobrConfig) -> anyhow::Result<Prompts> {
     // Use CLI args if provided, otherwise use config (which came from env or defaults)
     let planner = cli
@@ -151,15 +157,34 @@ fn resolve_prompts(cli: &Cli, config: &ZbobrConfig) -> anyhow::Result<Prompts> {
         .clone()
         .unwrap_or_else(|| config.worker_prompts.clone());
 
-    Ok(Prompts { planner, worker })
+    let base_path = cli.global.prompts_path.clone();
+
+    Ok(Prompts {
+        base_path,
+        planner,
+        worker,
+    })
 }
 
 /// Load and concatenate multiple prompt files.
-fn load_prompts(paths: &[PathBuf]) -> anyhow::Result<String> {
+/// If base_path is provided, relative paths are resolved relative to it.
+fn load_prompts(paths: &[PathBuf], base_path: Option<&PathBuf>) -> anyhow::Result<String> {
     let mut combined = String::new();
     for (i, path) in paths.iter().enumerate() {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| anyhow::anyhow!("Failed to read prompt file {}: {e}", path.display()))?;
+        // Resolve path relative to base_path if provided and path is relative
+        let resolved_path = if let Some(base) = base_path {
+            if path.is_relative() {
+                base.join(path)
+            } else {
+                path.clone()
+            }
+        } else {
+            path.clone()
+        };
+
+        let content = std::fs::read_to_string(&resolved_path).map_err(|e| {
+            anyhow::anyhow!("Failed to read prompt file {}: {e}", resolved_path.display())
+        })?;
 
         if i > 0 {
             combined.push_str("\n\n");
@@ -264,7 +289,6 @@ fn build_setup_files(zbobr: &Zbobr) -> anyhow::Result<Vec<SetupFile>> {
     // Add all prompts files
     let prompts = [
         "prompts/common.md",
-        "prompts/repositories.md",
         "prompts/planner.md",
         "prompts/worker.md",
     ];
@@ -321,7 +345,7 @@ async fn main() -> anyhow::Result<()> {
             zbobr.cleanup_closed_tasks(dry_run).await?;
         }
         Command::Plan { task, model, port, show_prompt } => {
-            let base_prompt = load_prompts(&prompts.planner)?;
+            let base_prompt = load_prompts(&prompts.planner, prompts.base_path.as_ref())?;
             let full_prompt = build_full_prompt(&base_prompt, Role::Planner);
 
             if show_prompt {
@@ -336,7 +360,7 @@ async fn main() -> anyhow::Result<()> {
             run_role_session(&zbobr, task, Role::Planner, model_enum, port, &full_prompt).await?;
         }
         Command::Work { task, model, port, show_prompt } => {
-            let base_prompt = load_prompts(&prompts.worker)?;
+            let base_prompt = load_prompts(&prompts.worker, prompts.base_path.as_ref())?;
             let full_prompt = build_full_prompt(&base_prompt, Role::Worker);
 
             if show_prompt {
@@ -460,8 +484,8 @@ async fn run_manager_loop(
     let model = model.unwrap_or_else(|| zbobr.config().default_model.clone());
 
     // Load prompts once at loop start and append API docs
-    let planner_base = load_prompts(&prompts.planner)?;
-    let worker_base = load_prompts(&prompts.worker)?;
+    let planner_base = load_prompts(&prompts.planner, prompts.base_path.as_ref())?;
+    let worker_base = load_prompts(&prompts.worker, prompts.base_path.as_ref())?;
     let planner_prompt = build_full_prompt(&planner_base, Role::Planner);
     let worker_prompt = build_full_prompt(&worker_base, Role::Worker);
 
@@ -469,6 +493,9 @@ async fn run_manager_loop(
     tracing::info!("Poll interval: {interval_secs}s, Cleanup interval: {cleanup_interval_secs}s");
     tracing::info!("Default Model: {model}");
     tracing::info!("CLI Tool: {:?}", zbobr.config().cli_tool);
+    if let Some(ref base) = prompts.base_path {
+        tracing::info!("Prompts base path: {}", base.display());
+    }
     tracing::info!("Planner prompt files: {}", prompts.planner.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join("; "));
     tracing::info!("Worker prompt files: {}", prompts.worker.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join("; "));
     tracing::info!("Backend: {:?}", zbobr.config().backend);

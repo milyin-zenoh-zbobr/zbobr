@@ -74,7 +74,7 @@ zbobr setup --domain-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
 This will:
 - Create the domain project repo on GitHub (if needed)
 - Set up labels and milestones
-- Initialize template files (README.md, repositories.md)
+- Initialize template files (README.md, prompt files)
 - Create `.zbobr.env` with configuration
 
 Use `--dry-run` to preview local files without pushing to GitHub.
@@ -162,8 +162,11 @@ milyin/copilot/ (Orchestrator)
 
 YoroolGui/copilot-zenoh/ (Domain Project - created by setup.sh)
 ├── .zbobr.env             # zbobr configuration (fork owner, default model)
-├── instructions.md        # Domain-specific guidance
-└── repositories.md        # Target repos (zenoh projects)
+├── prompts/
+│   ├── common.md          # Shared context and domain knowledge
+│   ├── planner.md         # Planner agent instructions
+│   └── worker.md          # Worker agent instructions
+└── README.md              # Setup instructions
 ```
 
 ## Usage Examples
@@ -202,13 +205,15 @@ zbobr work 42 --domain-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
 
 `zbobr setup` creates the following files in the domain project:
 - `README.md` — Overview of the domain project workflow
-- `repositories.md` — List of target repositories to manage
+- `prompts/common.md` — Shared context and target repositories
+- `prompts/planner.md` — Planner agent instructions
+- `prompts/worker.md` — Worker agent instructions
 - `.zbobr.env` — Configuration (domain repo, fork owner, etc.)
 - `run.sh` / `run.cmd` — Launcher scripts
 
 **Note:** Existing files on GitHub are never overwritten. Customize after initial setup.
 
-Edit `repositories.md` to list which repos the domain manages:
+Edit `prompts/common.md` to list which repos the domain manages:
 
 ```markdown
 # Target Repositories

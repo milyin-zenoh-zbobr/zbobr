@@ -71,7 +71,7 @@ ZBOBR_WORKSPACE=./workspace
 
 # Optional: Custom prompt files for agents (semicolon-separated paths)
 # Paths are relative to the directory where run.sh is executed
-ZBOBR_PLANNER_PROMPTS=prompts/planner.md;prompts/repositories.md;prompts/common.md
+ZBOBR_PLANNER_PROMPTS=prompts/planner.md;prompts/common.md
 ZBOBR_WORKER_PROMPTS=prompts/worker.md;prompts/common.md
 ```
 
@@ -97,13 +97,12 @@ The `prompts/` directory contains markdown files that provide context, guideline
 | File | Used By | Purpose |
 |------|---------|---------|
 | `common.md` | Planner & Worker | Shared context about project architecture, conventions, and domain knowledge |
-| `repositories.md` | Planner | Lists target repositories and repository-specific notes |
 | `planner.md` | Planner | Core planner instructions including workflow, MCP tools, and output format |
 | `worker.md` | Worker | Core worker instructions including workflow, MCP tools, and output format |
 
 ### Default Configuration
 
-- **Planner agents** receive: `planner.md`, `repositories.md`, and `common.md`
+- **Planner agents** receive: `planner.md` and `common.md`
 - **Worker agents** receive: `worker.md` and `common.md`
 
 ### Customizing Prompts
@@ -112,7 +111,7 @@ You can customize which files are used by editing `.zbobr.env`:
 
 ```bash
 # Semicolon-separated list of prompt files
-ZBOBR_PLANNER_PROMPTS=prompts/planner.md;prompts/repositories.md;prompts/common.md
+ZBOBR_PLANNER_PROMPTS=prompts/planner.md;prompts/common.md
 ZBOBR_WORKER_PROMPTS=prompts/worker.md;prompts/common.md
 ```
 
@@ -129,10 +128,7 @@ ZBOBR_WORKER_PROMPTS=prompts/worker.md;prompts/common.md
 - Technology stack (frameworks, databases, tools)
 - Coding conventions and style guides
 - Domain concepts and terminology
-
-**In repositories.md**:
-- List of target repositories
-- Repository-specific notes and conventions
+- List of target repositories and repository-specific notes
 - Build and test commands
 - Deployment information
 
