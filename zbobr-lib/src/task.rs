@@ -365,47 +365,48 @@ impl PlannerSession {
     pub async fn request_work_branch(&self, repo: &str) -> Result<String, ZbobrError> {
         let work_branch = self.get_work_branch_name();
 
-        // First check if we have a tracked repo - if not, clone it first
+        // Check if we have a tracked repo - if not, clone it first
         let work_dir_opt = {
             let tracked = self.tracked_repos.lock().unwrap();
             tracked.get(repo).map(|r| r.local_path.clone())
         }; // Lock released here
 
-        if let Some(work_dir) = work_dir_opt {
-            // Repo already cloned, try to checkout the work branch
-            // Try to fetch and checkout the work branch
-            let fetch_status = tokio::process::Command::new("git")
-                .args(["fetch", "origin", &format!("{work_branch}:{work_branch}")])
+        let work_dir = if let Some(dir) = work_dir_opt {
+            dir
+        } else {
+            // Repo not cloned yet - clone with default branch first
+            let path_str = self.request_branch(repo, "main").await?;
+            std::path::PathBuf::from(path_str)
+        };
+
+        // Now checkout the work branch
+        // Try to fetch and checkout the work branch
+        let fetch_status = tokio::process::Command::new("git")
+            .args(["fetch", "origin", &format!("{work_branch}:{work_branch}")])
+            .current_dir(&work_dir)
+            .status()
+            .await?;
+
+        if fetch_status.success() {
+            // Branch exists on origin, checkout
+            let checkout_status = tokio::process::Command::new("git")
+                .args(["checkout", &work_branch])
                 .current_dir(&work_dir)
                 .status()
                 .await?;
 
-            if fetch_status.success() {
-                // Branch exists on origin, checkout
-                let checkout_status = tokio::process::Command::new("git")
-                    .args(["checkout", &work_branch])
-                    .current_dir(&work_dir)
-                    .status()
-                    .await?;
-
-                if !checkout_status.success() {
-                    return Err(ZbobrError::Other(format!(
-                        "Failed to checkout work branch {work_branch}"
-                    )));
-                }
-            } else {
+            if !checkout_status.success() {
                 return Err(ZbobrError::Other(format!(
-                    "Work branch {work_branch} does not exist in {repo}"
+                    "Failed to checkout work branch {work_branch}"
                 )));
             }
-
-            Ok(work_dir.to_string_lossy().to_string())
         } else {
-            // Repo not cloned yet - clone with default branch first
-            self.request_branch(repo, "main").await?;
-            // Now call recursively using Box::pin to avoid infinite size
-            Box::pin(self.request_work_branch(repo)).await
+            return Err(ZbobrError::Other(format!(
+                "Work branch {work_branch} does not exist in {repo}"
+            )));
         }
+
+        Ok(work_dir.to_string_lossy().to_string())
     }
 }
 
@@ -494,51 +495,51 @@ impl WorkerSession {
     pub async fn request_work_branch(&self, repo: &str) -> Result<String, ZbobrError> {
         let work_branch = self.get_work_branch_name();
 
-        // First check if we have a tracked repo - if not, we need to clone it first
+        // Check if we have a tracked repo - if not, we need to clone it first
         let work_dir_opt = {
             let tracked = self.tracked_repos.lock().unwrap();
             tracked.get(repo).map(|r| r.local_path.clone())
         }; // Lock released here
 
-        if let Some(work_dir) = work_dir_opt {
-            // Repo already cloned, just checkout/create the work branch
+        let work_dir = if let Some(dir) = work_dir_opt {
+            dir
+        } else {
+            // Repo not cloned yet - use default branch (main) for initial clone
+            let path_str = self.request_branch(repo, "main").await?;
+            std::path::PathBuf::from(path_str)
+        };
 
-            // Try to fetch the work branch from fork
-            let _ = tokio::process::Command::new("git")
-                .args(["fetch", "fork", &format!("{work_branch}:{work_branch}")])
-                .current_dir(&work_dir)
-                .status()
-                .await;
+        // Now checkout/create the work branch
+        // Try to fetch the work branch from fork
+        let _ = tokio::process::Command::new("git")
+            .args(["fetch", "fork", &format!("{work_branch}:{work_branch}")])
+            .current_dir(&work_dir)
+            .status()
+            .await;
 
-            // Checkout or create the work branch
-            let checkout_status = tokio::process::Command::new("git")
-                .args(["checkout", &work_branch])
+        // Checkout or create the work branch
+        let checkout_status = tokio::process::Command::new("git")
+            .args(["checkout", &work_branch])
+            .current_dir(&work_dir)
+            .status()
+            .await?;
+
+        if !checkout_status.success() {
+            // Branch doesn't exist locally, create it
+            let create_status = tokio::process::Command::new("git")
+                .args(["checkout", "-b", &work_branch])
                 .current_dir(&work_dir)
                 .status()
                 .await?;
 
-            if !checkout_status.success() {
-                // Branch doesn't exist locally, create it
-                let create_status = tokio::process::Command::new("git")
-                    .args(["checkout", "-b", &work_branch])
-                    .current_dir(&work_dir)
-                    .status()
-                    .await?;
-
-                if !create_status.success() {
-                    return Err(ZbobrError::Other(format!(
-                        "Failed to create work branch {work_branch}"
-                    )));
-                }
+            if !create_status.success() {
+                return Err(ZbobrError::Other(format!(
+                    "Failed to create work branch {work_branch}"
+                )));
             }
-
-            Ok(work_dir.to_string_lossy().to_string())
-        } else {
-            // Repo not cloned yet - use default branch (main) for initial clone
-            self.request_branch(repo, "main").await?;
-            // Now recursively call using Box::pin to avoid infinite size
-            Box::pin(self.request_work_branch(repo)).await
         }
+
+        Ok(work_dir.to_string_lossy().to_string())
     }
 
     /// Push changes and create PR from the local repository path.
