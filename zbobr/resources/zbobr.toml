@@ -26,9 +26,9 @@ fork_owner = "{{FORK_OWNER}}"
 # github_token = ""
 
 # [prompts]
-# Base directory for prompt files
+# Base directory for additional prompt files (appended after built-in instructions)
 # path = "./prompts"
-# Planner prompt files (relative to path above, or absolute)
+# Additional context files for planner (relative to path above, or absolute)
 # planner = ["planner.md", "common.md"]
-# Worker prompt files
+# Additional context files for worker
 # worker = ["worker.md", "common.md"]

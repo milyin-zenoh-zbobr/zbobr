@@ -11,12 +11,6 @@ fn main() {
         .nth(3)
         .expect("Cannot find target dir from OUT_DIR");
 
-    // Copy workflow prompt files next to the binary
-    copy_dir("resources/prompts", &target_dir.join("prompts"), &[
-        "planner.md",
-        "worker.md",
-    ]);
-
     // Copy resource files next to the binary
     copy_dir("resources", &target_dir.join("resources"), &[
         "README.md",

@@ -76,11 +76,11 @@ fork_owner = "your-username"
 # work_branch_prefix = "zbobr_fix"
 
 [prompts]
-# Base directory for prompt files
+# Base directory for additional prompt files (appended after built-in instructions)
 # path = "./prompts"
-# Planner prompt files (relative to path above, or absolute)
+# Additional context files for planner
 # planner = ["planner.md", "common.md"]
-# Worker prompt files
+# Additional context files for worker
 # worker = ["worker.md", "common.md"]
 ```
 
@@ -94,24 +94,24 @@ Or create a token at https://github.com/settings/tokens (needs `repo` scope).
 
 ## Prompts
 
-The `prompts/` directory contains markdown files that provide context, guidelines, and technical workflow instructions to AI agents. These files are automatically included when agents process issues.
+Core agent instructions (workflow, MCP tool usage, access model) are built into zbobr and always included automatically. The `prompts/` directory contains additional context files that are appended after the built-in instructions.
 
 ### Prompt Files
 
 | File | Used By | Purpose |
 |------|---------|---------|
 | `common.md` | Planner & Worker | Shared context about project architecture, conventions, and domain knowledge |
-| `planner.md` | Planner | Core planner instructions including workflow, MCP tools, and output format |
-| `worker.md` | Worker | Core worker instructions including workflow, MCP tools, and output format |
+| `planner.md` | Planner | Additional planner-specific context (empty by default) |
+| `worker.md` | Worker | Additional worker-specific context (empty by default) |
 
 ### Default Configuration
 
-- **Planner agents** receive: `planner.md` and `common.md`
-- **Worker agents** receive: `worker.md` and `common.md`
+- **Planner agents** receive: built-in instructions + `planner.md` + `common.md` + API docs
+- **Worker agents** receive: built-in instructions + `worker.md` + `common.md` + API docs
 
 ### Customizing Prompts
 
-You can customize which files are used in `zbobr.toml`:
+You can customize which additional context files are used in `zbobr.toml`:
 
 ```toml
 [prompts]
@@ -137,15 +137,13 @@ worker = ["worker.md", "common.md"]
 - Build and test commands
 - Deployment information
 
-**In planner.md**:
-- Core planner workflow and MCP tool usage
-- How to structure implementation plans
-- Investigation approaches and planning standards
+**In planner.md** (additional context beyond built-in instructions):
+- Project-specific investigation approaches
+- Custom planning standards or templates
 
-**In worker.md**:
-- Core worker workflow and MCP tool usage
-- Code quality and testing requirements
-- Commit message and PR description standards
+**In worker.md** (additional context beyond built-in instructions):
+- Project-specific code quality requirements
+- Custom commit message or PR description formats
 
 
 ## Workflow Deep Dive

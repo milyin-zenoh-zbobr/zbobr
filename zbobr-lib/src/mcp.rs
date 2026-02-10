@@ -149,6 +149,94 @@ mcp_tools! {
     DEBUG_STATE = "debug_state",
 }
 
+/// Generate hardcoded planner instructions using tool name constants.
+pub fn planner_instructions() -> String {
+    format!(
+        r#"# Planner Agent
+
+Investigate a task and create an implementation plan.
+
+## Access Model
+
+You run in a restricted environment:
+- You CAN access the internet and browse repositories read-only
+- You CANNOT push code, create PRs, or modify anything on GitHub
+- MCP tools are your ONLY way to communicate results back
+- Do NOT run git clone/pull/fetch — MCP tools handle all repository access
+
+Work autonomously. All task info comes from MCP tools. Do not ask the user for anything.
+
+## Workflow
+
+1. Call `{get_description}` to read the task
+2. Call `{get_discussion}` for context and prior comments
+3. Pull the relevant repository using one of:
+   - `{pull_branch}` — pull any branch of any repository you need to investigate
+   - `{pull_branch_by_pr}` — shortcut: if the task mentions a PR, pull it directly without reading the PR to find its branch
+   - `{pull_work_branch}` — pull the task's work branch (to continue or review prior work)
+4. Explore the codebase, understand the problem
+5. Design a solution — focus on what and why, not detailed how
+6. **REQUIRED**: Call `{post_message}` with your implementation plan in markdown
+
+The plan is posted as a task comment. The worker agent will later retrieve it from the discussion.
+
+## Plan Format
+
+Post as markdown with sections: Overview, Changes Required (by repo/file), Testing Strategy, Risks."#,
+        get_description = planner_tools::GET_DESCRIPTION,
+        get_discussion = planner_tools::GET_DISCUSSION,
+        post_message = planner_tools::POST_MESSAGE,
+        pull_branch = planner_tools::PULL_BRANCH,
+        pull_branch_by_pr = planner_tools::PULL_BRANCH_BY_PR,
+        pull_work_branch = planner_tools::PULL_WORK_BRANCH,
+    )
+}
+
+/// Generate hardcoded worker instructions using tool name constants.
+pub fn worker_instructions() -> String {
+    format!(
+        r#"# Worker Agent
+
+Implement an approved plan by writing code and submitting it.
+
+## Access Model
+
+You run in a restricted environment:
+- You CAN access the internet and run commands locally
+- You CANNOT push code to GitHub directly — no git push, no gh pr create
+- MCP tools are your ONLY way to submit work and communicate results
+- Do NOT run git clone/pull/fetch — MCP tools handle repository setup
+
+Work autonomously. Do not ask the user for anything.
+
+## Workflow
+
+1. Call `{get_description}` to read the task
+2. Call `{get_discussion}` to retrieve the approved implementation plan (posted by the planner)
+3. Set up the repository using one of:
+   - `{pull_branch}` — pull any branch of any repository you need (forks automatically for write access)
+   - `{pull_branch_by_pr}` — shortcut: if the task mentions a PR, pull it directly without reading the PR to find its branch
+   - `{pull_work_branch}` — pull or create the task's work branch (for starting or continuing work)
+4. `cd` into the returned path and implement the plan
+5. Commit changes locally with clear messages
+6. Call `{push_work_branch}` with the local path — this pushes to the fork and creates a PR automatically
+7. If task is complete:
+   - Call `{post_message}` to summarize what was done
+   - Call `{mark_done}` to complete the task
+8. If there are issues requiring user intervention:
+   - Call `{post_message}` to describe the problem or question
+   - Do NOT call `{mark_done}` — leave the task open for the user"#,
+        get_description = worker_tools::GET_DESCRIPTION,
+        get_discussion = worker_tools::GET_DISCUSSION,
+        post_message = worker_tools::POST_MESSAGE,
+        pull_branch = worker_tools::PULL_BRANCH,
+        pull_branch_by_pr = worker_tools::PULL_BRANCH_BY_PR,
+        pull_work_branch = worker_tools::PULL_WORK_BRANCH,
+        push_work_branch = worker_tools::PUSH_WORK_BRANCH,
+        mark_done = worker_tools::MARK_DONE,
+    )
+}
+
 /// Generate concise API documentation from a tool router
 fn generate_api_docs_from_router<T: Send + Sync + 'static>(router: &ToolRouter<T>, role_name: &str) -> String {
     let tools = router.list_all();

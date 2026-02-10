@@ -175,12 +175,13 @@ fn resolve_prompts(cli: &Cli, config: &ZbobrConfig) -> anyhow::Result<Prompts> {
     })
 }
 
-/// Load and concatenate multiple prompt files.
+/// Load and concatenate multiple prompt files (additional user context).
 /// If base_path is provided, relative paths are resolved relative to it.
 /// Otherwise, relative paths are resolved relative to the current directory.
+/// Missing files are silently skipped (they are optional additional context).
 fn load_prompts(paths: &[PathBuf], base_path: Option<&PathBuf>) -> anyhow::Result<String> {
     let mut combined = String::new();
-    for (i, path) in paths.iter().enumerate() {
+    for path in paths.iter() {
         // Resolve path relative to base_path if provided and path is relative
         let resolved_path = if let Some(base) = base_path {
             if path.is_relative() {
@@ -196,26 +197,44 @@ fn load_prompts(paths: &[PathBuf], base_path: Option<&PathBuf>) -> anyhow::Resul
             }
         };
 
-        let content = std::fs::read_to_string(&resolved_path).map_err(|e| {
-            anyhow::anyhow!("Failed to read prompt file {}: {e}", resolved_path.display())
-        })?;
+        let content = match std::fs::read_to_string(&resolved_path) {
+            Ok(c) => c,
+            Err(_) => {
+                tracing::debug!("Prompt file not found, skipping: {}", resolved_path.display());
+                continue;
+            }
+        };
 
-        if i > 0 {
+        let trimmed = content.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if !combined.is_empty() {
             combined.push_str("\n\n");
         }
-        combined.push_str(&content);
+        combined.push_str(trimmed);
     }
     Ok(combined)
 }
 
-/// Build full prompt with auto-generated API documentation appended.
-fn build_full_prompt(base_prompt: &str, role: Role) -> String {
+/// Build full prompt: hardcoded instructions + user context files + auto-generated API docs.
+fn build_full_prompt(user_context: &str, role: Role) -> String {
+    let hardcoded = match role {
+        Role::Planner => zbobr_lib::planner_instructions(),
+        Role::Worker => zbobr_lib::worker_instructions(),
+    };
+
     let api_docs = match role {
         Role::Planner => zbobr_lib::PlannerMcp::generate_api_docs(),
         Role::Worker => zbobr_lib::WorkerMcp::generate_api_docs(),
     };
 
-    format!("{}\n\n---\n\n{}", base_prompt, api_docs)
+    if user_context.is_empty() {
+        format!("{}\n\n---\n\n{}", hardcoded, api_docs)
+    } else {
+        format!("{}\n\n---\n\n{}\n\n---\n\n{}", hardcoded, user_context, api_docs)
+    }
 }
 
 /// Load TOML config based on CLI args.

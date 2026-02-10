@@ -8,7 +8,7 @@ pub mod task;
 pub mod tool_executor;
 
 pub use config::{TomlConfig, ZbobrConfig};
-pub use mcp::{PlannerMcp, WorkerMcp};
+pub use mcp::{planner_instructions, worker_instructions, PlannerMcp, WorkerMcp};
 pub use task::{Model, SetupFile, Stage, Task, TaskSession, Tool};
 pub use tool_executor::{ClaudeExecutor, CopilotExecutor, StubExecutor, ToolExecutor};
 
