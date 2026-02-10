@@ -253,7 +253,7 @@ Zbobr manages **three distinct GitHub tokens** with different access levels and 
   1. `ZBOBR_OWNER_GH_TOKEN` environment variable
   2. `GH_TOKEN` environment variable
   3. `GITHUB_TOKEN` environment variable
-  4. `$(gh auth token)` (from gh CLI)
+  4. `$(gh auth token)` — **Note**: `gh auth token` itself checks `GH_TOKEN` and `GITHUB_TOKEN`, so this is effectively a convenience wrapper around steps 2-3
 - **Config File**: `owner_github_token` in `zbobr.toml`
 
 #### 2. Agent Token (`ZBOBR_AGENT_GH_TOKEN`) — **REQUIRED for restricted access**
@@ -274,37 +274,9 @@ Zbobr manages **three distinct GitHub tokens** with different access levels and 
   2. `COPILOT_GITHUB_TOKEN` environment variable
   3. `GH_TOKEN` environment variable
   4. `GITHUB_TOKEN` environment variable
-  5. `$(gh auth token)` (from gh CLI)
+  5. `$(gh auth token)` — **Note**: `gh auth token` itself checks `GH_TOKEN` and `GITHUB_TOKEN`, so this is effectively a convenience wrapper around steps 3-4
 - **Config File**: `copilot_github_token` in `zbobr.toml`
 
-#### Token Setup Example
-
-**Scenario: Restrict agent GitHub access but keep Copilot working**
-
-```bash
-# Main token with full access (for zbobr orchestrator)
-export GH_TOKEN=$(gh auth token)
-
-# Read-only token for agents (create one with only 'public_repo' scope)
-export ZBOBR_AGENT_GH_TOKEN=github_pat_xxxx_readonly
-
-# Copilot's own token (can be same as GH_TOKEN, or a separate full-access token)
-export ZBOBR_COPILOT_GITHUB_TOKEN=$(gh auth token)
-```
-
-**Scenario: All tokens from environment**
-
-```bash
-# Orchestrator & Copilot token
-export GH_TOKEN=$(gh auth token)
-
-# Read-only token for agents (different from GH_TOKEN)
-export ZBOBR_AGENT_GH_TOKEN=github_pat_xxxx_readonly
-
-# Copilot reuses GH_TOKEN if ZBOBR_COPILOT_GITHUB_TOKEN not set
-# (or explicitly set it if different)
-export ZBOBR_COPILOT_GITHUB_TOKEN=$GH_TOKEN
-```
 
 **Token Validation**: Zbobr validates at startup:
 - `ZBOBR_AGENT_GH_TOKEN` must be set
