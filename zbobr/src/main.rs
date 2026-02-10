@@ -1,54 +1,55 @@
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use zbobr_lib::task::{Model, Role, Tool};
 use zbobr_lib::{SetupFile, Stage, TomlConfig, Zbobr, ZbobrConfig};
 
 #[derive(Args, Clone)]
+#[command(next_help_heading = "Global Options")]
 struct GlobalArgs {
     /// Domain repository with tasks to orchestrate, in "owner/repo" format
     /// (e.g. "YoroolGui/copilot-zenoh"). Can also be set via ZBOBR_DOMAIN_REPO env var
-    #[arg(long, global = true)]
+    #[arg(long)]
     domain_repo: Option<String>,
 
     /// GitHub user or organization where target repos are forked for implementation
     /// (e.g. "YoroolGui"). Workers fork repos here to create PRs.
     /// Can also be set via ZBOBR_FORK_OWNER env var
-    #[arg(long, global = true)]
+    #[arg(long)]
     fork_owner: Option<String>,
 
     /// Path to workspace directory (default: ./workspace)
     /// Can also be set via ZBOBR_WORKSPACE env var
-    #[arg(long, global = true)]
+    #[arg(long)]
     workspace: Option<PathBuf>,
 
     /// Path to TOML configuration file (default: zbobr.toml in cwd)
-    #[arg(long, global = true, env = "ZBOBR_CONFIG")]
+    #[arg(long, env = "ZBOBR_CONFIG")]
     config: Option<PathBuf>,
 
     /// Base directory for prompt files (prompt paths are resolved relative to this)
     /// Can also be set via ZBOBR_PROMPTS_PATH env var
-    #[arg(long, env = "ZBOBR_PROMPTS_PATH", global = true)]
+    #[arg(long, env = "ZBOBR_PROMPTS_PATH")]
     prompts_path: Option<PathBuf>,
 
     /// Semicolon-separated list of prompt files for planner role
-    #[arg(long, env = "ZBOBR_PLANNER_PROMPTS", global = true, value_delimiter = ';')]
+    #[arg(long, env = "ZBOBR_PLANNER_PROMPTS", value_delimiter = ';')]
     planner_prompts: Option<Vec<PathBuf>>,
 
     /// Semicolon-separated list of prompt files for worker role
-    #[arg(long, env = "ZBOBR_WORKER_PROMPTS", global = true, value_delimiter = ';')]
+    #[arg(long, env = "ZBOBR_WORKER_PROMPTS", value_delimiter = ';')]
     worker_prompts: Option<Vec<PathBuf>>,
 
     /// Backend to use: "github" (default) or "stub"
-    #[arg(long, global = true, env = "ZBOBR_BACKEND")]
+    #[arg(long, env = "ZBOBR_BACKEND")]
     backend: Option<String>,
 
     /// CLI tool to use: "copilot", "claude", or "stub"
-    #[arg(long, global = true, env = "ZBOBR_CLI_TOOL")]
+    #[arg(long, env = "ZBOBR_CLI_TOOL")]
     cli_tool: Option<String>,
 
     /// Port for the Admin MCP server (optional)
-    #[arg(long, global = true, env = "ZBOBR_ADMIN_PORT")]
+    #[arg(long, env = "ZBOBR_ADMIN_PORT")]
     admin_port: Option<u16>,
 }
 
@@ -343,6 +344,84 @@ fn build_setup_files(zbobr: &Zbobr) -> anyhow::Result<Vec<SetupFile>> {
     Ok(files)
 }
 
+/// Parse CLI, allowing global options both before and after the subcommand.
+///
+/// Global options are defined without `global = true` so they only appear in
+/// `zbobr --help`, not in subcommand help. To still accept them after the
+/// subcommand (e.g. `zbobr setup --config foo.toml`), we reorder raw args
+/// to move recognized global flags before the subcommand before parsing.
+fn parse_cli() -> Cli {
+    let cmd = Cli::command();
+
+    // Collect known subcommand names
+    let subcommands: std::collections::HashSet<String> = cmd
+        .get_subcommands()
+        .map(|s| s.get_name().to_owned())
+        .collect();
+
+    // Collect global arg long names (with -- prefix) and whether they take a value
+    let global_tmp = GlobalArgs::augment_args(clap::Command::new(""));
+    let global_flags: std::collections::HashMap<String, bool> = global_tmp
+        .get_arguments()
+        .filter_map(|a| {
+            a.get_long().map(|long| {
+                let takes_value = !matches!(
+                    a.get_action(),
+                    clap::ArgAction::SetTrue | clap::ArgAction::SetFalse | clap::ArgAction::Count
+                );
+                (format!("--{long}"), takes_value)
+            })
+        })
+        .collect();
+
+    let raw_args: Vec<String> = std::env::args().collect();
+    let mut before_sub = vec![raw_args[0].clone()]; // binary name
+    let mut sub_and_after: Vec<String> = Vec::new();
+    let mut found_sub = false;
+
+    let mut i = 1;
+    while i < raw_args.len() {
+        let arg = &raw_args[i];
+
+        if !found_sub {
+            if subcommands.contains(arg.as_str()) {
+                found_sub = true;
+                sub_and_after.push(arg.clone());
+            } else {
+                before_sub.push(arg.clone());
+            }
+            i += 1;
+            continue;
+        }
+
+        // After subcommand: check if this is a global flag to hoist
+        // Handle --flag=value syntax
+        let base = arg.split('=').next().unwrap_or(arg);
+        if let Some(&takes_value) = global_flags.get(base) {
+            if arg.contains('=') {
+                // --flag=value: move entire arg
+                before_sub.push(arg.clone());
+                i += 1;
+            } else if takes_value && i + 1 < raw_args.len() {
+                // --flag value: move both
+                before_sub.push(arg.clone());
+                before_sub.push(raw_args[i + 1].clone());
+                i += 2;
+            } else {
+                // boolean flag or no value
+                before_sub.push(arg.clone());
+                i += 1;
+            }
+        } else {
+            sub_and_after.push(arg.clone());
+            i += 1;
+        }
+    }
+
+    before_sub.extend(sub_and_after);
+    Cli::parse_from(before_sub)
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Initialize rustls crypto provider before any TLS operations
@@ -354,7 +433,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let cli = Cli::parse();
+    let cli = parse_cli();
     let config = load_config(&cli)?;
     let zbobr = Zbobr::new(config)?;
     let prompts = resolve_prompts(&cli, zbobr.config())?;
