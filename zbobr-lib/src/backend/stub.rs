@@ -377,6 +377,10 @@ impl Backend for StubBackend {
         Ok(())
     }
 
+    async fn validate_connectivity(&self) -> Result<(), ZbobrError> {
+        Ok(())
+    }
+
     fn debug_state(&self) -> String {
         let state = self.state.read().unwrap();
         format!("{:?}", state.tasks)

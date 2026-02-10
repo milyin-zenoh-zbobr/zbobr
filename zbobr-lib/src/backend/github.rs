@@ -1083,6 +1083,37 @@ impl Backend for GitHubBackend {
         Ok(())
     }
 
+    async fn validate_connectivity(&self) -> Result<(), ZbobrError> {
+        let fork_owner = &self.config.fork_owner;
+        let fork_owner_exists = self
+            .octocrab
+            .get::<serde_json::Value, _, _>(format!("/users/{fork_owner}"), None::<&()>)
+            .await
+            .is_ok();
+        if !fork_owner_exists {
+            return Err(ZbobrError::Config(format!(
+                "fork_owner '{fork_owner}' does not exist on GitHub as a user or organization.\n  \
+                 Check your fork_owner setting and ensure the account exists."
+            )));
+        }
+
+        let (owner, repo) = self.parse_repo()?;
+        let domain_repo_exists = self
+            .octocrab
+            .get::<RepoResponse, _, _>(format!("/repos/{owner}/{repo}"), None::<&()>)
+            .await
+            .is_ok();
+        if !domain_repo_exists {
+            return Err(ZbobrError::Config(format!(
+                "domain_repo '{owner}/{repo}' is not accessible on GitHub.\n  \
+                 Check your domain_repo setting and ensure the repository exists \
+                 and your token has access to it."
+            )));
+        }
+
+        Ok(())
+    }
+
     fn debug_state(&self) -> String {
         "GitHubBackend".to_string()
     }

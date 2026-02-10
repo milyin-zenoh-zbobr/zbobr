@@ -56,6 +56,11 @@ impl Zbobr {
         TaskSession::new(self.clone(), task_id)
     }
 
+    /// Validate that the backend can reach required resources (fork owner, domain repo, etc.).
+    pub async fn validate_connectivity(&self) -> Result<(), ZbobrError> {
+        self.backend.validate_connectivity().await
+    }
+
     // -- Delegate to Backend --
 
     pub async fn get_task(&self, id: u64) -> Result<Task, ZbobrError> {

@@ -441,6 +441,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = parse_cli();
     let config = load_config(&cli)?;
     let zbobr = Zbobr::new(config)?;
+    zbobr.validate_connectivity().await?;
     let prompts = resolve_prompts(&cli, zbobr.config())?;
 
     match cli.command {

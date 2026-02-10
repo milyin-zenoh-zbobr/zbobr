@@ -118,6 +118,9 @@ pub trait Backend: Send + Sync {
     /// If force is true, overwrites existing labels.
     async fn setup_repository(&self, force: bool) -> Result<(), ZbobrError>;
 
+    /// Validate that the backend can reach required resources (fork owner, domain repo, etc.).
+    async fn validate_connectivity(&self) -> Result<(), ZbobrError>;
+
     /// Return a debug string of the backend state.
     fn debug_state(&self) -> String;
 }
