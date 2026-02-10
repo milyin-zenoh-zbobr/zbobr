@@ -793,14 +793,15 @@ mod tests {
             fork_owner: "test-owner".to_string(),
             default_model: Model::Gpt4o,
             workspace: std::path::PathBuf::from("/tmp"),
-            github_token: "test-token".to_string(),
+            owner_github_token: "owner-token".to_string(),
+            agent_github_token: "agent-token".to_string(),
+            copilot_github_token: "copilot-token".to_string(),
             backend: crate::config::BackendType::Stub,
             cli_tool: Tool::Stub,
             planner_prompts: vec![],
             worker_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
-            agent_github_token: None,
         };
         let zbobr = Zbobr::new(config).unwrap();
         let admin = AdminMcp::new(zbobr);
@@ -825,14 +826,15 @@ mod tests {
             fork_owner: "test-owner".to_string(),
             default_model: Model::Gpt4o,
             workspace: std::path::PathBuf::from("/tmp"),
-            github_token: "test-token".to_string(),
+            owner_github_token: "owner-token".to_string(),
+            agent_github_token: "agent-token".to_string(),
+            copilot_github_token: "copilot-token".to_string(),
             backend: crate::config::BackendType::Stub,
             cli_tool: Tool::Stub,
             planner_prompts: vec![],
             worker_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
-            agent_github_token: None,
         };
         let zbobr = Zbobr::new(config).unwrap();
         let planner = PlannerMcp::new(zbobr, 123);
@@ -857,14 +859,15 @@ mod tests {
             fork_owner: "test-owner".to_string(),
             default_model: Model::Gpt4o,
             workspace: std::path::PathBuf::from("/tmp"),
-            github_token: "test-token".to_string(),
+            owner_github_token: "owner-token".to_string(),
+            agent_github_token: "agent-token".to_string(),
+            copilot_github_token: "copilot-token".to_string(),
             backend: crate::config::BackendType::Stub,
             cli_tool: Tool::Stub,
             planner_prompts: vec![],
             worker_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
-            agent_github_token: None,
         };
         let zbobr = Zbobr::new(config).unwrap();
         let worker = WorkerMcp::new(zbobr, 123);

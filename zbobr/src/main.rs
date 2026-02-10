@@ -281,6 +281,71 @@ fn load_config(cli: &Cli) -> anyhow::Result<ZbobrConfig> {
     Ok(config)
 }
 
+/// Initialize ZBOBR_* token environment variables from prioritized sources
+/// at the start of the zbobr process.
+fn initialize_zbobr_tokens() -> anyhow::Result<()> {
+    // ZBOBR_COPILOT_GITHUB_TOKEN: COPILOT_GITHUB_TOKEN > GH_TOKEN > GITHUB_TOKEN > $(gh auth token)
+    if std::env::var("ZBOBR_COPILOT_GITHUB_TOKEN").is_err() {
+        let token = std::env::var("COPILOT_GITHUB_TOKEN")
+            .or_else(|_| std::env::var("GH_TOKEN"))
+            .or_else(|_| std::env::var("GITHUB_TOKEN"))
+            .or_else(|_| {
+                let output = std::process::Command::new("gh")
+                    .args(&["auth", "token"])
+                    .output()
+                    .map_err(|_| std::env::VarError::NotPresent)?;
+                if output.status.success() {
+                    let token = String::from_utf8(output.stdout)
+                        .map_err(|_| std::env::VarError::NotPresent)?
+                        .trim()
+                        .to_string();
+                    if token.is_empty() {
+                        Err(std::env::VarError::NotPresent)
+                    } else {
+                        Ok(token)
+                    }
+                } else {
+                    Err(std::env::VarError::NotPresent)
+                }
+            });
+
+        if let Ok(t) = token {
+            std::env::set_var("ZBOBR_COPILOT_GITHUB_TOKEN", t);
+        }
+    }
+
+    // ZBOBR_OWNER_GH_TOKEN: GH_TOKEN > GITHUB_TOKEN > $(gh auth token)
+    if std::env::var("ZBOBR_OWNER_GH_TOKEN").is_err() {
+        let token = std::env::var("GH_TOKEN")
+            .or_else(|_| std::env::var("GITHUB_TOKEN"))
+            .or_else(|_| {
+                let output = std::process::Command::new("gh")
+                    .args(&["auth", "token"])
+                    .output()
+                    .map_err(|_| std::env::VarError::NotPresent)?;
+                if output.status.success() {
+                    let token = String::from_utf8(output.stdout)
+                        .map_err(|_| std::env::VarError::NotPresent)?
+                        .trim()
+                        .to_string();
+                    if token.is_empty() {
+                        Err(std::env::VarError::NotPresent)
+                    } else {
+                        Ok(token)
+                    }
+                } else {
+                    Err(std::env::VarError::NotPresent)
+                }
+            });
+
+        if let Ok(t) = token {
+            std::env::set_var("ZBOBR_OWNER_GH_TOKEN", t);
+        }
+    }
+
+    Ok(())
+}
+
 /// Parse CLI, allowing global options both before and after the subcommand.
 ///
 /// Global options are defined without `global = true` so they only appear in
@@ -369,6 +434,9 @@ async fn main() -> anyhow::Result<()> {
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
+
+    // Initialize ZBOBR_* token environment variables from prioritized sources
+    initialize_zbobr_tokens()?;
 
     let cli = parse_cli();
     let config = load_config(&cli)?;
@@ -501,9 +569,10 @@ async fn run_role_session(
     let mcp_url = format!("http://127.0.0.1:{assigned_port}/{role}/{task_id}");
 
     let executor = cli_tool.executor();
-    let agent_token = zbobr.config().agent_github_token.as_deref();
+    let agent_token = &zbobr.config().agent_github_token;
+    let copilot_token = &zbobr.config().copilot_github_token;
     let execution_result = tokio::select! {
-        result = executor.execute(task_id, role, &model, assigned_port, prompt, &task_dir, &mcp_url, agent_token) => {
+        result = executor.execute(task_id, role, &model, assigned_port, prompt, &task_dir, &mcp_url, agent_token, copilot_token) => {
             if let Err(e) = result {
                 tracing::error!("Tool execution failed: {e}");
             }

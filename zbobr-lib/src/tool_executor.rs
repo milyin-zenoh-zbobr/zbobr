@@ -36,6 +36,8 @@ pub trait ToolExecutor: Send + Sync {
     /// * `prompt` - The prompt text for the tool
     /// * `task_dir` - The task working directory
     /// * `mcp_url` - The MCP server URL
+    /// * `agent_github_token` - Read-only GitHub token for agent (passed as GH_TOKEN)
+    /// * `copilot_github_token` - Copilot's GitHub token (passed as COPILOT_GITHUB_TOKEN)
     async fn execute(
         &self,
         task_id: u64,
@@ -45,7 +47,8 @@ pub trait ToolExecutor: Send + Sync {
         prompt: &str,
         task_dir: &Path,
         mcp_url: &str,
-        agent_github_token: Option<&str>,
+        agent_github_token: &str,
+        copilot_github_token: &str,
     ) -> anyhow::Result<()>;
 }
 
@@ -63,7 +66,8 @@ impl ToolExecutor for CopilotExecutor {
         prompt: &str,
         task_dir: &Path,
         mcp_url: &str,
-        agent_github_token: Option<&str>,
+        agent_github_token: &str,
+        copilot_github_token: &str,
     ) -> anyhow::Result<()> {
         // Build MCP config for copilot
         let mcp_config = serde_json::json!({
@@ -105,10 +109,11 @@ impl ToolExecutor for CopilotExecutor {
 
         tracing::debug!("Command: {}", format_command_for_log("copilot", &args, task_dir));
 
-        if let Some(token) = agent_github_token {
-            tracing::info!("Overriding GH_TOKEN/GITHUB_TOKEN for copilot agent process");
-            cmd.env("GH_TOKEN", token).env("GITHUB_TOKEN", token);
-        }
+        // Set GitHub tokens for copilot agent process
+        tracing::info!("Setting GH_TOKEN for agent and COPILOT_GITHUB_TOKEN for copilot");
+        cmd.env("GH_TOKEN", agent_github_token)
+            .env("GITHUB_TOKEN", agent_github_token)
+            .env("COPILOT_GITHUB_TOKEN", copilot_github_token);
 
         let mut child = cmd.spawn()?;
 
@@ -163,7 +168,8 @@ impl ToolExecutor for ClaudeExecutor {
         prompt: &str,
         task_dir: &Path,
         mcp_url: &str,
-        agent_github_token: Option<&str>,
+        agent_github_token: &str,
+        copilot_github_token: &str,
     ) -> anyhow::Result<()> {
         // Build MCP config for claude
         let mcp_config = serde_json::json!({
@@ -206,10 +212,11 @@ impl ToolExecutor for ClaudeExecutor {
 
         tracing::debug!("Command: {}", format_command_for_log("claude", &args, task_dir));
 
-        if let Some(token) = agent_github_token {
-            tracing::info!("Overriding GH_TOKEN/GITHUB_TOKEN for claude agent process");
-            cmd.env("GH_TOKEN", token).env("GITHUB_TOKEN", token);
-        }
+        // Set GitHub tokens for claude agent process
+        tracing::info!("Setting GH_TOKEN for agent and COPILOT_GITHUB_TOKEN for copilot");
+        cmd.env("GH_TOKEN", agent_github_token)
+            .env("GITHUB_TOKEN", agent_github_token)
+            .env("COPILOT_GITHUB_TOKEN", copilot_github_token);
 
         let mut child = cmd.spawn()?;
 
@@ -264,7 +271,8 @@ impl ToolExecutor for StubExecutor {
         _prompt: &str,
         _task_dir: &Path,
         mcp_url: &str,
-        _agent_github_token: Option<&str>,
+        _agent_github_token: &str,
+        _copilot_github_token: &str,
     ) -> anyhow::Result<()> {
         tracing::info!("Running STUB TOOL for {} session", role);
 

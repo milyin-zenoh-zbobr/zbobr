@@ -33,7 +33,7 @@ impl Zbobr {
         let backend: Arc<dyn Backend> = match config.backend {
             BackendType::GitHub => {
                 let octocrab = octocrab::Octocrab::builder()
-                    .personal_token(config.github_token.clone())
+                    .personal_token(config.owner_github_token.clone())
                     .build()
                     .map_err(|e| ZbobrError::GitHub(e.to_string()))?;
                 Arc::new(GitHubBackend::new(config_arc.clone(), octocrab))

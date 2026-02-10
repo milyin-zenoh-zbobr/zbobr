@@ -57,8 +57,9 @@ pub struct TomlConfig {
     pub fork_owner: Option<String>,
     pub default_model: Option<Model>,
     pub workspace: Option<PathBuf>,
-    pub github_token: Option<String>,
+    pub owner_github_token: Option<String>,
     pub agent_github_token: Option<String>,
+    pub copilot_github_token: Option<String>,
     pub backend: Option<BackendType>,
     pub cli_tool: Option<Tool>,
     pub work_branch_prefix: Option<String>,
@@ -91,8 +92,12 @@ pub struct ZbobrConfig {
     pub default_model: Model,
     /// Workspace directory for issue work dirs.
     pub workspace: PathBuf,
-    /// GitHub personal access token.
-    pub github_token: String,
+    /// GitHub token with write access for orchestrator (used with octocrab).
+    pub owner_github_token: String,
+    /// GitHub token with read-only access for agent processes (passed as GH_TOKEN to agents).
+    pub agent_github_token: String,
+    /// GitHub token for Copilot CLI with Copilot's access rights (passed as COPILOT_GITHUB_TOKEN).
+    pub copilot_github_token: String,
     /// Backend to use.
     pub backend: BackendType,
     /// CLI tool to use.
@@ -105,8 +110,6 @@ pub struct ZbobrConfig {
     pub work_branch_prefix: String,
     /// Base directory for resolving prompt file paths.
     pub prompts_path: Option<PathBuf>,
-    /// GitHub token for agent processes (limited scope, overrides GH_TOKEN in child).
-    pub agent_github_token: Option<String>,
 }
 
 impl Default for ZbobrConfig {
@@ -116,16 +119,39 @@ impl Default for ZbobrConfig {
             fork_owner: String::new(),
             default_model: Model::default(),
             workspace: PathBuf::from("./workspace"),
-            github_token: String::new(),
+            owner_github_token: String::new(),
+            agent_github_token: String::new(),
+            copilot_github_token: String::new(),
             backend: BackendType::default(),
             cli_tool: Tool::default(),
             planner_prompts: vec!["prompts/planner.md".into(), "prompts/common.md".into()],
             worker_prompts: vec!["prompts/worker.md".into(), "prompts/common.md".into()],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
-            agent_github_token: None,
         }
     }
+}
+
+/// Get the default GitHub token from `gh auth token` command.
+/// Returns None if the command fails or token is empty.
+fn get_gh_auth_token() -> Option<String> {
+    std::process::Command::new("gh")
+        .arg("auth")
+        .arg("token")
+        .output()
+        .ok()
+        .and_then(|output| {
+            if output.status.success() {
+                let token = String::from_utf8(output.stdout).ok()?.trim().to_string();
+                if !token.is_empty() {
+                    Some(token)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
 }
 
 /// Read an env var, falling back to a TOML value, then to a default.
@@ -180,12 +206,6 @@ impl ZbobrConfig {
             .or_else(|| toml.and_then(|t| t.workspace.clone()))
             .unwrap_or(defaults.workspace);
 
-        let github_token = std::env::var("GH_TOKEN")
-            .or_else(|_| std::env::var("GITHUB_TOKEN"))
-            .ok()
-            .or_else(|| toml.and_then(|t| t.github_token.clone()))
-            .unwrap_or_default();
-
         let backend = env_parsed::<BackendType>("ZBOBR_BACKEND")
             .or_else(|| toml.and_then(|t| t.backend))
             .unwrap_or(defaults.backend);
@@ -215,23 +235,47 @@ impl ZbobrConfig {
             .map(PathBuf::from)
             .or_else(|| toml_prompts.and_then(|p| p.path.clone()));
 
+        // Token resolution with proper priority
+
+        // ZBOBR_COPILOT_GITHUB_TOKEN: COPILOT_GITHUB_TOKEN > GH_TOKEN > GITHUB_TOKEN > $(gh auth token)
+        let copilot_github_token = std::env::var("ZBOBR_COPILOT_GITHUB_TOKEN")
+            .or_else(|_| std::env::var("COPILOT_GITHUB_TOKEN"))
+            .or_else(|_| std::env::var("GH_TOKEN"))
+            .or_else(|_| std::env::var("GITHUB_TOKEN"))
+            .ok()
+            .or_else(|| toml.and_then(|t| t.copilot_github_token.clone()))
+            .or_else(get_gh_auth_token)
+            .unwrap_or_default();
+
+        // ZBOBR_OWNER_GH_TOKEN: GH_TOKEN > GITHUB_TOKEN > $(gh auth token)
+        let owner_github_token = std::env::var("ZBOBR_OWNER_GH_TOKEN")
+            .or_else(|_| std::env::var("GH_TOKEN"))
+            .or_else(|_| std::env::var("GITHUB_TOKEN"))
+            .ok()
+            .or_else(|| toml.and_then(|t| t.owner_github_token.clone()))
+            .or_else(get_gh_auth_token)
+            .unwrap_or_default();
+
+        // ZBOBR_AGENT_GH_TOKEN: env var or TOML (required)
         let agent_github_token = std::env::var("ZBOBR_AGENT_GH_TOKEN")
             .ok()
-            .or_else(|| toml.and_then(|t| t.agent_github_token.clone()));
+            .or_else(|| toml.and_then(|t| t.agent_github_token.clone()))
+            .unwrap_or_default();
 
         Ok(Self {
             domain_repo,
             fork_owner,
             default_model,
             workspace,
-            github_token,
+            owner_github_token,
+            agent_github_token,
+            copilot_github_token,
             backend,
             cli_tool,
             planner_prompts,
             worker_prompts,
             work_branch_prefix,
             prompts_path,
-            agent_github_token,
         })
     }
 
@@ -253,6 +297,27 @@ impl ZbobrConfig {
             return Err(ZbobrError::Config(
                 "fork owner not set. Use --fork-owner NAME or set ZBOBR_FORK_OWNER.\n  \
                  This is the GitHub user or organization where target repos are forked for implementation.".into(),
+            ));
+        }
+        if self.owner_github_token.is_empty() {
+            return Err(ZbobrError::Config(
+                "owner GitHub token not set. Set ZBOBR_OWNER_GH_TOKEN, GH_TOKEN, GITHUB_TOKEN env var, \
+                 or run: export GH_TOKEN=$(gh auth token)"
+                    .into(),
+            ));
+        }
+        if self.agent_github_token.is_empty() {
+            return Err(ZbobrError::Config(
+                "agent GitHub token not set. Set ZBOBR_AGENT_GH_TOKEN env var or in config file.\n  \
+                 This must be a token with read-only access for agent processes."
+                    .into(),
+            ));
+        }
+        if self.agent_github_token == self.owner_github_token {
+            return Err(ZbobrError::Config(
+                "ZBOBR_AGENT_GH_TOKEN must be different from ZBOBR_OWNER_GH_TOKEN.\n  \
+                 Agent token must have read-only access while owner token requires write access."
+                    .into(),
             ));
         }
         Ok(())
@@ -281,14 +346,15 @@ mod tests {
             fork_owner: "test-fork".to_string(),
             default_model: Model::Gpt5Mini,
             workspace: PathBuf::from("./workspace"),
-            github_token: "fake-token".to_string(),
+            owner_github_token: "owner-token".to_string(),
+            agent_github_token: "agent-token".to_string(),
+            copilot_github_token: "copilot-token".to_string(),
             backend: BackendType::Stub,
             cli_tool: Tool::Copilot,
             planner_prompts: vec![],
             worker_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
-            agent_github_token: None,
         }
     }
 
@@ -318,10 +384,11 @@ mod tests {
     fn from_env_missing_required() {
         // Clear env to ensure ZBOBR_DOMAIN_REPO is not set
         std::env::remove_var("ZBOBR_DOMAIN_REPO");
-        // Ensure we have a token so we don't fail on "GitHub token not found"
-        std::env::set_var("GH_TOKEN", "test-token");
+        // Set the required tokens
+        std::env::set_var("ZBOBR_OWNER_GH_TOKEN", "owner-token");
+        std::env::set_var("ZBOBR_AGENT_GH_TOKEN", "agent-token");
 
-        let config = ZbobrConfig::from_env().expect("from_env should succeed with token");
+        let config = ZbobrConfig::from_env().expect("from_env should succeed with tokens");
         // validate() should fail because domain_repo is missing
         assert!(config.validate().is_err());
     }
@@ -379,15 +446,20 @@ worker = ["work.md"]
         std::env::remove_var("ZBOBR_WORKER_PROMPTS");
         std::env::remove_var("ZBOBR_PROMPTS_PATH");
         std::env::remove_var("ZBOBR_AGENT_GH_TOKEN");
-        std::env::set_var("GH_TOKEN", "test-token");
+        std::env::remove_var("ZBOBR_OWNER_GH_TOKEN");
+        std::env::remove_var("ZBOBR_COPILOT_GITHUB_TOKEN");
+        std::env::remove_var("GH_TOKEN");
+        std::env::remove_var("GITHUB_TOKEN");
+        std::env::remove_var("COPILOT_GITHUB_TOKEN");
 
         let toml = TomlConfig {
             domain_repo: Some("toml-org/toml-repo".into()),
             fork_owner: Some("toml-fork".into()),
             default_model: Some(Model::Claude3Opus),
             workspace: Some(PathBuf::from("/tmp/toml-ws")),
-            github_token: None,
-            agent_github_token: None,
+            owner_github_token: Some("toml-owner-token".into()),
+            agent_github_token: Some("toml-agent-token".into()),
+            copilot_github_token: Some("toml-copilot-token".into()),
             backend: Some(BackendType::Stub),
             cli_tool: Some(Tool::Claude),
             work_branch_prefix: Some("toml_fix".into()),
@@ -409,6 +481,9 @@ worker = ["work.md"]
         assert_eq!(config.planner_prompts, vec![PathBuf::from("p.md")]);
         assert_eq!(config.worker_prompts, vec![PathBuf::from("w.md")]);
         assert_eq!(config.prompts_path, Some(PathBuf::from("/opt/prompts")));
+        assert_eq!(config.owner_github_token, "toml-owner-token");
+        assert_eq!(config.agent_github_token, "toml-agent-token");
+        assert_eq!(config.copilot_github_token, "toml-copilot-token");
     }
 
     #[test]
@@ -424,7 +499,11 @@ worker = ["work.md"]
         std::env::remove_var("ZBOBR_WORKER_PROMPTS");
         std::env::remove_var("ZBOBR_PROMPTS_PATH");
         std::env::remove_var("ZBOBR_AGENT_GH_TOKEN");
-        std::env::set_var("GH_TOKEN", "test-token");
+        std::env::remove_var("ZBOBR_OWNER_GH_TOKEN");
+        std::env::remove_var("ZBOBR_COPILOT_GITHUB_TOKEN");
+        std::env::remove_var("GH_TOKEN");
+        std::env::remove_var("GITHUB_TOKEN");
+        std::env::remove_var("COPILOT_GITHUB_TOKEN");
 
         let config = ZbobrConfig::build(None).unwrap();
         assert_eq!(config.default_model, Model::Gpt5Mini);

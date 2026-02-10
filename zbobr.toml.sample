@@ -22,14 +22,20 @@ fork_owner = "{{FORK_OWNER}}"
 # Prefix for work branches
 # work_branch_prefix = "zbobr_fix"
 
-# GitHub token (prefer GH_TOKEN or GITHUB_TOKEN env var instead)
-# github_token = ""
+# GitHub token with write access for orchestrator (used with octocrab for repo operations).
+# Priority: ZBOBR_OWNER_GH_TOKEN > GH_TOKEN > GITHUB_TOKEN > $(gh auth token)
+# Prefer env vars instead of storing in config.
+# owner_github_token = ""
 
-# Limited-scope GitHub token for agent child processes.
-# When set, overrides GH_TOKEN/GITHUB_TOKEN in agent environment,
-# restricting agents to read-only GitHub access while zbobr retains full access.
+# GitHub token with read-only access for agent processes (passed as GH_TOKEN to agents).
+# REQUIRED if agent tokens differ from owner token.
 # Prefer ZBOBR_AGENT_GH_TOKEN env var instead of storing here.
 # agent_github_token = ""
+
+# GitHub token for Copilot CLI with Copilot's access rights (passed as COPILOT_GITHUB_TOKEN).
+# Priority: ZBOBR_COPILOT_GITHUB_TOKEN > COPILOT_GITHUB_TOKEN > GH_TOKEN > GITHUB_TOKEN > $(gh auth token)
+# Prefer env vars instead of storing in config.
+# copilot_github_token = ""
 
 # [prompts]
 # Base directory for additional prompt files (appended after built-in instructions)
