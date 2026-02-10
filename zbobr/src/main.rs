@@ -1,8 +1,10 @@
 use std::path::PathBuf;
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
-use zbobr_lib::task::{Model, Role, Tool};
-use zbobr_lib::{Stage, TomlConfig, Zbobr, ZbobrConfig};
+use zbobr_lib::{
+    Stage, TomlConfig, Zbobr, ZbobrConfig,
+    task::{Model, Role, Tool},
+};
 
 #[derive(Args, Clone)]
 #[command(next_help_heading = "Global Options")]
@@ -193,7 +195,10 @@ fn load_prompts(paths: &[PathBuf], base_path: Option<&PathBuf>) -> anyhow::Resul
         let content = match std::fs::read_to_string(&resolved_path) {
             Ok(c) => c,
             Err(_) => {
-                tracing::debug!("Prompt file not found, skipping: {}", resolved_path.display());
+                tracing::debug!(
+                    "Prompt file not found, skipping: {}",
+                    resolved_path.display()
+                );
                 continue;
             }
         };
@@ -226,7 +231,10 @@ fn build_full_prompt(user_context: &str, role: Role) -> String {
     if user_context.is_empty() {
         format!("{}\n\n---\n\n{}", hardcoded, api_docs)
     } else {
-        format!("{}\n\n---\n\n{}\n\n---\n\n{}", hardcoded, user_context, api_docs)
+        format!(
+            "{}\n\n---\n\n{}\n\n---\n\n{}",
+            hardcoded, user_context, api_docs
+        )
     }
 }
 
@@ -261,7 +269,8 @@ fn load_config(cli: &Cli) -> anyhow::Result<ZbobrConfig> {
         config.workspace = ws.clone();
     }
     if let Some(ref b) = cli.global.backend {
-        config.backend = b.parse::<zbobr_lib::config::BackendType>()
+        config.backend = b
+            .parse::<zbobr_lib::config::BackendType>()
             .map_err(|e| anyhow::anyhow!(e))?;
     }
     if let Some(ref t) = cli.global.cli_tool {
@@ -372,7 +381,12 @@ async fn main() -> anyhow::Result<()> {
         Command::Cleanup { dry_run } => {
             zbobr.cleanup_closed_tasks(dry_run).await?;
         }
-        Command::Plan { task, model, port, show_prompt } => {
+        Command::Plan {
+            task,
+            model,
+            port,
+            show_prompt,
+        } => {
             let base_prompt = load_prompts(&prompts.planner, prompts.base_path.as_ref())?;
             let full_prompt = build_full_prompt(&base_prompt, Role::Planner);
 
@@ -387,7 +401,12 @@ async fn main() -> anyhow::Result<()> {
                 .map_err(anyhow::Error::msg)?;
             run_role_session(&zbobr, task, Role::Planner, model_enum, port, &full_prompt).await?;
         }
-        Command::Work { task, model, port, show_prompt } => {
+        Command::Work {
+            task,
+            model,
+            port,
+            show_prompt,
+        } => {
             let base_prompt = load_prompts(&prompts.worker, prompts.base_path.as_ref())?;
             let full_prompt = build_full_prompt(&base_prompt, Role::Worker);
 
@@ -525,8 +544,24 @@ async fn run_manager_loop(
     if let Some(ref base) = prompts.base_path {
         tracing::info!("Prompts base path: {}", base.display());
     }
-    tracing::info!("Planner prompt files: {}", prompts.planner.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join("; "));
-    tracing::info!("Worker prompt files: {}", prompts.worker.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join("; "));
+    tracing::info!(
+        "Planner prompt files: {}",
+        prompts
+            .planner
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join("; ")
+    );
+    tracing::info!(
+        "Worker prompt files: {}",
+        prompts
+            .worker
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join("; ")
+    );
     tracing::info!("Backend: {:?}", zbobr.config().backend);
 
     let mut last_cleanup = std::time::Instant::now();
@@ -536,9 +571,7 @@ async fn run_manager_loop(
         let admin_zbobr = zbobr.clone();
         tokio::spawn(async move {
             tracing::info!("Starting Admin MCP on port {a_port}");
-            if let Err(e) =
-                zbobr_lib::mcp::run_admin_mcp_server(admin_zbobr, a_port).await
-            {
+            if let Err(e) = zbobr_lib::mcp::run_admin_mcp_server(admin_zbobr, a_port).await {
                 tracing::error!("Admin MCP server error: {e}");
             }
         });
@@ -634,12 +667,18 @@ async fn run_manager_loop(
         );
 
         if !planning_tasks.is_empty() {
-            let summary: Vec<_> = planning_tasks.iter().map(|t| format!("#{} (tool: {:?})", t.id, t.tool)).collect();
+            let summary: Vec<_> = planning_tasks
+                .iter()
+                .map(|t| format!("#{} (tool: {:?})", t.id, t.tool))
+                .collect();
             tracing::info!("  GO_PLANNING tasks: {}", summary.join(", "));
         }
 
         if !working_tasks.is_empty() {
-            let summary: Vec<_> = working_tasks.iter().map(|t| format!("#{} (tool: {:?})", t.id, t.tool)).collect();
+            let summary: Vec<_> = working_tasks
+                .iter()
+                .map(|t| format!("#{} (tool: {:?})", t.id, t.tool))
+                .collect();
             tracing::info!("  GO_WORKING tasks: {}", summary.join(", "));
         }
 

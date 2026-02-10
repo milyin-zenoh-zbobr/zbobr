@@ -1,9 +1,12 @@
-use serde::Serialize;
-use serde_json::{json, Value};
 use std::time::Duration;
+
+use serde::Serialize;
+use serde_json::{Value, json};
 use tokio::time::sleep;
-use zbobr_lib::mcp::{admin_tools, CreateTaskParam, SetStageParam, TaskIdParam};
-use zbobr_lib::Stage;
+use zbobr_lib::{
+    Stage,
+    mcp::{CreateTaskParam, SetStageParam, TaskIdParam, admin_tools},
+};
 
 struct AdminClient {
     client: reqwest::Client,
