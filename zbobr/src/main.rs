@@ -168,6 +168,7 @@ fn resolve_prompts(cli: &Cli, config: &ZbobrConfig) -> anyhow::Result<Prompts> {
 
 /// Load and concatenate multiple prompt files.
 /// If base_path is provided, relative paths are resolved relative to it.
+/// Otherwise, relative paths are resolved relative to the current directory.
 fn load_prompts(paths: &[PathBuf], base_path: Option<&PathBuf>) -> anyhow::Result<String> {
     let mut combined = String::new();
     for (i, path) in paths.iter().enumerate() {
@@ -179,7 +180,11 @@ fn load_prompts(paths: &[PathBuf], base_path: Option<&PathBuf>) -> anyhow::Resul
                 path.clone()
             }
         } else {
-            path.clone()
+            if path.is_relative() {
+                std::env::current_dir()?.join(path)
+            } else {
+                path.clone()
+            }
         };
 
         let content = std::fs::read_to_string(&resolved_path).map_err(|e| {
