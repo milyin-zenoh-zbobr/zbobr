@@ -45,21 +45,38 @@ impl GitHubBackend {
                     "Invalid target repo: {target_repo}"
                 )));
             }
-            tracing::info!("Creating fork of {target_repo} under {fork_owner}", fork_owner = self.config.fork_owner);
+            let fork_owner = &self.config.fork_owner;
+            let endpoint = format!("/repos/{}/{}/forks", parts[0], parts[1]);
+            let payload = serde_json::json!({ "organization": fork_owner });
+            
+            tracing::info!("Creating fork of {target_repo} under organization '{fork_owner}' using endpoint {endpoint}", target_repo = target_repo, endpoint = endpoint);
+            tracing::debug!("Fork creation payload: {payload}", payload = payload);
             
             // Create fork under fork_owner (as org)
             self.octocrab
-                .post(
-                    format!("/repos/{}/{}/forks", parts[0], parts[1]),
-                    Some(&serde_json::json!({ "organization": self.config.fork_owner })),
-                )
+                .post(&endpoint, Some(&payload))
                 .await
                 .map_err(|e| {
-                    tracing::error!("Failed to create fork of {target_repo} under {}: {e}", self.config.fork_owner);
+                    let error_details = format!("{:?}", e);
+                    tracing::error!(
+                        "Failed to create fork: target_repo={}, fork_owner={}, endpoint={}, error={:?}",
+                        target_repo,
+                        fork_owner,
+                        endpoint,
+                        e
+                    );
                     ZbobrError::GitHub(
-                        format!("Failed to create fork of {target_repo} under {:?}: check if fork_owner is an organization you have access to, and that your GitHub token has 'repo' and 'admin:org_hook' scopes. Error: {}", 
-                            self.config.fork_owner, 
-                            e
+                        format!(
+                            "Failed to create fork of {target_repo} under '{fork_owner}': \
+                             check if fork_owner is an organization you have access to, \
+                             and that your GitHub token has 'repo' and 'admin:org_hook' scopes. \
+                             Endpoint: {endpoint}. Error: {e}\n\
+                             Debug: {error_details}",
+                            target_repo = target_repo,
+                            fork_owner = fork_owner,
+                            endpoint = endpoint,
+                            e = e,
+                            error_details = error_details
                         )
                     )
                 })
