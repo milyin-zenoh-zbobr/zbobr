@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
 use zbobr_lib::task::{Model, Role, Tool};
-use zbobr_lib::{SetupFile, Stage, Zbobr, ZbobrConfig};
+use zbobr_lib::{SetupFile, Stage, TomlConfig, Zbobr, ZbobrConfig};
 
 #[derive(Args, Clone)]
 struct GlobalArgs {
@@ -21,6 +21,10 @@ struct GlobalArgs {
     /// Can also be set via ZBOBR_WORKSPACE env var
     #[arg(long, global = true)]
     workspace: Option<PathBuf>,
+
+    /// Path to TOML configuration file (default: zbobr.toml in cwd)
+    #[arg(long, global = true, env = "ZBOBR_CONFIG")]
+    config: Option<PathBuf>,
 
     /// Base directory for prompt files (prompt paths are resolved relative to this)
     /// Can also be set via ZBOBR_PROMPTS_PATH env var
@@ -141,10 +145,10 @@ struct Prompts {
     worker: Vec<PathBuf>,
 }
 
-/// Resolve prompt paths: CLI arg > config env var.
+/// Resolve prompt paths: CLI arg > config values.
 /// Paths are resolved relative to prompts_path if provided, otherwise relative to current directory.
 fn resolve_prompts(cli: &Cli, config: &ZbobrConfig) -> anyhow::Result<Prompts> {
-    // Use CLI args if provided, otherwise use config (which came from env or defaults)
+    // Use CLI args if provided, otherwise use config (which came from TOML/env/defaults)
     let planner = cli
         .global
         .planner_prompts
@@ -157,7 +161,12 @@ fn resolve_prompts(cli: &Cli, config: &ZbobrConfig) -> anyhow::Result<Prompts> {
         .clone()
         .unwrap_or_else(|| config.worker_prompts.clone());
 
-    let base_path = cli.global.prompts_path.clone();
+    // CLI prompts_path > config.prompts_path (which came from TOML/env)
+    let base_path = cli
+        .global
+        .prompts_path
+        .clone()
+        .or_else(|| config.prompts_path.clone());
 
     Ok(Prompts {
         base_path,
@@ -209,8 +218,27 @@ fn build_full_prompt(base_prompt: &str, role: Role) -> String {
     format!("{}\n\n---\n\n{}", base_prompt, api_docs)
 }
 
+/// Load TOML config based on CLI args.
+/// If --config is specified, load that file (error if missing).
+/// Otherwise, try zbobr.toml in cwd (silently skip if missing).
+fn load_toml_config(cli: &Cli) -> anyhow::Result<Option<TomlConfig>> {
+    if let Some(ref path) = cli.global.config {
+        // Explicit --config: must exist
+        let config = TomlConfig::load(path)?
+            .ok_or_else(|| anyhow::anyhow!("Config file not found: {}", path.display()))?;
+        Ok(Some(config))
+    } else {
+        // Try zbobr.toml in cwd
+        let default_path = std::env::current_dir()?.join("zbobr.toml");
+        Ok(TomlConfig::load(&default_path)?)
+    }
+}
+
 fn load_config(cli: &Cli) -> anyhow::Result<ZbobrConfig> {
-    let mut config = ZbobrConfig::from_env()?;
+    let toml_config = load_toml_config(cli)?;
+    let mut config = ZbobrConfig::build(toml_config.as_ref())?;
+
+    // CLI arg overrides (highest priority)
     if let Some(ref dr) = cli.global.domain_repo {
         config.domain_repo = dr.clone();
     }
@@ -221,11 +249,8 @@ fn load_config(cli: &Cli) -> anyhow::Result<ZbobrConfig> {
         config.workspace = ws.clone();
     }
     if let Some(ref b) = cli.global.backend {
-        match b.as_str() {
-            "stub" => config.backend = zbobr_lib::config::BackendType::Stub,
-            "github" => config.backend = zbobr_lib::config::BackendType::GitHub,
-            _ => return Err(anyhow::anyhow!("Unknown backend: {}", b)),
-        }
+        config.backend = b.parse::<zbobr_lib::config::BackendType>()
+            .map_err(|e| anyhow::anyhow!(e))?;
     }
     if let Some(ref t) = cli.global.cli_tool {
         config.cli_tool = t.parse::<Tool>().map_err(|e| anyhow::anyhow!(e))?;
@@ -264,11 +289,9 @@ fn build_setup_files(zbobr: &Zbobr) -> anyhow::Result<Vec<SetupFile>> {
     let config = zbobr.config();
 
     let readme = load_resource("README.md")?;
-    let run_sh = load_resource("run.sh")?;
-    let run_cmd = load_resource("run.cmd")?;
 
-    let env_template = load_resource("zbobr.env")?;
-    let env_content = env_template
+    let toml_template = load_resource("zbobr.toml")?;
+    let toml_content = toml_template
         .replace("{{DOMAIN_REPO}}", &config.domain_repo)
         .replace("{{FORK_OWNER}}", &config.fork_owner);
 
@@ -278,16 +301,8 @@ fn build_setup_files(zbobr: &Zbobr) -> anyhow::Result<Vec<SetupFile>> {
             content: readme,
         },
         SetupFile {
-            path: ".zbobr.env".into(),
-            content: env_content,
-        },
-        SetupFile {
-            path: "run.sh".into(),
-            content: run_sh,
-        },
-        SetupFile {
-            path: "run.cmd".into(),
-            content: run_cmd,
+            path: "zbobr.toml".into(),
+            content: toml_content,
         },
     ];
 

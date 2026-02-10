@@ -103,6 +103,12 @@ pub enum Tool {
     Stub,
 }
 
+impl Default for Tool {
+    fn default() -> Self {
+        Tool::Copilot
+    }
+}
+
 impl Tool {
     /// Returns all available tools.
     pub fn all() -> &'static [Tool] {
@@ -174,6 +180,12 @@ pub enum Model {
     Gpt5_1CodexMax,
     #[serde(rename = "gpt-5.1-codex")]
     Gpt5_1Codex,
+}
+
+impl Default for Model {
+    fn default() -> Self {
+        Model::Gpt5Mini
+    }
 }
 
 impl Model {

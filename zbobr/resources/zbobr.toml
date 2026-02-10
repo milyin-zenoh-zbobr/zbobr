@@ -1,0 +1,34 @@
+# zbobr configuration
+# Priority: CLI args > env vars > this file > defaults
+
+# Domain project repository ("owner/repo")
+domain_repo = "{{DOMAIN_REPO}}"
+
+# GitHub user or org where target repos are forked
+fork_owner = "{{FORK_OWNER}}"
+
+# Default AI model (e.g. "gpt-5-mini", "claude-sonnet-4.5")
+# default_model = "gpt-5-mini"
+
+# Workspace directory for task work dirs
+# workspace = "./workspace"
+
+# Backend: "github" or "stub"
+# backend = "github"
+
+# CLI tool: "copilot", "claude", or "stub"
+# cli_tool = "copilot"
+
+# Prefix for work branches
+# work_branch_prefix = "zbobr_fix"
+
+# GitHub token (prefer GH_TOKEN or GITHUB_TOKEN env var instead)
+# github_token = ""
+
+# [prompts]
+# Base directory for prompt files
+# path = "./prompts"
+# Planner prompt files (relative to path above, or absolute)
+# planner = ["planner.md", "common.md"]
+# Worker prompt files
+# worker = ["worker.md", "common.md"]

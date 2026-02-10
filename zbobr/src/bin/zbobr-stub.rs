@@ -194,7 +194,7 @@ async fn main() -> anyhow::Result<()> {
 
         tracing::info!("Stub: creating PR...");
         mcp.call_tool(
-            worker_tools::SUBMIT_WORK,
+            worker_tools::PUSH_WORK_BRANCH,
             RepoParam {
                 repo: "stub/repo".to_string(),
             },

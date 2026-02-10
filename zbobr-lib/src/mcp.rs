@@ -687,6 +687,7 @@ mod tests {
             planner_prompts: vec![],
             worker_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
+            prompts_path: None,
         };
         let zbobr = Zbobr::new(config).unwrap();
         let admin = AdminMcp::new(zbobr);
@@ -717,6 +718,7 @@ mod tests {
             planner_prompts: vec![],
             worker_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
+            prompts_path: None,
         };
         let zbobr = Zbobr::new(config).unwrap();
         let planner = PlannerMcp::new(zbobr, 123);
@@ -747,6 +749,7 @@ mod tests {
             planner_prompts: vec![],
             worker_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
+            prompts_path: None,
         };
         let zbobr = Zbobr::new(config).unwrap();
         let worker = WorkerMcp::new(zbobr, 123);
