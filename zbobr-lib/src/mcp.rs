@@ -59,6 +59,20 @@ pub struct PrParam {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct ShortNameParam {
+    #[schemars(description = "Short name for the branch (e.g. 'implementation', 'fix-typo')")]
+    pub short_name: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct PushBranchAndCreatePrParam {
+    #[schemars(description = "Local filesystem path to repository")]
+    pub path: String,
+    #[schemars(description = "Destination branch for the PR base (e.g. 'main')")]
+    pub destination_branch: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct TaskIdParam {
     #[schemars(description = "The task ID")]
     pub id: u64,
@@ -120,7 +134,6 @@ mcp_tools! {
     POST_MESSAGE = "post_message",
     PULL_BRANCH = "pull_branch",
     PULL_BRANCH_BY_PR = "pull_branch_by_pr",
-    PULL_WORK_BRANCH = "pull_work_branch",
 }
 
 mcp_tools! {
@@ -128,11 +141,11 @@ mcp_tools! {
     GET_DESCRIPTION = "get_description",
     GET_DISCUSSION = "get_discussion",
     POST_MESSAGE = "post_message",
-    GET_WORK_BRANCH_NAME = "get_work_branch_name",
+    CREATE_BRANCH_NAME = "create_branch_name",
     PULL_BRANCH = "pull_branch",
     PULL_BRANCH_BY_PR = "pull_branch_by_pr",
-    PULL_WORK_BRANCH = "pull_work_branch",
-    PUSH_WORK_BRANCH = "push_work_branch",
+    PUSH_BRANCH = "push_branch",
+    PUSH_BRANCH_AND_CREATE_PR = "push_branch_and_create_pr",
     MARK_DONE = "mark_done",
 }
 
@@ -173,7 +186,6 @@ Work autonomously. Do not ask the user for anything.
 3. Pull the relevant repository using one of:
    - `{pull_branch}` — pull any branch of any repository you need to investigate
    - `{pull_branch_by_pr}` — shortcut: if the task mentions a PR, pull it directly without reading the PR to find its branch
-   - `{pull_work_branch}` — pull the task's work branch (to continue or review prior work)
 4. Explore the codebase, understand the problem
 5. Design a solution — focus on what and why, not detailed how
 6. **REQUIRED**: Call `{post_message}` with your implementation plan in markdown
@@ -188,7 +200,6 @@ Post as markdown with sections: Overview, Changes Required (by repo/file), Testi
         post_message = planner_tools::POST_MESSAGE,
         pull_branch = planner_tools::PULL_BRANCH,
         pull_branch_by_pr = planner_tools::PULL_BRANCH_BY_PR,
-        pull_work_branch = planner_tools::PULL_WORK_BRANCH,
     )
 }
 
@@ -202,7 +213,7 @@ Implement an approved plan by writing code and submitting it.
 ## Access Model
 
 You can access the internet and run local commands. Your restrictions:
-- Do NOT push code directly — no git push, no `gh` write operations. Use `{push_work_branch}` instead
+- Do NOT push code directly — no git push, no `gh` write operations. Use `{push_branch}` or `{push_branch_and_create_pr}` instead
 - Do NOT run git clone/pull/fetch — use MCP pull tools instead
 - Use MCP tools to submit work and communicate results
 - Use `gh` CLI for read-only GitHub access when MCP tools are insufficient
@@ -216,23 +227,25 @@ Work autonomously. Do not ask the user for anything.
 3. Set up the repository using one of:
    - `{pull_branch}` — pull any branch of any repository you need (forks automatically for write access)
    - `{pull_branch_by_pr}` — shortcut: if the task mentions a PR, pull it directly without reading the PR to find its branch
-   - `{pull_work_branch}` — pull or create the task's work branch (for starting or continuing work)
 4. `cd` into the returned path and implement the plan
-5. Commit changes locally with clear messages
-6. Call `{push_work_branch}` with the local path — this pushes to the fork and creates a PR automatically
-7. If task is complete:
+5. Create a branch using `git checkout -b <name>` where `<name>` comes from `{create_branch_name}` (e.g. with short_name="implementation")
+6. Commit changes locally with clear messages
+7. Call `{push_branch_and_create_pr}` with the local path and destination branch — this pushes to the fork and creates a PR within the fork
+   - Or call `{push_branch}` if you only need to push without creating a PR
+8. If task is complete:
    - Call `{post_message}` to summarize what was done
    - Call `{mark_done}` to complete the task
-8. If there are issues requiring user intervention:
+9. If there are issues requiring user intervention:
    - Call `{post_message}` to describe the problem or question
    - Do NOT call `{mark_done}` — leave the task open for the user"#,
         get_description = worker_tools::GET_DESCRIPTION,
         get_discussion = worker_tools::GET_DISCUSSION,
         post_message = worker_tools::POST_MESSAGE,
+        create_branch_name = worker_tools::CREATE_BRANCH_NAME,
         pull_branch = worker_tools::PULL_BRANCH,
         pull_branch_by_pr = worker_tools::PULL_BRANCH_BY_PR,
-        pull_work_branch = worker_tools::PULL_WORK_BRANCH,
-        push_work_branch = worker_tools::PUSH_WORK_BRANCH,
+        push_branch = worker_tools::PUSH_BRANCH,
+        push_branch_and_create_pr = worker_tools::PUSH_BRANCH_AND_CREATE_PR,
         mark_done = worker_tools::MARK_DONE,
     )
 }
@@ -365,17 +378,6 @@ impl PlannerMcp {
             Err(e) => format!("Error: {e}"),
         }
     }
-
-    #[tool(
-        description = "Pull the work branch for a repository. If the work branch (named by get_work_branch_name) exists in the fork, it will be pulled; otherwise, the main repository branch will be pulled and the work branch will be created locally. Returns the local path."
-    )]
-    async fn pull_work_branch(&self, Parameters(params): Parameters<RepoParam>) -> String {
-        tracing::info!("[planner#{}] pull_work_branch repo={}", self.session.task_id(), params.repo);
-        match self.session.request_work_branch(&params.repo).await {
-            Ok(path) => path,
-            Err(e) => format!("Error: {e}"),
-        }
-    }
 }
 
 #[tool_handler]
@@ -450,14 +452,14 @@ impl WorkerMcp {
         }
     }
 
-    #[tool(description = "Get the work branch name that should be used for this task")]
-    async fn get_work_branch_name(&self) -> String {
-        tracing::info!("[worker#{}] get_work_branch_name", self.session.task_id());
-        self.session.get_work_branch_name()
+    #[tool(description = "Generate a branch name with the proper prefix for this task. Use the returned name with 'git checkout -b <name>' to create the branch locally.")]
+    async fn create_branch_name(&self, Parameters(params): Parameters<ShortNameParam>) -> String {
+        tracing::info!("[worker#{}] create_branch_name short_name={}", self.session.task_id(), params.short_name);
+        self.session.create_branch_name(&params.short_name)
     }
 
     #[tool(
-        description = "Pull a repository (forking if needed) and checkout a specific branch for implementation. Returns the local path with feature branch ready."
+        description = "Pull a repository (forking if needed) and checkout a specific branch for implementation. Returns the local path."
     )]
     async fn pull_branch(&self, Parameters(params): Parameters<BranchParam>) -> String {
         tracing::info!("[worker#{}] pull_branch repo={} branch={}", self.session.task_id(), params.repo, params.branch);
@@ -479,22 +481,22 @@ impl WorkerMcp {
     }
 
     #[tool(
-        description = "Pull the work branch for a repository. If the work branch (named by get_work_branch_name) exists in the fork, it will be pulled; otherwise, the main repository branch will be pulled and the work branch will be created locally. Returns the local path."
+        description = "Push the current branch to the fork remote. The branch name must have been created using create_branch_name. Takes the local path to the repository."
     )]
-    async fn pull_work_branch(&self, Parameters(params): Parameters<RepoParam>) -> String {
-        tracing::info!("[worker#{}] pull_work_branch repo={}", self.session.task_id(), params.repo);
-        match self.session.request_work_branch(&params.repo).await {
-            Ok(path) => path,
+    async fn push_branch(&self, Parameters(params): Parameters<PathParam>) -> String {
+        tracing::info!("[worker#{}] push_branch path={}", self.session.task_id(), params.path);
+        match self.session.push_branch(&params.path).await {
+            Ok(()) => "Branch pushed to fork".to_string(),
             Err(e) => format!("Error: {e}"),
         }
     }
 
     #[tool(
-        description = "Push the current branch in the repository to the fork with the work branch name (from get_work_branch_name) and create a PR. Takes the local path to the repository (from pull_branch, pull_branch_by_pr, or pull_work_branch). Returns PR URL."
+        description = "Push the current branch to the fork and create a PR within the fork. The branch name must have been created using create_branch_name. Takes the local path and destination branch for the PR base. Returns PR URL."
     )]
-    async fn push_work_branch(&self, Parameters(params): Parameters<PathParam>) -> String {
-        tracing::info!("[worker#{}] push_work_branch path={}", self.session.task_id(), params.path);
-        match self.session.submit_work(&params.path).await {
+    async fn push_branch_and_create_pr(&self, Parameters(params): Parameters<PushBranchAndCreatePrParam>) -> String {
+        tracing::info!("[worker#{}] push_branch_and_create_pr path={} destination_branch={}", self.session.task_id(), params.path, params.destination_branch);
+        match self.session.push_branch_and_create_pr(&params.path, &params.destination_branch).await {
             Ok(pr_url) => format!("PR created: {pr_url}"),
             Err(e) => format!("Error: {e}"),
         }

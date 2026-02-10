@@ -234,33 +234,6 @@ impl Zbobr {
             }
         }
 
-        // Create/checkout feature branch
-        let branch_name = format!("fix{task_id}/implementation");
-        let branch_exists = tokio::process::Command::new("git")
-            .args(["rev-parse", "--verify", &branch_name])
-            .current_dir(&work_dir)
-            .output()
-            .await?;
-
-        if branch_exists.status.success() {
-            let _ = tokio::process::Command::new("git")
-                .args(["checkout", &branch_name])
-                .current_dir(&work_dir)
-                .status()
-                .await?;
-        } else {
-            let status = tokio::process::Command::new("git")
-                .args(["checkout", "-b", &branch_name])
-                .current_dir(&work_dir)
-                .status()
-                .await?;
-            if !status.success() {
-                return Err(ZbobrError::Other(format!(
-                    "Failed to create branch {branch_name}"
-                )));
-            }
-        }
-
         Ok(work_dir)
     }
 

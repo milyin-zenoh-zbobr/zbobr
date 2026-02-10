@@ -320,9 +320,24 @@ impl TaskSession {
         self.task_id
     }
 
-    /// Get the work branch name for this task.
-    pub fn get_work_branch_name(&self) -> String {
-        format!("{}/{}", self.zbobr.config().work_branch_prefix, self.task_id)
+    /// Create a branch name with the proper prefix for this task.
+    pub fn create_branch_name(&self, short_name: &str) -> String {
+        format!(
+            "{}/{}/{}",
+            self.zbobr.config().work_branch_prefix,
+            self.task_id,
+            short_name
+        )
+    }
+
+    /// Check whether a branch name starts with this task's prefix.
+    pub fn validate_branch_prefix(&self, branch: &str) -> bool {
+        let prefix = format!(
+            "{}/{}/",
+            self.zbobr.config().work_branch_prefix,
+            self.task_id
+        );
+        branch.starts_with(&prefix)
     }
 
     /// Get the current task description.
@@ -395,61 +410,9 @@ impl TaskSession {
         }
     }
 
-    /// Request and checkout the work branch for a repository.
-    /// Always forks the repo if not done yet and fetches from fork.
-    /// Creates the work branch if it doesn't exist.
-    pub async fn request_work_branch(&self, repo: &str) -> Result<String, ZbobrError> {
-        let work_branch = self.get_work_branch_name();
-
-        // Check if we have a tracked repo - if not, clone and fork it first
-        let work_dir_opt = {
-            let tracked = self.tracked_repos.lock().unwrap();
-            tracked.get(repo).map(|r| r.local_path.clone())
-        }; // Lock released here
-
-        let work_dir = if let Some(dir) = work_dir_opt {
-            dir
-        } else {
-            // Repo not cloned yet - clone with fork and default branch first
-            let path_str = self.request_branch(repo, "main").await?;
-            std::path::PathBuf::from(path_str)
-        };
-
-        // Fetch from fork
-        let _ = tokio::process::Command::new("git")
-            .args(["fetch", "fork", &format!("{work_branch}:{work_branch}")])
-            .current_dir(&work_dir)
-            .status()
-            .await;
-
-        // Checkout or create the work branch
-        let checkout_status = tokio::process::Command::new("git")
-            .args(["checkout", &work_branch])
-            .current_dir(&work_dir)
-            .status()
-            .await?;
-
-        if !checkout_status.success() {
-            // Branch doesn't exist locally, create it
-            let create_status = tokio::process::Command::new("git")
-                .args(["checkout", "-b", &work_branch])
-                .current_dir(&work_dir)
-                .status()
-                .await?;
-
-            if !create_status.success() {
-                return Err(ZbobrError::Other(format!(
-                    "Failed to create work branch {work_branch}"
-                )));
-            }
-        }
-
-        Ok(work_dir.to_string_lossy().to_string())
-    }
-
-    /// Push changes and create PR from the local repository path.
-    /// The path should point to a repository obtained from request_branch or request_branch_by_pr.
-    pub async fn submit_work(&self, path: &str) -> Result<String, ZbobrError> {
+    /// Push the current branch to the fork remote.
+    /// Validates that the current branch has the correct task prefix.
+    pub async fn push_branch(&self, path: &str) -> Result<(), ZbobrError> {
         let work_dir = std::path::PathBuf::from(path);
 
         if !work_dir.exists() {
@@ -458,22 +421,6 @@ impl TaskSession {
                 work_dir.display()
             )));
         }
-
-        // Find which tracked repo this path corresponds to
-        let (target_repo, base_branch) = {
-            let tracked = self.tracked_repos.lock().unwrap();
-            let tracked_repo = tracked
-                .values()
-                .find(|r| r.local_path == work_dir)
-                .ok_or_else(|| {
-                    ZbobrError::Other(format!(
-                        "Path {} was not obtained from request_branch or request_branch_by_pr",
-                        path
-                    ))
-                })?;
-
-            (tracked_repo.repo.clone(), tracked_repo.branch.clone())
-        }; // Lock released here
 
         // Get current branch name
         let output = tokio::process::Command::new("git")
@@ -487,31 +434,18 @@ impl TaskSession {
         }
 
         let current_branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let work_branch = self.get_work_branch_name();
 
-        // If not on the work branch, create it from current
-        if current_branch != work_branch {
-            tracing::info!(
-                "Current branch '{}' doesn't match expected '{}', creating work branch",
+        if !self.validate_branch_prefix(&current_branch) {
+            return Err(ZbobrError::Other(format!(
+                "Branch '{}' does not match expected prefix '{}/{}/'. Use create_branch_name to generate a valid branch name.",
                 current_branch,
-                work_branch
-            );
-
-            let status = tokio::process::Command::new("git")
-                .args(["checkout", "-b", &work_branch])
-                .current_dir(&work_dir)
-                .status()
-                .await?;
-
-            if !status.success() {
-                return Err(ZbobrError::Other(format!(
-                    "Failed to create work branch {work_branch}"
-                )));
-            }
+                self.zbobr.config().work_branch_prefix,
+                self.task_id
+            )));
         }
 
         // Push to fork
-        tracing::info!("Pushing {} to fork", work_branch);
+        tracing::info!("Pushing branch '{}' to fork", current_branch);
         let status = tokio::process::Command::new("git")
             .args(["push", "-u", "fork", "HEAD", "--force"])
             .current_dir(&work_dir)
@@ -522,25 +456,72 @@ impl TaskSession {
             return Err(ZbobrError::Other("Failed to push to fork".into()));
         }
 
-        // Create PR using gh CLI
+        Ok(())
+    }
+
+    /// Push the current branch and create a PR within the fork.
+    /// The PR is created in the fork repo with `destination_branch` as base.
+    pub async fn push_branch_and_create_pr(
+        &self,
+        path: &str,
+        destination_branch: &str,
+    ) -> Result<String, ZbobrError> {
+        // First push the branch
+        self.push_branch(path).await?;
+
+        let work_dir = std::path::PathBuf::from(path);
+
+        // Get current branch name (already validated by push_branch)
+        let output = tokio::process::Command::new("git")
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+            .current_dir(&work_dir)
+            .output()
+            .await?;
+        let current_branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        let fork_owner = &self.zbobr.config().fork_owner;
+
+        // Find the repo name from tracked repos
+        let repo_name = {
+            let tracked = self.tracked_repos.lock().unwrap();
+            tracked
+                .values()
+                .find(|r| r.local_path == work_dir)
+                .map(|r| {
+                    r.repo
+                        .split('/')
+                        .nth(1)
+                        .unwrap_or(&r.repo)
+                        .to_string()
+                })
+                .ok_or_else(|| {
+                    ZbobrError::Other(format!(
+                        "Path {} was not obtained from request_branch or request_branch_by_pr",
+                        path
+                    ))
+                })?
+        };
+
+        let fork_repo = format!("{fork_owner}/{repo_name}");
+
+        // Create PR within the fork
         let task = self.zbobr.get_task(self.task_id).await?;
         let pr_title = format!("Fix #{}: {}", self.task_id, task.title);
-        let pr_body = format!("Resolves #{}\n\nImplementation for: {}", self.task_id, task.title);
-
-        // PR base is fork_owner/repo:base_branch
-        let fork_owner = &self.zbobr.config().fork_owner;
-        let base = format!("{}:{}", fork_owner, base_branch);
+        let pr_body = format!(
+            "Resolves #{}\n\nImplementation for: {}",
+            self.task_id, task.title
+        );
 
         let output = tokio::process::Command::new("gh")
             .args([
                 "pr",
                 "create",
                 "--repo",
-                &target_repo,
+                &fork_repo,
                 "--head",
-                &format!("{}:{}", fork_owner, work_branch),
+                &current_branch,
                 "--base",
-                &base,
+                destination_branch,
                 "--title",
                 &pr_title,
                 "--body",

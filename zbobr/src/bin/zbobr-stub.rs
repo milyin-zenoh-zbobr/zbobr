@@ -4,7 +4,7 @@ use clap::Parser;
 use serde::Serialize;
 use serde_json::{Value, json};
 use zbobr_lib::{
-    mcp::{MessageParam, RepoParam, planner_tools, worker_tools},
+    mcp::{MessageParam, PushBranchAndCreatePrParam, planner_tools, worker_tools},
     task::Role,
 };
 
@@ -197,9 +197,10 @@ async fn main() -> anyhow::Result<()> {
 
         tracing::info!("Stub: creating PR...");
         mcp.call_tool(
-            worker_tools::PUSH_WORK_BRANCH,
-            RepoParam {
-                repo: "stub/repo".to_string(),
+            worker_tools::PUSH_BRANCH_AND_CREATE_PR,
+            PushBranchAndCreatePrParam {
+                path: "/tmp/stub/repo".to_string(),
+                destination_branch: "main".to_string(),
             },
         )
         .await?;
