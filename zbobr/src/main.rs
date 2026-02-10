@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use anyhow::Context;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use zbobr_lib::{
     Stage, TomlConfig, Zbobr, ZbobrConfig,
@@ -454,7 +455,7 @@ async fn run_role_session(
     task_id: u64,
     role: Role,
     model: Option<Model>,
-    port: u16,
+    base_port: u16,
     prompt: &str,
 ) -> anyhow::Result<()> {
     let model = model.unwrap_or_else(|| zbobr.config().default_model.clone());
@@ -471,29 +472,38 @@ async fn run_role_session(
     let task_dir = zbobr.config().workspace.join(format!("task#{task_id}"));
     tokio::fs::create_dir_all(&task_dir).await?;
 
+    // Create a channel to receive the actual port from the MCP server
+    let (port_tx, port_rx) = std::sync::mpsc::channel();
+
     // Start MCP server in background, scoped to this role and task
     let server_zbobr = zbobr.clone();
     let server_role = role;
     let server_handle = tokio::spawn(async move {
-        if let Err(e) =
-            zbobr_lib::mcp::run_role_mcp_server(server_zbobr, port, server_role, task_id).await
+        match zbobr_lib::mcp::run_role_mcp_server(server_zbobr, base_port, server_role, task_id).await
         {
-            tracing::error!("MCP server error: {e}");
+            Ok(assigned_port) => {
+                let _ = port_tx.send(assigned_port);
+                tracing::info!("MCP server assigned port {assigned_port}");
+            }
+            Err(e) => {
+                tracing::error!("MCP server error: {e}");
+            }
         }
     });
 
-    // Give server time to start
-    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
-    tracing::info!("MCP server should be ready, starting CLI tool...");
+    // Receive the assigned port from the server task
+    let assigned_port = port_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .context("MCP server failed to report assigned port in time")?;
 
     // Execute the tool using the ToolExecutor trait with Ctrl+C handling
     let cli_tool = zbobr.config().cli_tool;
-    let mcp_url = format!("http://127.0.0.1:{port}/{role}/{task_id}");
+    let mcp_url = format!("http://127.0.0.1:{assigned_port}/{role}/{task_id}");
 
     let executor = cli_tool.executor();
     let agent_token = zbobr.config().agent_github_token.as_deref();
     let execution_result = tokio::select! {
-        result = executor.execute(task_id, role, &model, port, prompt, &task_dir, &mcp_url, agent_token) => {
+        result = executor.execute(task_id, role, &model, assigned_port, prompt, &task_dir, &mcp_url, agent_token) => {
             if let Err(e) = result {
                 tracing::error!("Tool execution failed: {e}");
             }

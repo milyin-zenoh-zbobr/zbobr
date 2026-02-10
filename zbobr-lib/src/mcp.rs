@@ -683,31 +683,54 @@ impl ServerHandler for AdminMcp {
     }
 }
 
+/// Find an available port starting from the given base port.
+/// Tries ports incrementally until one is available.
+async fn find_available_port(base_port: u16) -> Result<u16, crate::ZbobrError> {
+    for port in base_port..=base_port + 100 {
+        match tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await {
+            Ok(_) => return Ok(port),
+            Err(_) => continue,
+        }
+    }
+    Err(crate::ZbobrError::Other(
+        format!("Could not find available port in range {base_port}..{}", base_port + 100),
+    ))
+}
+
 async fn serve_mcp(
-    port: u16,
+    base_port: u16,
     path: &str,
     router: axum::Router,
-) -> Result<(), crate::ZbobrError> {
+) -> Result<u16, crate::ZbobrError> {
+    // Find an available port starting from base_port
+    let port = find_available_port(base_port).await?;
+    
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
     tracing::info!("MCP server listening on http://127.0.0.1:{port}{path}");
 
-    axum::serve(listener, router)
-        .with_graceful_shutdown(async {
-            tokio::signal::ctrl_c().await.ok();
-        })
-        .await
-        .map_err(|e| crate::ZbobrError::Other(e.to_string()))?;
+    // Spawn the actual server in a background task
+    tokio::spawn(async move {
+        if let Err(e) = axum::serve(listener, router)
+            .with_graceful_shutdown(async {
+                tokio::signal::ctrl_c().await.ok();
+            })
+            .await
+        {
+            tracing::error!("Axum server error: {e}");
+        }
+    });
 
-    Ok(())
+    Ok(port)
 }
 
 /// Run the MCP HTTP server scoped to a role (planner or worker) and task.
+/// Returns the actual port that was assigned (spawns server in background).
 pub async fn run_role_mcp_server(
     zbobr: Zbobr,
-    port: u16,
+    base_port: u16,
     role: Role,
     task_id: u64,
-) -> Result<(), crate::ZbobrError> {
+) -> Result<u16, crate::ZbobrError> {
     let path = format!("/{}/{}", role, task_id);
 
     let router = match role {
@@ -737,14 +760,15 @@ pub async fn run_role_mcp_server(
         }
     };
 
-    serve_mcp(port, &path, router).await
+    serve_mcp(base_port, &path, router).await
 }
 
 /// Run the admin MCP HTTP server.
+/// Returns the actual port that was assigned.
 pub async fn run_admin_mcp_server(
     zbobr: Zbobr,
-    port: u16,
-) -> Result<(), crate::ZbobrError> {
+    base_port: u16,
+) -> Result<u16, crate::ZbobrError> {
     let path = "/admin";
 
     let svc = StreamableHttpService::new(
@@ -754,7 +778,7 @@ pub async fn run_admin_mcp_server(
     );
     let router = axum::Router::new().nest_service(path, svc);
 
-    serve_mcp(port, path, router).await
+    serve_mcp(base_port, path, router).await
 }
 
 #[cfg(test)]
