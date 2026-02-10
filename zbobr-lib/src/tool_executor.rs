@@ -4,6 +4,25 @@ use std::path::Path;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
+/// Format a command with arguments as a copyable command line string.
+fn format_command_for_log(cmd_name: &str, args: &[&str], task_dir: &Path) -> String {
+    format!(
+        "cd {:?} && {} {}",
+        task_dir,
+        cmd_name,
+        args.iter()
+            .map(|arg| {
+                if arg.contains(|c: char| c.is_whitespace() || c == '"' || c == '\'') {
+                    format!("\"{}\"" , arg.replace('"', "\\\""))
+                } else {
+                    arg.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    )
+}
+
 /// Trait for executing AI tools with specific configurations.
 #[async_trait]
 pub trait ToolExecutor: Send + Sync {
@@ -84,7 +103,7 @@ impl ToolExecutor for CopilotExecutor {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        tracing::debug!("Command: {:?}", cmd);
+        tracing::debug!("Command: {}", format_command_for_log("copilot", &args, task_dir));
 
         if let Some(token) = agent_github_token {
             tracing::info!("Overriding GH_TOKEN/GITHUB_TOKEN for copilot agent process");
@@ -185,7 +204,7 @@ impl ToolExecutor for ClaudeExecutor {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        tracing::debug!("Command: {:?}", cmd);
+        tracing::debug!("Command: {}", format_command_for_log("claude", &args, task_dir));
 
         if let Some(token) = agent_github_token {
             tracing::info!("Overriding GH_TOKEN/GITHUB_TOKEN for claude agent process");
