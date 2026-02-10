@@ -285,6 +285,8 @@ export GH_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 
 ## Documentation
 
+- [Domain Project Guide](DOMAIN_PROJECT.md) — How domain projects work (stages, labels, prompts, configuration)
+- [Sample Configuration](zbobr.toml.sample) — Example `zbobr.toml` with all options
 - [Manager Agent Instructions](automation/agents/manager.md) — Manager workflow
 - [Worker Agent Instructions](automation/agents/worker.md) — Worker workflow
 - [Agent Registry](AGENTS.md) — Agent definitions for `/agent` command
