@@ -20,9 +20,7 @@ fn main() {
     // Copy resource files next to the binary
     copy_dir("resources", &target_dir.join("resources"), &[
         "README.md",
-        "zbobr.env",
-        "run.sh",
-        "run.cmd",
+        "zbobr.toml",
     ]);
 
     // Copy all prompts directory to resources for setup

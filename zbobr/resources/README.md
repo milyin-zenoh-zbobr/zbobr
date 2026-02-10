@@ -52,41 +52,45 @@ If no `tool:` or `model:` labels are set, the defaults from configuration are us
 
 ## Configuration
 
-### Environment Variables
+### zbobr.toml
 
-The `.zbobr.env` file contains configuration for this domain project:
+The `zbobr.toml` file is the primary configuration for this domain project:
 
-```bash
-# Required: GitHub repository whose issues the orchestrator processes (owner/repo)
-ZBOBR_DOMAIN_REPO=your-org/domain-project
+```toml
+# Domain project repository ("owner/repo")
+domain_repo = "your-org/domain-project"
 
-# Required: GitHub user or organization where target repos are forked
-ZBOBR_FORK_OWNER=your-username
+# GitHub user or org where target repos are forked
+fork_owner = "your-username"
 
-# Optional: Default AI model when no copilot:<model> label is set
-ZBOBR_DEFAULT_MODEL=claude-sonnet-4.5
+# Default AI model (e.g. "gpt-5-mini", "claude-sonnet-4.5")
+# default_model = "gpt-5-mini"
 
-# Optional: Directory for agent workspaces (cloned repos, temp files)
-ZBOBR_WORKSPACE=./workspace
+# Workspace directory for task work dirs
+# workspace = "./workspace"
 
-# Optional: Custom prompt files for agents (semicolon-separated paths)
-# Paths are relative to the directory where run.sh is executed
-ZBOBR_PLANNER_PROMPTS=prompts/planner.md;prompts/common.md
-ZBOBR_WORKER_PROMPTS=prompts/worker.md;prompts/common.md
+# CLI tool: "copilot", "claude", or "stub"
+# cli_tool = "copilot"
+
+# Work branch prefix
+# work_branch_prefix = "zbobr_fix"
+
+[prompts]
+# Base directory for prompt files
+# path = "./prompts"
+# Planner prompt files (relative to path above, or absolute)
+# planner = ["planner.md", "common.md"]
+# Worker prompt files
+# worker = ["worker.md", "common.md"]
 ```
 
-**GitHub Token**: Set `GH_TOKEN` in your environment (not in `.zbobr.env`):
+Configuration priority: CLI args > environment variables > `zbobr.toml` > defaults.
+
+**GitHub Token**: Set `GH_TOKEN` in your environment:
 ```bash
 export GH_TOKEN=$(gh auth token)
 ```
 Or create a token at https://github.com/settings/tokens (needs `repo` scope).
-
-### Launcher Scripts
-
-- `run.sh` (Unix/Linux/macOS): Bash script to start the zbobr orchestrator
-- `run.cmd` (Windows): Batch script for Windows environments
-
-These scripts load `.zbobr.env` and launch the zbobr daemon with proper configuration.
 
 ## Prompts
 
@@ -107,19 +111,20 @@ The `prompts/` directory contains markdown files that provide context, guideline
 
 ### Customizing Prompts
 
-You can customize which files are used by editing `.zbobr.env`:
+You can customize which files are used in `zbobr.toml`:
 
-```bash
-# Semicolon-separated list of prompt files
-ZBOBR_PLANNER_PROMPTS=prompts/planner.md;prompts/common.md
-ZBOBR_WORKER_PROMPTS=prompts/worker.md;prompts/common.md
+```toml
+[prompts]
+path = "./prompts"
+planner = ["planner.md", "common.md"]
+worker = ["worker.md", "common.md"]
 ```
 
 ### Editing Prompts
 
 1. **Edit existing files**: Modify the files in `prompts/` to add project-specific context
-2. **Add new files**: Create additional markdown files and reference them in `.zbobr.env`
-3. **Remove files**: Remove file paths from the environment variables
+2. **Add new files**: Create additional markdown files and reference them in `zbobr.toml`
+3. **Remove files**: Remove file paths from the prompts configuration
 
 ### What to Include
 

@@ -46,7 +46,7 @@ copilot --agent worker --model gpt-5-mini -i "Fix issue #123 in milyin/copilot."
 
 ## Tools
 
-**Important:** All scripts in `automation/scripts/` must be run from the domain project directory (which contains `.zbobr.env`).
+**Important:** All scripts in `automation/scripts/` must be run from the domain project directory (which contains `zbobr.toml`).
 
 - **update_issue_with_plan.sh** — Appends a plan file to an issue body and sets milestone to PENDING.
   - Usage: `automation/scripts/update_issue_with_plan.sh <issue_number> <plan_file>`
@@ -62,7 +62,7 @@ copilot --agent worker --model gpt-5-mini -i "Fix issue #123 in milyin/copilot."
 - **clone_target.sh** — Clones and forks a target repository for issue implementation.
   - Usage: `automation/scripts/clone_target.sh <target_repo> <issue_number>`
   - Example: `automation/scripts/clone_target.sh zenoh/zenoh 123`
-  - Uses `$ZBOBR_FORK_OWNER` from `.zbobr.env`
+  - Uses `fork_owner` from `zbobr.toml`
   - Requirements: Run from domain project directory
 
 - **agent.sh** — Agent CLI wrapper for Manager or Worker.
@@ -74,5 +74,5 @@ copilot --agent worker --model gpt-5-mini -i "Fix issue #123 in milyin/copilot."
   - Usage: `automation/scripts/manager_loop.sh [--interval seconds]`
   - Requirements: Run from domain project directory
 
-- **lib.sh** — Common library functions. Loads `.zbobr.env` automatically.
+- **lib.sh** — Common library functions. Loads `zbobr.toml` configuration automatically.
   - Functions: `reconcile_lists`, `get_labels`, `get_milestones`, `extract_model_from_labels`, `get_milestone_number`, `get_issue_milestone`, `set_issue_milestone`, `add_issue_label`, `remove_issue_label`, `has_issue_label`, etc.

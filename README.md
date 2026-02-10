@@ -20,14 +20,14 @@ The orchestrator is domain-agnostic and can manage any set of repositories throu
 2. **Domain Project** (`--domain-repo`)
    - A GitHub repository whose issues the orchestrator manages
    - Example: `YoroolGui/copilot-zenoh`
-   - Contains: target repository list, project-specific guidance, and `.zbobr.env` config
+   - Contains: target repository list, project-specific guidance, and `zbobr.toml` config
    - Created via `zbobr setup --domain-repo owner/repo --fork-owner owner`
 
 3. **Fork Owner** (`--fork-owner`)
    - The GitHub user or organization where target repos are forked for implementation
    - Worker agents fork repos under this account, create feature branches, and open PRs back to the original
    - Can be a personal account (e.g., `milyin`) or an organization (e.g., `YoroolGui`)
-   - Configured in domain project's `.zbobr.env` file or via `--fork-owner` CLI flag
+   - Configured in domain project's `zbobr.toml` file or via `--fork-owner` CLI flag
 
 ## Installation
 
@@ -75,7 +75,7 @@ This will:
 - Create the domain project repo on GitHub (if needed)
 - Set up labels and milestones
 - Initialize template files (README.md, prompt files)
-- Create `.zbobr.env` with configuration
+- Create `zbobr.toml` with configuration
 
 Use `--dry-run` to preview local files without pushing to GitHub.
 
@@ -85,22 +85,19 @@ Use `--dry-run` to preview local files without pushing to GitHub.
 zbobr loop --domain-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
 ```
 
-**Using run.sh (from domain project):**
+**Using zbobr.toml (from domain project):**
 
-After setting up a domain project, you can clone it and use its `run.sh` launcher script, which automatically loads `.zbobr.env`:
+After setting up a domain project, you can clone it and run `zbobr` directly — it automatically reads `zbobr.toml` from the current directory:
 
 ```bash
 # Clone the domain project
 git clone https://github.com/YoroolGui/copilot-zenoh.git
 cd copilot-zenoh
 
-# Make sure run.sh is executable (should already be)
-chmod +x run.sh
-
-# Run zbobr commands through run.sh (automatically uses .zbobr.env config)
-./run.sh loop                # Start the orchestrator loop
-./run.sh plan 42            # Run planner on issue #42
-./run.sh work 42            # Run worker on issue #42
+# Run zbobr commands (automatically uses zbobr.toml config)
+zbobr loop                # Start the orchestrator loop
+zbobr plan 42            # Run planner on issue #42
+zbobr work 42            # Run worker on issue #42
 ```
 
 This is the recommended approach for domain-specific workflows, as it eliminates the need to manually specify `--domain-repo` and `--fork-owner` flags.
@@ -146,7 +143,7 @@ milyin/copilot/ (Orchestrator)
 │   │   └── worker.md        # Worker agent instructions
 │   ├── setup/               # Orchestrator-level scripts (zbobr context)
 │   │   └── setup.sh         # Initialize domain projects
-│   ├── scripts/             # Domain-level scripts (use .zbobr.env)
+│   ├── scripts/             # Domain-level scripts
 │   │   ├── lib.sh           # Common functions
 │   │   ├── clone_target.sh  # Clone and fork target repos
 │   │   ├── manager_loop.sh  # Run Manager on schedule
@@ -161,7 +158,7 @@ milyin/copilot/ (Orchestrator)
 └── README.md               # This file
 
 YoroolGui/copilot-zenoh/ (Domain Project - created by setup.sh)
-├── .zbobr.env             # zbobr configuration (fork owner, default model)
+├── zbobr.toml             # zbobr configuration (fork owner, default model)
 ├── prompts/
 │   ├── common.md          # Shared context and domain knowledge
 │   ├── planner.md         # Planner agent instructions
@@ -208,8 +205,7 @@ zbobr work 42 --domain-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
 - `prompts/common.md` — Shared context and target repositories
 - `prompts/planner.md` — Planner agent instructions
 - `prompts/worker.md` — Worker agent instructions
-- `.zbobr.env` — Configuration (domain repo, fork owner, etc.)
-- `run.sh` / `run.cmd` — Launcher scripts
+- `zbobr.toml` — Configuration (domain repo, fork owner, etc.)
 
 **Note:** Existing files on GitHub are never overwritten. Customize after initial setup.
 
@@ -225,7 +221,7 @@ Edit `prompts/common.md` to list which repos the domain manages:
 
 ### Configuration
 
-All settings can be provided via CLI flags, environment variables, or `.zbobr.env`:
+All settings can be provided via CLI flags, environment variables, or `zbobr.toml`:
 
 | CLI Flag | Env Variable | Required | Description |
 |----------|-------------|----------|-------------|
