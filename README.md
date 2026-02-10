@@ -1,10 +1,10 @@
-# Copilot Orchestrator
+# Zbobr
 
-Universal AI-powered issue management automation using GitHub Copilot agents for coordinating and implementing fixes across multiple projects.
+AI-powered task orchestrator that manages GitHub issues through automated stages using pluggable AI tools (GitHub Copilot, Claude Code, or stubs for testing).
 
 ## Overview
 
-This repository contains the **Copilot Orchestrator** — a reusable automation system that:
+This repository contains **zbobr** — a reusable automation system that:
 
 - **Manager Agent**: Processes issues through stages (PENDING → PLANNING_READY → PLANNING → WORKING_READY → WORKING), creates implementation plans, and spawns Worker agents
 - **Worker Agent**: Implements individual issues by forking repos, creating PRs, and executing the work
@@ -13,7 +13,7 @@ The orchestrator is domain-agnostic and can manage any set of repositories throu
 
 ### Concepts
 
-1. **Copilot Orchestrator** (this repo)
+1. **Zbobr** (this repo)
    - Universal automation system that processes issues through stages
    - Contains planner/worker agents and the `zbobr` CLI binary
 
@@ -73,11 +73,7 @@ zbobr setup --domain-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
 
 This will:
 - Create the domain project repo on GitHub (if needed)
-- Set up labels and milestones
-- Initialize template files (README.md, prompt files)
-- Create `zbobr.toml` with configuration
-
-Use `--dry-run` to preview local files without pushing to GitHub.
+- Set up milestones (stages) and labels (`tool:*`, `model:*`, `done`)
 
 **Launch the orchestrator:**
 ```bash
@@ -108,7 +104,7 @@ This is the recommended approach for domain-specific workflows, as it eliminates
 
 1. **Create issue** in domain project with milestone `PLANNING_READY` and reference a target repo
 2. **Manager researches** the issue (transitioning to `PLANNING` lock state) and creates an implementation plan → sets `PENDING`
-3. **Human reviews** and sets milestone to `WORKING_READY` (optionally add `copilot:<model>` label for AI model choice)
+3. **Human reviews** and sets milestone to `WORKING_READY` (optionally add `tool:<name>` and `model:<name>` labels)
 4. **Manager spawns Worker** (transitioning to `WORKING` lock state)  
 5. **Worker implements** by:
    - Forking target repo to fork owner (e.g., `YoroolGui/*`)
@@ -122,10 +118,10 @@ This is the recommended approach for domain-specific workflows, as it eliminates
 These are orchestrator-owned and universal—same across all domain projects:
 
 **Labels:**
-- `copilot:<model>` — Use GitHub Copilot with specified model (e.g., `copilot:gpt-5-mini`, `copilot:claude-opus-4.6`)
+- `tool:<name>` — Specifies which AI tool to use (e.g., `tool:copilot`, `tool:claude`, `tool:stub`)
+- `model:<name>` — Specifies which AI model to use (e.g., `model:gpt-5-mini`, `model:claude-opus-4.6`)
 - `done` — Issue implementation is complete
 
-**Milestones:**
 **Milestones:**
 - `PENDING` → Issue is under user's control, bot ignores it
 - `PLANNING_READY` → Issue must be taken by planner agent, any matching bot can take it
@@ -136,34 +132,23 @@ These are orchestrator-owned and universal—same across all domain projects:
 ## Architecture
 
 ```
-milyin/copilot/ (Orchestrator)
-├── automation/
-│   ├── agents/
-│   │   ├── manager.md       # Manager agent instructions
-│   │   └── worker.md        # Worker agent instructions
-│   ├── setup/               # Orchestrator-level scripts (zbobr context)
-│   │   └── setup.sh         # Initialize domain projects
-│   ├── scripts/             # Domain-level scripts
-│   │   ├── lib.sh           # Common functions
-│   │   ├── clone_target.sh  # Clone and fork target repos
-│   │   ├── manager_loop.sh  # Run Manager on schedule
-│   │   ├── agent.sh         # Agent launcher
-│   │   ├── worker.sh        # Worker spawner
-│   │   └── update_issue_with_plan.sh  # Plan updater
-├── templates/
-│   ├── domain-instructions.md
-│   └── domain-repositories.md
+zbobr/ (repo root)
+├── zbobr/src/              # CLI binary (main.rs)
+├── zbobr-lib/src/          # Library (backend, config, MCP, task model, etc.)
+├── .github/agents/         # Agent instruction files (manager.md, worker.md)
+├── .github/scripts/        # Legacy shell scripts
+├── zbobr.toml.sample       # Sample configuration
+├── DOMAIN_PROJECT.md       # Domain project guide
 ├── AGENTS.md               # Agent registry
-├── REPOSITORIES.md         # Example/documentation (not used by orchestrator)
 └── README.md               # This file
 
-YoroolGui/copilot-zenoh/ (Domain Project - created by setup.sh)
-├── zbobr.toml             # zbobr configuration (fork owner, default model)
+YoroolGui/copilot-zenoh/ (Domain Project - created by zbobr setup)
+├── zbobr.toml              # zbobr configuration (fork owner, default model)
 ├── prompts/
-│   ├── common.md          # Shared context and domain knowledge
-│   ├── planner.md         # Planner agent instructions
-│   └── worker.md          # Worker agent instructions
-└── README.md              # Setup instructions
+│   ├── common.md           # Shared context and domain knowledge
+│   ├── planner.md          # Additional planner context
+│   └── worker.md           # Additional worker context
+└── README.md               # Setup instructions
 ```
 
 ## Usage Examples
@@ -174,8 +159,8 @@ YoroolGui/copilot-zenoh/ (Domain Project - created by setup.sh)
 # Create domain project for Apache Kafka ecosystem
 zbobr setup --domain-repo myorg/copilot-kafka --fork-owner myorg
 
-# Preview without pushing to GitHub
-zbobr setup --domain-repo myorg/copilot-kafka --fork-owner myorg --dry-run
+# Force-update existing labels
+zbobr setup --domain-repo myorg/copilot-kafka --fork-owner myorg --force
 ```
 
 ### Run the manager loop
@@ -198,52 +183,34 @@ zbobr work 42 --domain-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
 
 ## Configuration
 
-### Domain Project Setup
-
-`zbobr setup` creates the following files in the domain project:
-- `README.md` — Overview of the domain project workflow
-- `prompts/common.md` — Shared context and target repositories
-- `prompts/planner.md` — Planner agent instructions
-- `prompts/worker.md` — Worker agent instructions
-- `zbobr.toml` — Configuration (domain repo, fork owner, etc.)
-
-**Note:** Existing files on GitHub are never overwritten. Customize after initial setup.
-
-Edit `prompts/common.md` to list which repos the domain manages:
-
-```markdown
-# Target Repositories
-
-- https://github.com/zenoh/zenoh
-- https://github.com/zenoh/rust-api
-- https://github.com/zenoh/python-api
-```
-
-### Configuration
-
 All settings can be provided via CLI flags, environment variables, or `zbobr.toml`:
 
-| CLI Flag | Env Variable | Required | Description |
-|----------|-------------|----------|-------------|
-| `--domain-repo` | `ZBOBR_DOMAIN_REPO` | Yes | GitHub repo whose issues the orchestrator processes (`owner/repo`) |
-| `--fork-owner` | `ZBOBR_FORK_OWNER` | Yes | GitHub user or org where target repos are forked for implementation |
-| | `ZBOBR_DEFAULT_MODEL` | No | Default AI model when no `copilot:<model>` label is set |
-| | `ZBOBR_WORKSPACE` | No | Directory for agent workspaces (default: `./workspace`) |
-| `--planner-prompt` | `ZBOBR_PLANNER_PROMPT` | No | Custom planner agent prompt file |
-| `--worker-prompt` | `ZBOBR_WORKER_PROMPT` | No | Custom worker agent prompt file |
+| CLI Flag | Env Variable | Description |
+|----------|-------------|-------------|
+| `--domain-repo` | `ZBOBR_DOMAIN_REPO` | GitHub repo whose issues the orchestrator processes (`owner/repo`) |
+| `--fork-owner` | `ZBOBR_FORK_OWNER` | GitHub user or org where target repos are forked for implementation |
+| `--workspace` | `ZBOBR_WORKSPACE` | Directory for agent workspaces (default: `./workspace`) |
+| `--config` | `ZBOBR_CONFIG` | Path to TOML configuration file (default: `zbobr.toml` in cwd) |
+| `--prompts-path` | `ZBOBR_PROMPTS_PATH` | Base directory for prompt files |
+| `--planner-prompts` | `ZBOBR_PLANNER_PROMPTS` | Semicolon-separated list of prompt files for planner |
+| `--worker-prompts` | `ZBOBR_WORKER_PROMPTS` | Semicolon-separated list of prompt files for worker |
+| `--backend` | `ZBOBR_BACKEND` | Backend to use: `github` (default) or `stub` |
+| `--cli-tool` | `ZBOBR_CLI_TOOL` | CLI tool to use: `copilot`, `claude`, or `stub` |
+| `--admin-port` | `ZBOBR_ADMIN_PORT` | Port for the Admin MCP server (optional) |
+| | `ZBOBR_DEFAULT_MODEL` | Default AI model when no `model:<name>` label is set |
 
-CLI flags take priority over environment variables.
+Configuration priority: CLI flags > environment variables > `zbobr.toml` > defaults.
 
 ### Available Models
 
-The setup script automatically detects available models from the Copilot CLI. Common options:
+Zbobr supports 14+ models. Common options include:
 
-- `gpt-5-mini` (default, free)
-- `claude-haiku-4.5`
-- `gpt-5`, `claude-sonnet-4.5`
-- `claude-opus-4.6`
+- `gpt-5-mini` (default)
+- `claude-sonnet-4.5`, `claude-opus-4.6`
+- `gpt-5.2`, `gpt-5.2-codex`
+- `gemini-3-pro-preview`
 
-Use labels like `copilot:claude-opus-4.6` on issues to select a specific model.
+Use labels like `model:claude-opus-4.6` on issues to select a specific model, and `tool:copilot` or `tool:claude` to select the AI tool.
 
 ## GitHub Authentication
 
@@ -287,17 +254,15 @@ export GH_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 
 - [Domain Project Guide](DOMAIN_PROJECT.md) — How domain projects work (stages, labels, prompts, configuration)
 - [Sample Configuration](zbobr.toml.sample) — Example `zbobr.toml` with all options
-- [Manager Agent Instructions](automation/agents/manager.md) — Manager workflow
-- [Worker Agent Instructions](automation/agents/worker.md) — Worker workflow
+- [Manager Agent Instructions](.github/agents/manager.md) — Manager workflow
+- [Worker Agent Instructions](.github/agents/worker.md) — Worker workflow
 - [Agent Registry](AGENTS.md) — Agent definitions for `/agent` command
 
 ## Development
 
-Scripts are bash 3+ compatible (works on macOS default bash).
+Build and test:
 
-Validate scripts:
 ```bash
-bash -n automation/scripts/*.sh
+cargo build
+cargo test
 ```
-
-Make changes idempotent where possible (setup.sh can be run multiple times safely).
