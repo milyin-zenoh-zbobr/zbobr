@@ -349,7 +349,7 @@ impl Backend for StubBackend {
         Ok(())
     }
 
-    async fn setup_repository(&self, files: &[crate::SetupFile], _force: bool) -> Result<(), ZbobrError> {
+    async fn setup_repository(&self, _force: bool) -> Result<(), ZbobrError> {
         let mut state = self.state.write().unwrap();
 
         // Initialize stages
@@ -372,11 +372,6 @@ impl Backend for StubBackend {
         // Add model labels
         for model in Model::all() {
             state.labels.insert(format!("model:{}", model));
-        }
-
-        // Initialize files
-        for file in files {
-            state.files.insert(file.path.clone(), file.content.clone());
         }
 
         Ok(())

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use zbobr_lib::task::{Model, Role, Tool};
-use zbobr_lib::{SetupFile, Stage, TomlConfig, Zbobr, ZbobrConfig};
+use zbobr_lib::{Stage, TomlConfig, Zbobr, ZbobrConfig};
 
 #[derive(Args, Clone)]
 #[command(next_help_heading = "Global Options")]
@@ -74,17 +74,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Initialize a domain project: create config files locally and push to GitHub
+    /// Initialize a domain project: create repo if needed, set up stages and labels
     Setup {
-        /// Only create local files, skip pushing to GitHub
-        #[arg(long, short = 'n')]
-        dry_run: bool,
-
-        /// Output directory for local setup files (default: ./<repo-name>)
-        #[arg(long, short = 'o')]
-        output_dir: Option<PathBuf>,
-
-        /// Force overwrite existing files and labels in the repository
+        /// Force overwrite existing labels
         #[arg(long, short = 'f')]
         force: bool,
     },
@@ -279,71 +271,6 @@ fn load_config(cli: &Cli) -> anyhow::Result<ZbobrConfig> {
     Ok(config)
 }
 
-/// Default output directory for setup: `./<repo-name>` in the current dir.
-fn default_setup_dir(zbobr: &Zbobr) -> PathBuf {
-    let repo = &zbobr.config().domain_repo;
-    // Use the repo part after the slash, e.g. "Org/my-project" -> "my-project"
-    let name = repo.split('/').nth(1).unwrap_or(repo);
-    std::env::temp_dir().join(name)
-}
-
-/// Default resources directory: `resources/` next to the executable.
-fn default_resources_dir() -> anyhow::Result<PathBuf> {
-    let exe = std::env::current_exe()?;
-    let exe_dir = exe
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("Cannot determine executable directory"))?;
-    Ok(exe_dir.join("resources"))
-}
-
-/// Load a resource file from the resources directory.
-fn load_resource(name: &str) -> anyhow::Result<String> {
-    let path = default_resources_dir()?.join(name);
-    std::fs::read_to_string(&path)
-        .map_err(|e| anyhow::anyhow!("Failed to read resource {}: {e}", path.display()))
-}
-
-/// Build the list of files to create in the domain repo during setup.
-/// Template placeholders like {{DOMAIN_REPO}} are replaced with actual config values.
-fn build_setup_files(zbobr: &Zbobr) -> anyhow::Result<Vec<SetupFile>> {
-    let config = zbobr.config();
-
-    let readme = load_resource("README.md")?;
-
-    let toml_template = load_resource("zbobr.toml")?;
-    let toml_content = toml_template
-        .replace("{{DOMAIN_REPO}}", &config.domain_repo)
-        .replace("{{FORK_OWNER}}", &config.fork_owner);
-
-    let mut files = vec![
-        SetupFile {
-            path: "README.md".into(),
-            content: readme,
-        },
-        SetupFile {
-            path: "zbobr.toml".into(),
-            content: toml_content,
-        },
-    ];
-
-    // Add all prompts files
-    let prompts = [
-        "prompts/common.md",
-        "prompts/planner.md",
-        "prompts/worker.md",
-    ];
-
-    for file_name in &prompts {
-        let content = load_resource(file_name)?;
-        files.push(SetupFile {
-            path: file_name.to_string(),
-            content,
-        });
-    }
-
-    Ok(files)
-}
-
 /// Parse CLI, allowing global options both before and after the subcommand.
 ///
 /// Global options are defined without `global = true` so they only appear in
@@ -439,25 +366,8 @@ async fn main() -> anyhow::Result<()> {
     let prompts = resolve_prompts(&cli, zbobr.config())?;
 
     match cli.command {
-        Command::Setup {
-            dry_run,
-            output_dir,
-            force,
-        } => {
-            let files = build_setup_files(&zbobr)?;
-            let default_dir = default_setup_dir(&zbobr);
-            let dir = output_dir.unwrap_or(default_dir);
-
-            // Stage 1: always write local files
-            zbobr.setup_write_local(&dir, &files).await?;
-
-            if dry_run {
-                tracing::info!("Dry run: local files written to {}", dir.display());
-                tracing::info!("Skipping GitHub push. Run without --dry-run to push.");
-            } else {
-                // Stage 2: push to GitHub
-                zbobr.setup_push_remote(&dir, &files, force).await?;
-            }
+        Command::Setup { force } => {
+            zbobr.setup(force).await?;
         }
         Command::Cleanup { dry_run } => {
             zbobr.cleanup_closed_tasks(dry_run).await?;

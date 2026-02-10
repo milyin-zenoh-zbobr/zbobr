@@ -9,7 +9,7 @@ pub mod tool_executor;
 
 pub use config::{TomlConfig, ZbobrConfig};
 pub use mcp::{planner_instructions, worker_instructions, PlannerMcp, WorkerMcp};
-pub use task::{Model, SetupFile, Stage, Task, TaskSession, Tool};
+pub use task::{Model, Stage, Task, TaskSession, Tool};
 pub use tool_executor::{ClaudeExecutor, CopilotExecutor, StubExecutor, ToolExecutor};
 
 use crate::backend::github::GitHubBackend;
@@ -156,8 +156,8 @@ impl Zbobr {
             .await
     }
 
-    pub async fn setup_repository(&self, files: &[SetupFile], force: bool) -> Result<(), ZbobrError> {
-        self.backend.setup_repository(files, force).await
+    pub async fn setup_repository(&self, force: bool) -> Result<(), ZbobrError> {
+        self.backend.setup_repository(force).await
     }
 
     pub async fn ensure_domain_repo_exists(&self) -> Result<(), ZbobrError> {

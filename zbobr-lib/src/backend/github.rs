@@ -145,23 +145,6 @@ impl GitHubBackend {
         Ok(())
     }
 
-    /// Get file SHA if it exists.
-    async fn get_repo_file_sha(&self, path: &str) -> Result<Option<String>, ZbobrError> {
-        let (owner, repo) = self.parse_repo()?;
-        let result = self
-            .octocrab
-            .get::<ContentsResponse, _, _>(
-                format!("/repos/{owner}/{repo}/contents/{path}"),
-                None::<&()>,
-            )
-            .await;
-
-        match result {
-            Ok(response) => Ok(response.sha),
-            Err(_) => Ok(None),
-        }
-    }
-
     /// Update a label's color and description.
     async fn update_label(
         &self,
@@ -961,8 +944,8 @@ impl Backend for GitHubBackend {
         Ok(())
     }
 
-    async fn setup_repository(&self, files: &[crate::SetupFile], force: bool) -> Result<(), ZbobrError> {
-        tracing::info!("Pushing setup to GitHub: {} (force: {})", self.config.domain_repo, force);
+    async fn setup_repository(&self, force: bool) -> Result<(), ZbobrError> {
+        tracing::info!("Setting up GitHub repo: {} (force: {})", self.config.domain_repo, force);
 
         // Ensure the domain repo exists
         self.ensure_domain_repo_exists().await?;
@@ -1065,34 +1048,6 @@ impl Backend for GitHubBackend {
                 .await?;
             } else {
                 tracing::info!("Label '{model_label}' already exists");
-            }
-        }
-
-        // Push files from provided list to GitHub
-        for file in files {
-            let sha = self.get_repo_file_sha(&file.path).await?;
-            if let Some(sha) = sha {
-                if force {
-                    tracing::info!("Updating '{}' in repo (force)", file.path);
-                    self.create_or_update_repo_file(
-                        &file.path,
-                        &file.content,
-                        &format!("Update {} from zbobr setup", file.path),
-                        Some(sha),
-                    )
-                    .await?;
-                } else {
-                    tracing::info!("File '{}' already exists in repo, skipping", file.path);
-                }
-            } else {
-                tracing::info!("Creating '{}' in repo", file.path);
-                self.create_or_update_repo_file(
-                    &file.path,
-                    &file.content,
-                    &format!("Initialize {} from zbobr setup", file.path),
-                    None,
-                )
-                .await?;
             }
         }
 
