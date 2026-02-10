@@ -25,6 +25,12 @@ fork_owner = "{{FORK_OWNER}}"
 # GitHub token (prefer GH_TOKEN or GITHUB_TOKEN env var instead)
 # github_token = ""
 
+# Limited-scope GitHub token for agent child processes.
+# When set, overrides GH_TOKEN/GITHUB_TOKEN in agent environment,
+# restricting agents to read-only GitHub access while zbobr retains full access.
+# Prefer ZBOBR_AGENT_GH_TOKEN env var instead of storing here.
+# agent_github_token = ""
+
 # [prompts]
 # Base directory for additional prompt files (appended after built-in instructions)
 # path = "./prompts"

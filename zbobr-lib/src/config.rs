@@ -58,6 +58,7 @@ pub struct TomlConfig {
     pub default_model: Option<Model>,
     pub workspace: Option<PathBuf>,
     pub github_token: Option<String>,
+    pub agent_github_token: Option<String>,
     pub backend: Option<BackendType>,
     pub cli_tool: Option<Tool>,
     pub work_branch_prefix: Option<String>,
@@ -104,6 +105,8 @@ pub struct ZbobrConfig {
     pub work_branch_prefix: String,
     /// Base directory for resolving prompt file paths.
     pub prompts_path: Option<PathBuf>,
+    /// GitHub token for agent processes (limited scope, overrides GH_TOKEN in child).
+    pub agent_github_token: Option<String>,
 }
 
 impl Default for ZbobrConfig {
@@ -120,6 +123,7 @@ impl Default for ZbobrConfig {
             worker_prompts: vec!["prompts/worker.md".into(), "prompts/common.md".into()],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
+            agent_github_token: None,
         }
     }
 }
@@ -211,6 +215,10 @@ impl ZbobrConfig {
             .map(PathBuf::from)
             .or_else(|| toml_prompts.and_then(|p| p.path.clone()));
 
+        let agent_github_token = std::env::var("ZBOBR_AGENT_GH_TOKEN")
+            .ok()
+            .or_else(|| toml.and_then(|t| t.agent_github_token.clone()));
+
         Ok(Self {
             domain_repo,
             fork_owner,
@@ -223,6 +231,7 @@ impl ZbobrConfig {
             worker_prompts,
             work_branch_prefix,
             prompts_path,
+            agent_github_token,
         })
     }
 
@@ -279,6 +288,7 @@ mod tests {
             worker_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
+            agent_github_token: None,
         }
     }
 
@@ -368,6 +378,7 @@ worker = ["work.md"]
         std::env::remove_var("ZBOBR_PLANNER_PROMPTS");
         std::env::remove_var("ZBOBR_WORKER_PROMPTS");
         std::env::remove_var("ZBOBR_PROMPTS_PATH");
+        std::env::remove_var("ZBOBR_AGENT_GH_TOKEN");
         std::env::set_var("GH_TOKEN", "test-token");
 
         let toml = TomlConfig {
@@ -376,6 +387,7 @@ worker = ["work.md"]
             default_model: Some(Model::Claude3Opus),
             workspace: Some(PathBuf::from("/tmp/toml-ws")),
             github_token: None,
+            agent_github_token: None,
             backend: Some(BackendType::Stub),
             cli_tool: Some(Tool::Claude),
             work_branch_prefix: Some("toml_fix".into()),
@@ -411,6 +423,7 @@ worker = ["work.md"]
         std::env::remove_var("ZBOBR_PLANNER_PROMPTS");
         std::env::remove_var("ZBOBR_WORKER_PROMPTS");
         std::env::remove_var("ZBOBR_PROMPTS_PATH");
+        std::env::remove_var("ZBOBR_AGENT_GH_TOKEN");
         std::env::set_var("GH_TOKEN", "test-token");
 
         let config = ZbobrConfig::build(None).unwrap();

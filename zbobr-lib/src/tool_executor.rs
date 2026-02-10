@@ -26,6 +26,7 @@ pub trait ToolExecutor: Send + Sync {
         prompt: &str,
         task_dir: &Path,
         mcp_url: &str,
+        agent_github_token: Option<&str>,
     ) -> anyhow::Result<()>;
 }
 
@@ -43,6 +44,7 @@ impl ToolExecutor for CopilotExecutor {
         prompt: &str,
         task_dir: &Path,
         mcp_url: &str,
+        agent_github_token: Option<&str>,
     ) -> anyhow::Result<()> {
         // Build MCP config for copilot
         let mcp_config = serde_json::json!({
@@ -77,12 +79,18 @@ impl ToolExecutor for CopilotExecutor {
         ];
         tracing::debug!("Copilot command: copilot {}", args.join(" "));
 
-        let mut child = tokio::process::Command::new("copilot")
-            .args(args)
+        let mut cmd = tokio::process::Command::new("copilot");
+        cmd.args(args)
             .current_dir(task_dir)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+            .stderr(Stdio::piped());
+
+        if let Some(token) = agent_github_token {
+            tracing::info!("Overriding GH_TOKEN/GITHUB_TOKEN for copilot agent process");
+            cmd.env("GH_TOKEN", token).env("GITHUB_TOKEN", token);
+        }
+
+        let mut child = cmd.spawn()?;
 
         let stdout = child.stdout.take().expect("stdout was piped");
         let stderr = child.stderr.take().expect("stderr was piped");
@@ -134,6 +142,7 @@ impl ToolExecutor for ClaudeExecutor {
         prompt: &str,
         task_dir: &Path,
         mcp_url: &str,
+        agent_github_token: Option<&str>,
     ) -> anyhow::Result<()> {
         // Build MCP config for claude
         let mcp_config = serde_json::json!({
@@ -169,14 +178,18 @@ impl ToolExecutor for ClaudeExecutor {
         ];
         tracing::debug!("Claude command: claude {}", args.join(" "));
 
-        // Note: Claude CLI execution is not yet fully implemented
-        // This is a placeholder for future implementation
-        let mut child = tokio::process::Command::new("claude")
-            .args(args)
+        let mut cmd = tokio::process::Command::new("claude");
+        cmd.args(args)
             .current_dir(task_dir)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+            .stderr(Stdio::piped());
+
+        if let Some(token) = agent_github_token {
+            tracing::info!("Overriding GH_TOKEN/GITHUB_TOKEN for claude agent process");
+            cmd.env("GH_TOKEN", token).env("GITHUB_TOKEN", token);
+        }
+
+        let mut child = cmd.spawn()?;
 
         let stdout = child.stdout.take().expect("stdout was piped");
         let stderr = child.stderr.take().expect("stderr was piped");
@@ -228,6 +241,7 @@ impl ToolExecutor for StubExecutor {
         _prompt: &str,
         _task_dir: &Path,
         mcp_url: &str,
+        _agent_github_token: Option<&str>,
     ) -> anyhow::Result<()> {
         tracing::info!("Running STUB TOOL for {} session", role);
 

@@ -483,8 +483,9 @@ async fn run_role_session(
     let mcp_url = format!("http://127.0.0.1:{port}/{role}/{task_id}");
 
     let executor = cli_tool.executor();
+    let agent_token = zbobr.config().agent_github_token.as_deref();
     let execution_result = tokio::select! {
-        result = executor.execute(task_id, role, &model, port, prompt, &task_dir, &mcp_url) => {
+        result = executor.execute(task_id, role, &model, port, prompt, &task_dir, &mcp_url, agent_token) => {
             if let Err(e) = result {
                 tracing::error!("Tool execution failed: {e}");
             }
