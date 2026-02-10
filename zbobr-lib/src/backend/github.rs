@@ -45,6 +45,8 @@ impl GitHubBackend {
                     "Invalid target repo: {target_repo}"
                 )));
             }
+            tracing::info!("Creating fork of {target_repo} under {fork_owner}", fork_owner = self.config.fork_owner);
+            
             // Create fork under fork_owner (as org)
             self.octocrab
                 .post(
@@ -52,6 +54,15 @@ impl GitHubBackend {
                     Some(&serde_json::json!({ "organization": self.config.fork_owner })),
                 )
                 .await
+                .map_err(|e| {
+                    tracing::error!("Failed to create fork of {target_repo} under {}: {e}", self.config.fork_owner);
+                    ZbobrError::GitHub(
+                        format!("Failed to create fork of {target_repo} under {:?}: check if fork_owner is an organization you have access to, and that your GitHub token has 'repo' and 'admin:org_hook' scopes. Error: {}", 
+                            self.config.fork_owner, 
+                            e
+                        )
+                    )
+                })
                 .map(|_: serde_json::Value| ())?;
 
             // Wait a moment for the fork to be ready

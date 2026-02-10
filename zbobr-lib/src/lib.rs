@@ -246,6 +246,13 @@ pub enum ZbobrError {
 
 impl From<octocrab::Error> for ZbobrError {
     fn from(e: octocrab::Error) -> Self {
-        ZbobrError::GitHub(e.to_string())
+        // Provide more detailed error information
+        let error_msg = match e {
+            octocrab::Error::GitHub { source, .. } => {
+                format!("GitHub API error: {} (status: {})", source.message, source.status_code)
+            }
+            _ => format!("GitHub API error: {}", e),
+        };
+        ZbobrError::GitHub(error_msg)
     }
 }
