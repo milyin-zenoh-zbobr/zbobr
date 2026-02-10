@@ -1,5 +1,6 @@
 [workspace]
 members = ["zbobr-lib", "zbobr"]
+default-members = ["zbobr"]
 resolver = "2"
 
 [workspace.dependencies]

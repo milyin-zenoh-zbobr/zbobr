@@ -2,6 +2,7 @@
 name = "zbobr"
 version = "0.1.0"
 edition = "2021"
+default-run = "zbobr"
 description = "AI-powered issue management automation using GitHub Copilot agents"
 authors = ["milyin"]
 license = "MIT OR Apache-2.0"
