@@ -77,13 +77,14 @@ impl ToolExecutor for CopilotExecutor {
             "-p",
             prompt,
         ];
-        tracing::debug!("Copilot command: copilot {}", args.join(" "));
 
         let mut cmd = tokio::process::Command::new("copilot");
-        cmd.args(args)
+        cmd.args(&args)
             .current_dir(task_dir)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+
+        tracing::debug!("Command: {:?}", cmd);
 
         if let Some(token) = agent_github_token {
             tracing::info!("Overriding GH_TOKEN/GITHUB_TOKEN for copilot agent process");
@@ -121,7 +122,8 @@ impl ToolExecutor for CopilotExecutor {
         tracing::debug!("Copilot finished execution with status: {status}");
 
         if !status.success() {
-            tracing::warn!("copilot exited with status: {status}");
+            tracing::error!("copilot exited with status: {status}");
+            return Err(anyhow::anyhow!("copilot exited with status: {status}"));
         }
 
         Ok(())
@@ -176,13 +178,14 @@ impl ToolExecutor for ClaudeExecutor {
             "-p",
             prompt,
         ];
-        tracing::debug!("Claude command: claude {}", args.join(" "));
 
         let mut cmd = tokio::process::Command::new("claude");
-        cmd.args(args)
+        cmd.args(&args)
             .current_dir(task_dir)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+
+        tracing::debug!("Command: {:?}", cmd);
 
         if let Some(token) = agent_github_token {
             tracing::info!("Overriding GH_TOKEN/GITHUB_TOKEN for claude agent process");
@@ -220,7 +223,8 @@ impl ToolExecutor for ClaudeExecutor {
         tracing::debug!("Claude finished execution with status: {status}");
 
         if !status.success() {
-            tracing::warn!("claude exited with status: {status}");
+            tracing::error!("claude exited with status: {status}");
+            return Err(anyhow::anyhow!("claude exited with status: {status}"));
         }
 
         Ok(())
