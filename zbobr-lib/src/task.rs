@@ -300,6 +300,7 @@ struct TrackedRepo {
 }
 
 /// Task session bound to a specific task, with role-based behavior.
+#[derive(Clone)]
 pub struct TaskSession {
     zbobr: Zbobr,
     task_id: u64,
