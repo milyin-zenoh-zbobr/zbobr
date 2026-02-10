@@ -684,9 +684,10 @@ async fn run_manager_loop(
         if let Some(task) = planning_tasks.first() {
             let task_model = task.model.clone().unwrap_or_else(|| model.clone());
             tracing::info!(
-                "Found GO_PLANNING task #{} (tool: {:?}) - running planner",
+                "Found GO_PLANNING task #{} (tool: {:?}, model: {}) - running planner",
                 task.id,
-                task.tool
+                task.tool,
+                task_model
             );
             if let Err(e) = run_role_session(
                 zbobr,
@@ -718,9 +719,10 @@ async fn run_manager_loop(
         if let Some(task) = working_tasks.first() {
             let task_model = task.model.clone().unwrap_or_else(|| model.clone());
             tracing::info!(
-                "Found GO_WORKING task #{} (tool: {:?}) - running worker",
+                "Found GO_WORKING task #{} (tool: {:?}, model: {}) - running worker",
                 task.id,
-                task.tool
+                task.tool,
+                task_model
             );
             if let Err(e) = run_role_session(
                 zbobr,
@@ -748,7 +750,7 @@ async fn run_manager_loop(
         if !planning_tasks.is_empty() {
             let summary: Vec<_> = planning_tasks
                 .iter()
-                .map(|t| format!("#{} (tool: {:?})", t.id, t.tool))
+                .map(|t| format!("#{} (tool: {:?}, model: {:?})", t.id, t.tool, t.model))
                 .collect();
             tracing::info!("  GO_PLANNING tasks: {}", summary.join(", "));
         }
@@ -756,7 +758,7 @@ async fn run_manager_loop(
         if !working_tasks.is_empty() {
             let summary: Vec<_> = working_tasks
                 .iter()
-                .map(|t| format!("#{} (tool: {:?})", t.id, t.tool))
+                .map(|t| format!("#{} (tool: {:?}, model: {:?})", t.id, t.tool, t.model))
                 .collect();
             tracing::info!("  GO_WORKING tasks: {}", summary.join(", "));
         }

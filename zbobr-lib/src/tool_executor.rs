@@ -85,7 +85,7 @@ impl ToolExecutor for CopilotExecutor {
             .model_name_for_tool(Tool::Copilot)
             .ok_or_else(|| anyhow::anyhow!("Model {} is not supported by copilot", model))?;
 
-        tracing::info!("Starting copilot {role} session for task #{task_id}");
+        tracing::info!("Starting copilot {role} session for task #{task_id} with model {model_name}");
         tracing::info!("MCP endpoint: {mcp_url}");
         tracing::debug!("MCP config JSON: {}", mcp_config_str);
 
@@ -187,7 +187,7 @@ impl ToolExecutor for ClaudeExecutor {
             .model_name_for_tool(Tool::Claude)
             .ok_or_else(|| anyhow::anyhow!("Model {} is not supported by claude", model))?;
 
-        tracing::info!("Starting claude {role} session for task #{task_id}");
+        tracing::info!("Starting claude {role} session for task #{task_id} with model {model_name}");
         tracing::info!("MCP endpoint: {mcp_url}");
         tracing::debug!("MCP config JSON: {}", mcp_config_str);
 
