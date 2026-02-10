@@ -953,9 +953,9 @@ impl Backend for GitHubBackend {
         // Create stages
         let desired_stages = [
             Stage::Pending,
-            Stage::PlanningReady,
+            Stage::GoPlanning,
             Stage::Planning,
-            Stage::WorkingReady,
+            Stage::GoWorking,
             Stage::Working,
         ];
         let existing = self.list_stages().await?;
@@ -1064,9 +1064,9 @@ impl Backend for GitHubBackend {
 fn stage_description(stage: Stage) -> &'static str {
     match stage {
         Stage::Pending => "Task is under user's control, bot ignores it",
-        Stage::PlanningReady => "Task must be taken by planner agent, any matching bot can take it",
+        Stage::GoPlanning => "Task must be taken by planner agent, any matching bot can take it",
         Stage::Planning => "Task is in planning, other bots ignore it",
-        Stage::WorkingReady => "Task must be taken by worker agent, any matching bot can take it",
+        Stage::GoWorking => "Task must be taken by worker agent, any matching bot can take it",
         Stage::Working => "Task is in work, other bots ignore it",
     }
 }

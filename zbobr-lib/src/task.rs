@@ -8,9 +8,9 @@ use crate::{Zbobr, ZbobrError};
 )]
 pub enum Stage {
     Pending,
-    PlanningReady,
+    GoPlanning,
     Planning,
-    WorkingReady,
+    GoWorking,
     Working,
 }
 
@@ -18,9 +18,9 @@ impl Stage {
     pub fn milestone_name(&self) -> &'static str {
         match self {
             Stage::Pending => "PENDING",
-            Stage::PlanningReady => "PLANNING_READY",
+            Stage::GoPlanning => "GO_PLANNING",
             Stage::Planning => "PLANNING",
-            Stage::WorkingReady => "WORKING_READY",
+            Stage::GoWorking => "GO_WORKING",
             Stage::Working => "WORKING",
         }
     }
@@ -28,9 +28,9 @@ impl Stage {
     pub fn from_milestone_name(name: &str) -> Option<Self> {
         match name {
             "PENDING" => Some(Stage::Pending),
-            "PLANNING_READY" => Some(Stage::PlanningReady),
+            "GO_PLANNING" => Some(Stage::GoPlanning),
             "PLANNING" => Some(Stage::Planning),
-            "WORKING_READY" => Some(Stage::WorkingReady),
+            "GO_WORKING" => Some(Stage::GoWorking),
             "WORKING" => Some(Stage::Working),
             _ => None,
         }
@@ -574,9 +574,9 @@ mod tests {
     #[test]
     fn stage_milestone_names() {
         assert_eq!(Stage::Pending.milestone_name(), "PENDING");
-        assert_eq!(Stage::PlanningReady.milestone_name(), "PLANNING_READY");
+        assert_eq!(Stage::GoPlanning.milestone_name(), "GO_PLANNING");
         assert_eq!(Stage::Planning.milestone_name(), "PLANNING");
-        assert_eq!(Stage::WorkingReady.milestone_name(), "WORKING_READY");
+        assert_eq!(Stage::GoWorking.milestone_name(), "GO_WORKING");
         assert_eq!(Stage::Working.milestone_name(), "WORKING");
     }
 
@@ -588,7 +588,7 @@ mod tests {
 
     #[test]
     fn stage_roundtrip_serde() {
-        let stage = Stage::PlanningReady;
+        let stage = Stage::GoPlanning;
         let json = serde_json::to_string(&stage).unwrap();
         let back: Stage = serde_json::from_str(&json).unwrap();
         assert_eq!(back, stage);

@@ -98,7 +98,7 @@ pub struct LabelParam {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct StageParam {
-    #[schemars(description = "Stage name (e.g. PENDING, PLANNING_READY, etc.)")]
+    #[schemars(description = "Stage name (e.g. PENDING, GO_PLANNING, etc.)")]
     pub stage: String,
     #[schemars(description = "Optional tool filter")]
     pub tool: Option<Tool>,

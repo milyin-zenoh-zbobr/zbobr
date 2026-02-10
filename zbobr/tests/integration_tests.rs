@@ -212,9 +212,9 @@ async fn test_blackbox_process_flow() -> anyhow::Result<()> {
         .await?;
     println!("Extracted task ID: {}", task_id);
 
-    // 2. Set stage to PLANNING_READY
-    println!("Transitioning to PLANNING_READY...");
-    admin.set_task_stage(task_id, Stage::PlanningReady).await?;
+    // 2. Set stage to GO_PLANNING
+    println!("Transitioning to GO_PLANNING...");
+    admin.set_task_stage(task_id, Stage::GoPlanning).await?;
 
     // 3. Wait for manager to pick it up and transition to PLANNING
     println!("Waiting for transition to PLANNING...");
@@ -231,9 +231,9 @@ async fn test_blackbox_process_flow() -> anyhow::Result<()> {
     }
     assert!(plan_ready, "Planner did not complete successfully");
 
-    // 6. Transition to WORKING_READY
-    println!("Transitioning to WORKING_READY...");
-    admin.set_task_stage(task_id, Stage::WorkingReady).await?;
+    // 6. Transition to GO_WORKING
+    println!("Transitioning to GO_WORKING...");
+    admin.set_task_stage(task_id, Stage::GoWorking).await?;
 
     // 7. Wait for transition to WORKING
     println!("Waiting for transition to WORKING...");

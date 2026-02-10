@@ -46,8 +46,8 @@ impl Zbobr {
         let stage = match issue.milestone.as_ref().map(|m| m.title.as_str()) {
             Some("PLANNING") => Stage::Planning,
             Some("PENDING") => Stage::Pending,
-            Some("PLANNING_READY") => Stage::PlanningReady,
-            Some("WORKING_READY") => Stage::WorkingReady,
+            Some("GO_PLANNING") => Stage::GoPlanning,
+            Some("GO_WORKING") => Stage::GoWorking,
             Some("WORKING") => Stage::Working,
             _ => Stage::Planning, // default
         };
@@ -206,8 +206,8 @@ impl Zbobr {
             let stage = match issue.milestone.as_ref().map(|m| m.title.as_str()) {
                 Some("PLANNING") => Stage::Planning,
                 Some("PENDING") => Stage::Pending,
-                Some("PLANNING_READY") => Stage::PlanningReady,
-                Some("WORKING_READY") => Stage::WorkingReady,
+                Some("GO_PLANNING") => Stage::GoPlanning,
+                Some("GO_WORKING") => Stage::GoWorking,
                 Some("WORKING") => Stage::Working,
                 _ => Stage::Planning,
             };

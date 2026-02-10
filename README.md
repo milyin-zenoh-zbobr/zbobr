@@ -6,7 +6,7 @@ AI-powered task orchestrator that manages GitHub issues through automated stages
 
 This repository contains **zbobr** — a reusable automation system that:
 
-- **Manager Agent**: Processes issues through stages (PENDING → PLANNING_READY → PLANNING → WORKING_READY → WORKING), creates implementation plans, and spawns Worker agents
+- **Manager Agent**: Processes issues through stages (PENDING → GO_PLANNING → PLANNING → GO_WORKING → WORKING), creates implementation plans, and spawns Worker agents
 - **Worker Agent**: Implements individual issues by forking repos, creating PRs, and executing the work
 
 The orchestrator is domain-agnostic and can manage any set of repositories through **Domain Projects**.
@@ -102,9 +102,9 @@ This is the recommended approach for domain-specific workflows, as it eliminates
 
 ### Workflow
 
-1. **Create issue** in domain project with milestone `PLANNING_READY` and reference a target repo
+1. **Create issue** in domain project with milestone `GO_PLANNING` and reference a target repo
 2. **Manager researches** the issue (transitioning to `PLANNING` lock state) and creates an implementation plan → sets `PENDING`
-3. **Human reviews** and sets milestone to `WORKING_READY` (optionally add `tool:<name>` and `model:<name>` labels)
+3. **Human reviews** and sets milestone to `GO_WORKING` (optionally add `tool:<name>` and `model:<name>` labels)
 4. **Manager spawns Worker** (transitioning to `WORKING` lock state)  
 5. **Worker implements** by:
    - Forking target repo to fork owner (e.g., `YoroolGui/*`)
@@ -124,9 +124,9 @@ These are orchestrator-owned and universal—same across all domain projects:
 
 **Milestones:**
 - `PENDING` → Issue is under user's control, bot ignores it
-- `PLANNING_READY` → Issue must be taken by planner agent, any matching bot can take it
+- `GO_PLANNING` → Issue must be taken by planner agent, any matching bot can take it
 - `PLANNING` → Issue is in planning, other bots ignore it
-- `WORKING_READY` → Issue must be taken by worker agent, any matching bot can take it
+- `GO_WORKING` → Issue must be taken by worker agent, any matching bot can take it
 - `WORKING` → Issue is in work, other bots ignore it
 
 ## Architecture

@@ -38,9 +38,9 @@ impl Default for StubState {
 
         let mut stages = HashMap::new();
         stages.insert(Stage::Pending.to_string(), 1);
-        stages.insert(Stage::PlanningReady.to_string(), 2);
+        stages.insert(Stage::GoPlanning.to_string(), 2);
         stages.insert(Stage::Planning.to_string(), 3);
-        stages.insert(Stage::WorkingReady.to_string(), 4);
+        stages.insert(Stage::GoWorking.to_string(), 4);
         stages.insert(Stage::Working.to_string(), 5);
 
         Self {
@@ -355,9 +355,9 @@ impl Backend for StubBackend {
         // Initialize stages
         state.stages.clear();
         state.stages.insert(Stage::Pending.to_string(), 1);
-        state.stages.insert(Stage::PlanningReady.to_string(), 2);
+        state.stages.insert(Stage::GoPlanning.to_string(), 2);
         state.stages.insert(Stage::Planning.to_string(), 3);
-        state.stages.insert(Stage::WorkingReady.to_string(), 4);
+        state.stages.insert(Stage::GoWorking.to_string(), 4);
         state.stages.insert(Stage::Working.to_string(), 5);
 
         // Initialize labels

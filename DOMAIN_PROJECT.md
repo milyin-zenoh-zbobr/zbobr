@@ -16,19 +16,19 @@ Issues progress through milestones that represent their current stage:
 | Milestone | Description | Who |
 |-----------|-------------|-----|
 | **PENDING** | Task is under user's control, bot ignores it | Human reviewer |
-| **PLANNING_READY** | Ready for planner agent to pick up | Human sets this |
+| **GO_PLANNING** | Ready for planner agent to pick up | Human sets this |
 | **PLANNING** | Agent is investigating and creating an implementation plan | Planner agent |
-| **WORKING_READY** | Plan approved, ready for worker agent to pick up | Human sets this |
+| **GO_WORKING** | Plan approved, ready for worker agent to pick up | Human sets this |
 | **WORKING** | Agent is actively implementing the issue | Worker agent |
 
 ### Stage Flow
 
 ```
-New issue ──► PENDING ──► PLANNING_READY ──► PLANNING ──► PENDING
+New issue ──► PENDING ──► GO_PLANNING ──► PLANNING ──► PENDING
                                                             │
                                                      Human reviews plan
                                                             │
-                                                     WORKING_READY ──► WORKING ──► PENDING (done)
+                                                     GO_WORKING ──► WORKING ──► PENDING (done)
                                                                                        │
                                                                                 Human reviews PR
                                                                                   and closes
@@ -47,11 +47,11 @@ If no `tool:` or `model:` labels are set, the defaults from configuration are us
 ## Creating Issues
 
 1. Create a new issue describing what needs to be done
-2. Set the milestone to **PLANNING_READY** to start automated processing
+2. Set the milestone to **GO_PLANNING** to start automated processing
 3. Optionally add `tool:<name>` and `model:<name>` labels to customize the agent
 4. The planner agent will pick it up, investigate, and write an implementation plan
 5. Review the plan when it reaches **PENDING**
-6. Set milestone to **WORKING_READY** to approve implementation
+6. Set milestone to **GO_WORKING** to approve implementation
 7. The worker agent will implement, create a PR, and mark as `done`
 
 ## Configuration
@@ -155,11 +155,11 @@ worker = ["worker.md", "common.md"]
 ### How Issues Progress
 
 1. **Create Issue**: Developer creates a GitHub issue in this domain repository
-2. **Set PLANNING_READY Milestone**: Makes the issue available for planner agents
+2. **Set GO_PLANNING Milestone**: Makes the issue available for planner agents
 3. **Planner Investigates**: Agent picks up the task, reads code, analyzes requirements, drafts plan
 4. **Move to PENDING**: Planner completes plan and waits for human review
 5. **Human Reviews Plan**: Developer reviews, requests changes, or approves
-6. **Set WORKING_READY Milestone**: Makes the issue available for worker agents
+6. **Set GO_WORKING Milestone**: Makes the issue available for worker agents
 7. **Worker Implements**: Agent picks up the task, forks repos, writes code, creates commits
 8. **Move to PENDING + `done` Label**: Worker creates PR and waits for review
 9. **Human Reviews PR**: Developer reviews code, merges, and closes issue

@@ -58,7 +58,7 @@ struct GlobalArgs {
     name = "zbobr",
     about = "AI-powered task orchestrator",
     long_about = "AI-powered task orchestrator that manages tasks through automated stages.\n\n\
-        Tasks flow through: PENDING -> PLANNING_READY -> PLANNING -> WORKING_READY -> WORKING.\n\
+        Tasks flow through: PENDING -> GO_PLANNING -> PLANNING -> GO_WORKING -> WORKING.\n\
         Planner roles create implementation plans, worker roles implement them\n\
         by forking target repositories and creating pull requests.\n\n\
         Requires a GitHub token: set GH_TOKEN or GITHUB_TOKEN env var.\n\
@@ -557,14 +557,14 @@ async fn run_manager_loop(
         // Check for processable tasks using tool-based filtering
         let current_tool = zbobr.config().cli_tool;
 
-        // Check for PLANNING_READY tasks
+        // Check for GO_PLANNING tasks
         let planning_tasks = match zbobr
-            .list_tasks_by_stage(Stage::PlanningReady.milestone_name(), Some(current_tool))
+            .list_tasks_by_stage(Stage::GoPlanning.milestone_name(), Some(current_tool))
             .await
         {
             Ok(tasks) => tasks,
             Err(e) => {
-                tracing::error!("Failed to check PLANNING_READY tasks: {e}");
+                tracing::error!("Failed to check GO_PLANNING tasks: {e}");
                 vec![]
             }
         };
@@ -572,7 +572,7 @@ async fn run_manager_loop(
         if let Some(task) = planning_tasks.first() {
             let task_model = task.model.clone().unwrap_or_else(|| model.clone());
             tracing::info!(
-                "Found PLANNING_READY task #{} (tool: {:?}) - running planner",
+                "Found GO_PLANNING task #{} (tool: {:?}) - running planner",
                 task.id,
                 task.tool
             );
@@ -591,14 +591,14 @@ async fn run_manager_loop(
             continue;
         }
 
-        // Check for WORKING_READY tasks
+        // Check for GO_WORKING tasks
         let working_tasks = match zbobr
-            .list_tasks_by_stage(Stage::WorkingReady.milestone_name(), Some(current_tool))
+            .list_tasks_by_stage(Stage::GoWorking.milestone_name(), Some(current_tool))
             .await
         {
             Ok(tasks) => tasks,
             Err(e) => {
-                tracing::error!("Failed to check WORKING_READY tasks: {e}");
+                tracing::error!("Failed to check GO_WORKING tasks: {e}");
                 vec![]
             }
         };
@@ -606,7 +606,7 @@ async fn run_manager_loop(
         if let Some(task) = working_tasks.first() {
             let task_model = task.model.clone().unwrap_or_else(|| model.clone());
             tracing::info!(
-                "Found WORKING_READY task #{} (tool: {:?}) - running worker",
+                "Found GO_WORKING task #{} (tool: {:?}) - running worker",
                 task.id,
                 task.tool
             );
@@ -627,7 +627,7 @@ async fn run_manager_loop(
 
         // Log task statistics before sleeping
         tracing::info!(
-            "Task statistics for tool {:?}: PLANNING_READY={}, WORKING_READY={}",
+            "Task statistics for tool {:?}: GO_PLANNING={}, GO_WORKING={}",
             current_tool,
             planning_tasks.len(),
             working_tasks.len()
@@ -635,12 +635,12 @@ async fn run_manager_loop(
 
         if !planning_tasks.is_empty() {
             let summary: Vec<_> = planning_tasks.iter().map(|t| format!("#{} (tool: {:?})", t.id, t.tool)).collect();
-            tracing::info!("  PLANNING_READY tasks: {}", summary.join(", "));
+            tracing::info!("  GO_PLANNING tasks: {}", summary.join(", "));
         }
 
         if !working_tasks.is_empty() {
             let summary: Vec<_> = working_tasks.iter().map(|t| format!("#{} (tool: {:?})", t.id, t.tool)).collect();
-            tracing::info!("  WORKING_READY tasks: {}", summary.join(", "));
+            tracing::info!("  GO_WORKING tasks: {}", summary.join(", "));
         }
 
         tracing::info!("No processable tasks. Sleeping {interval_secs}s...");
