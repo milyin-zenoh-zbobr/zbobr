@@ -314,6 +314,7 @@ impl PlannerMcp {
 
     #[tool(description = "Get the current description/plan for this task (read-only)")]
     async fn get_description(&self) -> String {
+        tracing::info!("[planner#{}] get_description", self.task_id);
         let session = self.zbobr.task_session(self.task_id);
         match session.get_description().await {
             Ok(desc) => desc,
@@ -323,6 +324,7 @@ impl PlannerMcp {
 
     #[tool(description = "Get all discussion messages on this task")]
     async fn get_discussion(&self) -> String {
+        tracing::info!("[planner#{}] get_discussion", self.task_id);
         let session = self.zbobr.task_session(self.task_id);
         match session.get_discussion().await {
             Ok(msgs) => {
@@ -338,6 +340,7 @@ impl PlannerMcp {
 
     #[tool(description = "Post a message to the task discussion")]
     async fn post_message(&self, Parameters(params): Parameters<MessageParam>) -> String {
+        tracing::info!("[planner#{}] post_message", self.task_id);
         let session = self.zbobr.task_session(self.task_id);
         let hostname = get_hostname();
         match session.post_message(&params.message, Role::Planner.as_str(), &hostname).await {
@@ -350,6 +353,7 @@ impl PlannerMcp {
         description = "Pull a repository and checkout a specific branch for investigation (read-only). Returns the local path."
     )]
     async fn pull_branch(&self, Parameters(params): Parameters<BranchParam>) -> String {
+        tracing::info!("[planner#{}] pull_branch repo={} branch={}", self.task_id, params.repo, params.branch);
         let session = self.zbobr.task_session(self.task_id);
         match session.request_branch_readonly(&params.repo, &params.branch).await {
             Ok(path) => path,
@@ -361,6 +365,7 @@ impl PlannerMcp {
         description = "Pull a repository and checkout the branch from a PR (read-only). Takes PR URL or 'owner/repo#123' format. Returns the local path."
     )]
     async fn pull_branch_by_pr(&self, Parameters(params): Parameters<PrParam>) -> String {
+        tracing::info!("[planner#{}] pull_branch_by_pr pr={}", self.task_id, params.pr);
         let session = self.zbobr.task_session(self.task_id);
         match session.request_branch_by_pr(&params.pr, true).await {
             Ok(path) => path,
@@ -372,6 +377,7 @@ impl PlannerMcp {
         description = "Pull the work branch for a repository. If the work branch (named by get_work_branch_name) exists in the fork, it will be pulled; otherwise, the main repository branch will be pulled and the work branch will be created locally. Returns the local path."
     )]
     async fn pull_work_branch(&self, Parameters(params): Parameters<RepoParam>) -> String {
+        tracing::info!("[planner#{}] pull_work_branch repo={}", self.task_id, params.repo);
         let session = self.zbobr.task_session(self.task_id);
         match session.request_work_branch(&params.repo).await {
             Ok(path) => path,
@@ -422,6 +428,7 @@ impl WorkerMcp {
 
     #[tool(description = "Get the current description/plan for this task")]
     async fn get_description(&self) -> String {
+        tracing::info!("[worker#{}] get_description", self.task_id);
         let session = self.zbobr.task_session(self.task_id);
         match session.get_description().await {
             Ok(desc) => desc,
@@ -431,6 +438,7 @@ impl WorkerMcp {
 
     #[tool(description = "Get all discussion messages on this task")]
     async fn get_discussion(&self) -> String {
+        tracing::info!("[worker#{}] get_discussion", self.task_id);
         let session = self.zbobr.task_session(self.task_id);
         match session.get_discussion().await {
             Ok(msgs) => {
@@ -446,6 +454,7 @@ impl WorkerMcp {
 
     #[tool(description = "Post a message to the task discussion")]
     async fn post_message(&self, Parameters(params): Parameters<MessageParam>) -> String {
+        tracing::info!("[worker#{}] post_message", self.task_id);
         let session = self.zbobr.task_session(self.task_id);
         let hostname = get_hostname();
         match session.post_message(&params.message, Role::Worker.as_str(), &hostname).await {
@@ -456,6 +465,7 @@ impl WorkerMcp {
 
     #[tool(description = "Get the work branch name that should be used for this task")]
     async fn get_work_branch_name(&self) -> String {
+        tracing::info!("[worker#{}] get_work_branch_name", self.task_id);
         let session = self.zbobr.task_session(self.task_id);
         session.get_work_branch_name()
     }
@@ -464,6 +474,7 @@ impl WorkerMcp {
         description = "Pull a repository (forking if needed) and checkout a specific branch for implementation. Returns the local path with feature branch ready."
     )]
     async fn pull_branch(&self, Parameters(params): Parameters<BranchParam>) -> String {
+        tracing::info!("[worker#{}] pull_branch repo={} branch={}", self.task_id, params.repo, params.branch);
         let session = self.zbobr.task_session(self.task_id);
         match session.request_branch(&params.repo, &params.branch).await {
             Ok(path) => path,
@@ -475,6 +486,7 @@ impl WorkerMcp {
         description = "Pull a repository (forking if needed) and checkout the branch from a PR for implementation. Takes PR URL or 'owner/repo#123' format. Returns the local path."
     )]
     async fn pull_branch_by_pr(&self, Parameters(params): Parameters<PrParam>) -> String {
+        tracing::info!("[worker#{}] pull_branch_by_pr pr={}", self.task_id, params.pr);
         let session = self.zbobr.task_session(self.task_id);
         match session.request_branch_by_pr(&params.pr, false).await {
             Ok(path) => path,
@@ -486,6 +498,7 @@ impl WorkerMcp {
         description = "Pull the work branch for a repository. If the work branch (named by get_work_branch_name) exists in the fork, it will be pulled; otherwise, the main repository branch will be pulled and the work branch will be created locally. Returns the local path."
     )]
     async fn pull_work_branch(&self, Parameters(params): Parameters<RepoParam>) -> String {
+        tracing::info!("[worker#{}] pull_work_branch repo={}", self.task_id, params.repo);
         let session = self.zbobr.task_session(self.task_id);
         match session.request_work_branch(&params.repo).await {
             Ok(path) => path,
@@ -497,6 +510,7 @@ impl WorkerMcp {
         description = "Push the current branch in the repository to the fork with the work branch name (from get_work_branch_name) and create a PR. Takes the local path to the repository (from pull_branch, pull_branch_by_pr, or pull_work_branch). Returns PR URL."
     )]
     async fn push_work_branch(&self, Parameters(params): Parameters<PathParam>) -> String {
+        tracing::info!("[worker#{}] push_work_branch path={}", self.task_id, params.path);
         let session = self.zbobr.task_session(self.task_id);
         match session.submit_work(&params.path).await {
             Ok(pr_url) => format!("PR created: {pr_url}"),
@@ -506,6 +520,7 @@ impl WorkerMcp {
 
     #[tool(description = "Mark this task as done")]
     async fn mark_done(&self) -> String {
+        tracing::info!("[worker#{}] mark_done", self.task_id);
         let session = self.zbobr.task_session(self.task_id);
         match session.mark_done().await {
             Ok(()) => "Task marked as done".to_string(),
@@ -555,6 +570,7 @@ impl AdminMcp {
 
     #[tool(description = "List tasks in a specific stage")]
     async fn list_tasks(&self, Parameters(params): Parameters<StageParam>) -> String {
+        tracing::info!("[admin] list_tasks stage={} tool={:?}", params.stage, params.tool);
         match self
             .zbobr
             .list_tasks_by_stage(&params.stage, params.tool)
@@ -577,6 +593,7 @@ impl AdminMcp {
 
     #[tool(description = "Create a new task")]
     async fn create_task(&self, Parameters(params): Parameters<CreateTaskParam>) -> String {
+        tracing::info!("[admin] create_task title={}", params.title);
         match self
             .zbobr
             .create_task(
@@ -598,6 +615,7 @@ impl AdminMcp {
 
     #[tool(description = "Get details of a task")]
     async fn get_task(&self, Parameters(params): Parameters<TaskIdParam>) -> String {
+        tracing::info!("[admin] get_task id={}", params.id);
         match self.zbobr.get_task(params.id).await {
             Ok(task) => format!(
                 "ID: {}\nTitle: {}\nStage: {:?}\nTool: {:?}\nModel: {:?}\nDone: {}\n\n{}",
@@ -612,6 +630,7 @@ impl AdminMcp {
         &self,
         Parameters(params): Parameters<UpdateTaskParam>,
     ) -> String {
+        tracing::info!("[admin] update_task_description id={}", params.id);
         match self
             .zbobr
             .update_task_description(params.id, &params.description)
@@ -624,6 +643,7 @@ impl AdminMcp {
 
     #[tool(description = "Change the stage of a task")]
     async fn set_task_stage(&self, Parameters(params): Parameters<SetStageParam>) -> String {
+        tracing::info!("[admin] set_task_stage id={} stage={}", params.id, params.stage);
         match self
             .zbobr
             .set_task_stage_by_name(params.id, params.stage.milestone_name())
@@ -636,6 +656,7 @@ impl AdminMcp {
 
     #[tool(description = "Add a label to a task")]
     async fn add_task_label(&self, Parameters(params): Parameters<LabelParam>) -> String {
+        tracing::info!("[admin] add_task_label id={} label={}", params.id, params.label);
         match self.zbobr.add_task_label(params.id, &params.label).await {
             Ok(()) => format!("Label '{}' added", params.label),
             Err(e) => format!("Error: {e}"),
@@ -644,6 +665,7 @@ impl AdminMcp {
 
     #[tool(description = "Remove a label from a task")]
     async fn remove_task_label(&self, Parameters(params): Parameters<LabelParam>) -> String {
+        tracing::info!("[admin] remove_task_label id={} label={}", params.id, params.label);
         match self.zbobr.remove_task_label(params.id, &params.label).await {
             Ok(()) => format!("Label '{}' removed", params.label),
             Err(e) => format!("Error: {e}"),
@@ -652,6 +674,7 @@ impl AdminMcp {
 
     #[tool(description = "Get all logs/comments for a task")]
     async fn get_discussion(&self, Parameters(params): Parameters<TaskIdParam>) -> String {
+        tracing::info!("[admin] get_discussion id={}", params.id);
         match self.zbobr.get_task_comments(params.id).await {
             Ok(comments) => {
                 if comments.is_empty() {
@@ -666,6 +689,7 @@ impl AdminMcp {
 
     #[tool(description = "DEBUG: Return internal backend state")]
     async fn debug_state(&self) -> String {
+        tracing::info!("[admin] debug_state");
         self.zbobr.debug_state()
     }
 }
