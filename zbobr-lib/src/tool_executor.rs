@@ -105,7 +105,7 @@ impl ToolExecutor for CopilotExecutor {
         ];
 
         let mut cmd = tokio::process::Command::new("copilot");
-        cmd.args(&args)
+        cmd.args(args)
             .current_dir(task_dir)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -213,7 +213,7 @@ impl ToolExecutor for ClaudeExecutor {
         ];
 
         let mut cmd = tokio::process::Command::new("claude");
-        cmd.args(&args)
+        cmd.args(args)
             .current_dir(task_dir)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());

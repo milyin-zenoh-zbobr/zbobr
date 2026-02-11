@@ -7,18 +7,15 @@ use crate::{
 
 /// Backend type to use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default)]
 pub enum BackendType {
     #[serde(rename = "github")]
+    #[default]
     GitHub,
     #[serde(rename = "stub")]
     Stub,
 }
 
-impl Default for BackendType {
-    fn default() -> Self {
-        BackendType::GitHub
-    }
-}
 
 impl std::fmt::Display for BackendType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

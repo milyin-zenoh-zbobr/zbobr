@@ -88,8 +88,10 @@ impl std::str::FromStr for Role {
 #[derive(
     Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq, schemars::JsonSchema,
 )]
+#[derive(Default)]
 pub enum Tool {
     #[serde(rename = "copilot")]
+    #[default]
     Copilot,
     #[serde(rename = "claude")]
     Claude,
@@ -97,11 +99,6 @@ pub enum Tool {
     Stub,
 }
 
-impl Default for Tool {
-    fn default() -> Self {
-        Tool::Copilot
-    }
-}
 
 impl Tool {
     /// Returns all available tools.
@@ -145,10 +142,12 @@ impl std::str::FromStr for Tool {
 #[derive(
     Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, schemars::JsonSchema,
 )]
+#[derive(Default)]
 pub enum Model {
     #[serde(rename = "gpt-4o")]
     Gpt4o,
     #[serde(rename = "gpt-5-mini")]
+    #[default]
     Gpt5Mini,
     #[serde(rename = "claude-3-5-sonnet")]
     Claude35Sonnet,
@@ -176,11 +175,6 @@ pub enum Model {
     Gpt5_1Codex,
 }
 
-impl Default for Model {
-    fn default() -> Self {
-        Model::Gpt5Mini
-    }
-}
 
 impl Model {
     /// Returns all available models.
