@@ -403,11 +403,14 @@ impl Backend for GitHubBackend {
     }
 
     async fn update_task_description(&self, id: u64, description: &str) -> Result<(), ZbobrError> {
+        use crate::backend::strip_plan_from_description;
         let (owner, repo) = self.parse_repo()?;
+        // Ensure description doesn't contain plan marker when storing
+        let clean_description = strip_plan_from_description(description);
         self.octocrab
             .patch(
                 format!("/repos/{owner}/{repo}/issues/{id}"),
-                Some(&serde_json::json!({ "body": description })),
+                Some(&serde_json::json!({ "body": clean_description })),
             )
             .await
             .map(|_: serde_json::Value| ())?;

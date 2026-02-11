@@ -51,13 +51,24 @@ pub fn parse_description_with_plan(description: &str) -> (String, Vec<PlanItem>)
     (original, items)
 }
 
+/// Extract the original description, removing any existing plan section.
+/// This ensures no duplicate plan separators in the description.
+pub fn strip_plan_from_description(description: &str) -> String {
+    let (original, _) = parse_description_with_plan(description);
+    original
+}
+
 /// Serialize plan items back into the full description format.
+/// If the description contains an existing plan, it will be replaced with the new one.
 pub fn serialize_description_with_plan(original_description: &str, items: &[PlanItem]) -> String {
+    // Ensure the description doesn't contain plan marker
+    let clean_description = strip_plan_from_description(original_description);
+    
     if items.is_empty() {
-        return original_description.to_string();
+        return clean_description;
     }
     
-    let mut result = original_description.to_string();
+    let mut result = clean_description;
     result.push_str(PLAN_SEPARATOR);
     
     for item in items {

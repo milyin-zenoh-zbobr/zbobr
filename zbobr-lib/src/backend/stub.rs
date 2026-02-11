@@ -185,9 +185,11 @@ impl Backend for StubBackend {
     }
 
     async fn update_task_description(&self, id: u64, description: &str) -> Result<(), ZbobrError> {
+        use crate::backend::strip_plan_from_description;
         let mut state = self.state.write().unwrap();
         if let Some(task) = state.tasks.get_mut(&id) {
-            task.description = description.to_string();
+            // Ensure description doesn't contain plan marker when storing
+            task.description = strip_plan_from_description(description);
             Ok(())
         } else {
             Err(ZbobrError::Other(format!("Task {id} not found")))

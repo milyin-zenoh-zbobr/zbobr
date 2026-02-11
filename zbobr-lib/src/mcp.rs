@@ -1359,4 +1359,31 @@ mod tests {
             assert_eq!(item1.text, item2.text);
             assert_eq!(item1.checked, item2.checked);
         }
+    }
+
+    #[test]
+    fn test_description_plan_validation() {
+        use crate::backend::{parse_description_with_plan, serialize_description_with_plan, strip_plan_from_description};
+        
+        // Test stripping existing plan from description
+        let desc_with_old_plan = "Task description\n---PLAN---\n- [ ] old1: Old item\n";
+        let stripped = strip_plan_from_description(desc_with_old_plan);
+        assert_eq!(stripped, "Task description");
+        
+        // Test that serialize_description_with_plan replaces old plan with new one
+        let new_plan = vec![
+            PlanItem { id: "new1".to_string(), checked: false, text: "New item".to_string() },
+        ];
+        let serialized = serialize_description_with_plan(desc_with_old_plan, &new_plan);
+        
+        // Should contain the new plan, not the old one
+        assert!(serialized.contains("- [ ] new1: New item"));
+        assert!(!serialized.contains("old1"));
+        
+        // Should parse correctly
+        let (original, items) = parse_description_with_plan(&serialized);
+        assert_eq!(original, "Task description");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].id, "new1");
+        assert_eq!(items[0].text, "New item");
     }}
