@@ -108,6 +108,24 @@ pub enum Label {
     Question,
 }
 
+/// Signal for task flow control (mapped to labels in GitHub backend).
+/// Ordered by priority (highest to lowest).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+pub enum Signal {
+    #[serde(rename = "stop")]
+    Stop = 0,
+    #[serde(rename = "done")]
+    Done = 1,
+    #[serde(rename = "go_ask")]
+    GoAsk = 2,
+    #[serde(rename = "go_work")]
+    GoWork = 3,
+    #[serde(rename = "go_plan")]
+    GoPlan = 4,
+}
+
 impl Label {
     /// Returns the label name as a string.
     pub fn as_str(&self) -> &'static str {
@@ -120,6 +138,44 @@ impl Label {
     /// Returns all available labels.
     pub fn all() -> &'static [Label] {
         &[Label::Done, Label::Question]
+    }
+}
+
+impl Signal {
+    /// Returns the signal name as a string (prefixed for GitHub labels).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Signal::Stop => "signal:stop",
+            Signal::Done => "signal:done",
+            Signal::GoAsk => "signal:go_ask",
+            Signal::GoWork => "signal:go_work",
+            Signal::GoPlan => "signal:go_plan",
+        }
+    }
+
+    /// Returns the plain signal name without prefix.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Signal::Stop => "stop",
+            Signal::Done => "done",
+            Signal::GoAsk => "go_ask",
+            Signal::GoWork => "go_work",
+            Signal::GoPlan => "go_plan",
+        }
+    }
+
+    /// Returns all available signals in priority order.
+    pub fn all() -> &'static [Signal] {
+        &[Signal::Stop, Signal::Done, Signal::GoAsk, Signal::GoWork, Signal::GoPlan]
+    }
+
+    /// Maps signal to target stage.
+    pub fn target_stage(&self) -> Stage {
+        match self {
+            Signal::Stop | Signal::Done | Signal::GoAsk => Stage::Pending,
+            Signal::GoWork => Stage::GoWorking,
+            Signal::GoPlan => Stage::GoPlanning,
+        }
     }
 }
 
@@ -136,6 +192,27 @@ impl std::str::FromStr for Label {
             "done" => Ok(Label::Done),
             "question" => Ok(Label::Question),
             _ => Err(format!("Unknown label: {}", s)),
+        }
+    }
+}
+
+impl std::fmt::Display for Signal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+impl std::str::FromStr for Signal {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let name = s.strip_prefix("signal:").unwrap_or(s);
+        match name.to_lowercase().replace('_', "").as_str() {
+            "stop" => Ok(Signal::Stop),
+            "done" => Ok(Signal::Done),
+            "goask" | "go-ask" => Ok(Signal::GoAsk),
+            "gowork" | "go-work" => Ok(Signal::GoWork),
+            "goplan" | "go-plan" => Ok(Signal::GoPlan),
+            _ => Err(format!("Unknown signal: {}", s)),
         }
     }
 }
@@ -345,6 +422,7 @@ pub struct Task {
     pub done: bool,
     pub labels: Vec<Label>,
     pub checklist: Vec<ChecklistItem>,
+    pub signal: Option<Signal>,
 }
 
 /// Tracked repository information for a task session.
@@ -459,6 +537,42 @@ impl TaskSession {
     /// Add a label to the task.
     pub async fn add_label(&self, label: Label) -> Result<(), ZbobrError> {
         self.zbobr.add_task_label(self.task_id, label).await
+    }
+
+    /// Get the current signal on the task.
+    pub async fn get_signal(&self) -> Result<Option<Signal>, ZbobrError> {
+        let task = self.zbobr.get_task(self.task_id).await?;
+        Ok(task.signal)
+    }
+
+    /// Set signal on the task, respecting priority (higher priority signals cannot be overwritten by lower).
+    pub async fn set_signal(&self, new_signal: Signal) -> Result<(), ZbobrError> {
+        let current = self.get_signal().await?;
+        
+        // Only set if new signal has higher or equal priority (lower enum value)
+        if let Some(current_signal) = current {
+            if new_signal > current_signal {
+                // new_signal has lower priority, don't overwrite
+                return Ok(());
+            }
+        }
+        
+        self.zbobr.set_task_signal(self.task_id, Some(new_signal)).await
+    }
+
+    /// Clear the signal on the task.
+    pub async fn clear_signal(&self) -> Result<(), ZbobrError> {
+        self.zbobr.set_task_signal(self.task_id, None).await
+    }
+
+    /// Transition task to stage based on current signal.
+    pub async fn transition_by_signal(&self) -> Result<(), ZbobrError> {
+        let signal = self.get_signal().await?;
+        if let Some(sig) = signal {
+            let target_stage = sig.target_stage();
+            self.zbobr.set_task_stage(self.task_id, target_stage).await?;
+        }
+        Ok(())
     }
 
     /// Clone target repo and checkout specific branch (read-only, for planner).
@@ -701,6 +815,7 @@ mod tests {
             done: false,
             checklist: vec![],
             labels: vec![],
+            signal: None,
         };
         let json = serde_json::to_string(&task).unwrap();
         let back: Task = serde_json::from_str(&json).unwrap();

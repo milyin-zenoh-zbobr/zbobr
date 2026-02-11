@@ -3,7 +3,7 @@ use std::{path::PathBuf, sync::Arc};
 use async_trait::async_trait;
 
 use super::Backend;
-use crate::{Label, Model, Stage, Task, Tool, ZbobrConfig, ZbobrError};
+use crate::{Label, Model, Signal, Stage, Task, Tool, ZbobrConfig, ZbobrError};
 
 pub struct GitHubBackend {
     config: Arc<ZbobrConfig>,
@@ -246,6 +246,13 @@ impl Backend for GitHubBackend {
             .filter_map(|l| l.name.parse::<Label>().ok())
             .collect();
 
+        // Extract signal from labels (highest priority wins)
+        let signal = issue
+            .labels
+            .iter()
+            .filter_map(|l| l.name.parse::<Signal>().ok())
+            .min(); // min() because lower enum value = higher priority
+
         // Extract plan and checklist from description
         let (description, plan, checklist) = super::parse_description_with_plan_and_checklist(&body);
 
@@ -268,6 +275,7 @@ impl Backend for GitHubBackend {
             done,
             labels,
             checklist,
+            signal,
         })
     }
 
@@ -403,6 +411,30 @@ impl Backend for GitHubBackend {
         Ok(())
     }
 
+    async fn set_task_signal(&self, id: u64, signal: Option<Signal>) -> Result<(), ZbobrError> {
+        let (owner, repo) = self.parse_repo()?;
+        
+        // Remove all existing signal labels
+        for sig in Signal::all() {
+            let _ = self
+                .octocrab
+                .issues(owner, repo)
+                .remove_label(id, sig.as_str())
+                .await;
+        }
+        
+        // Add new signal label if provided
+        if let Some(sig) = signal {
+            let labels: Vec<String> = vec![sig.as_str().to_string()];
+            self.octocrab
+                .issues(owner, repo)
+                .add_labels(id, &labels)
+                .await?;
+        }
+        
+        Ok(())
+    }
+
     async fn update_task_description(&self, id: u64, description: &str) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         // Just store the description as-is, it should be pre-formatted by the caller
@@ -492,6 +524,13 @@ impl Backend for GitHubBackend {
                 .filter_map(|l| l.name.parse::<Label>().ok())
                 .collect();
 
+            // Extract signal from labels (highest priority wins)
+            let signal = issue
+                .labels
+                .iter()
+                .filter_map(|l| l.name.parse::<Signal>().ok())
+                .min(); // min() because lower enum value = higher priority
+
             // Extract plan and checklist from description
             let (description, plan, checklist) = super::parse_description_with_plan_and_checklist(&body);
 
@@ -510,6 +549,7 @@ impl Backend for GitHubBackend {
                 done,
                 labels,
                 checklist,
+                signal,
             });
         }
         Ok(tasks)

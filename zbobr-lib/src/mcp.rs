@@ -448,7 +448,21 @@ pub trait CommonMcpImpl: Send + Sync {
                     item.checked = checked;
                     
                     match self.session().update_checklist(&desc, &items).await {
-                        Ok(()) => format!("Checklist item '{}' checked state updated to {}", id, checked),
+                        Ok(()) => {
+                            // Determine signal based on checklist state
+                            let has_unchecked = items.iter().any(|i| !i.checked);
+                            let signal = if has_unchecked {
+                                crate::Signal::GoWork
+                            } else {
+                                crate::Signal::Done
+                            };
+                            
+                            if let Err(e) = self.session().set_signal(signal).await {
+                                return format!("Checklist item '{}' checked state updated to {} but error setting signal: {}", id, checked, e);
+                            }
+                            
+                            format!("Checklist item '{}' checked state updated to {}", id, checked)
+                        }
                         Err(e) => format!("Error updating task: {e}"),
                     }
                 } else {
@@ -467,7 +481,13 @@ pub trait PlannerMcpImpl: CommonMcpImpl {
         match (self.session().get_description().await, self.session().get_checklist().await) {
             (Ok(desc), Ok(items)) => {
                 match self.session().update_plan(&desc, plan, &items).await {
-                    Ok(()) => "Plan posted/updated".to_string(),
+                    Ok(()) => {
+                        // Set signal to go_work after posting plan
+                        if let Err(e) = self.session().set_signal(crate::Signal::GoWork).await {
+                            return format!("Plan posted but error setting signal: {e}");
+                        }
+                        "Plan posted/updated".to_string()
+                    }
                     Err(e) => format!("Error updating task: {e}"),
                 }
             }
@@ -575,7 +595,13 @@ pub trait WorkerMcpImpl: CommonMcpImpl {
         }
         
         match self.session().add_label(Label::Question).await {
-            Ok(()) => "Question posted and label set".to_string(),
+            Ok(()) => {
+                // Set signal to go_ask after posting question
+                if let Err(e) = self.session().set_signal(crate::Signal::GoAsk).await {
+                    return format!("Question posted and label set but error setting signal: {e}");
+                }
+                "Question posted and label set".to_string()
+            }
             Err(e) => format!("Message posted but error setting label: {e}"),
         }
     }

@@ -40,6 +40,7 @@ impl Default for StubState {
                 done: false,
                 labels: vec![],
                 checklist: vec![],
+                signal: None,
             },
         );
 
@@ -115,6 +116,7 @@ impl Backend for StubBackend {
             done: false,
             labels: vec![],
             checklist: vec![],
+            signal: None,
         };
         state.tasks.insert(id, task);
         Ok(id)
@@ -180,6 +182,16 @@ impl Backend for StubBackend {
                 task.done = false;
             }
             task.labels.retain(|l| l != &label);
+            Ok(())
+        } else {
+            Err(ZbobrError::Other(format!("Task {id} not found")))
+        }
+    }
+
+    async fn set_task_signal(&self, id: u64, signal: Option<crate::Signal>) -> Result<(), ZbobrError> {
+        let mut state = self.state.write().unwrap();
+        if let Some(task) = state.tasks.get_mut(&id) {
+            task.signal = signal;
             Ok(())
         } else {
             Err(ZbobrError::Other(format!("Task {id} not found")))
