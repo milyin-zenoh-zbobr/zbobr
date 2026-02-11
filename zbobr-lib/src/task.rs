@@ -342,6 +342,13 @@ impl TaskSession {
         Ok(task.description)
     }
 
+    /// Update the task description.
+    pub async fn update_description(&self, description: &str) -> Result<(), ZbobrError> {
+        self.zbobr
+            .update_task_description(self.task_id, description)
+            .await
+    }
+
     /// Get all discussion messages on the task.
     pub async fn get_discussion(&self) -> Result<Vec<String>, ZbobrError> {
         self.zbobr.get_task_comments(self.task_id).await
