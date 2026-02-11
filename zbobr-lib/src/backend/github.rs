@@ -246,8 +246,8 @@ impl Backend for GitHubBackend {
             .filter_map(|l| l.name.parse::<Label>().ok())
             .collect();
 
-        // Extract checklist from description
-        let (description, checklist) = super::parse_description_with_checklist(&body);
+        // Extract plan and checklist from description
+        let (description, plan, checklist) = super::parse_description_with_plan_and_checklist(&body);
 
         // Discussion is not fetched by default for performance in listings,
         // but for a single get_task we could.
@@ -257,6 +257,7 @@ impl Backend for GitHubBackend {
             id: issue.number,
             title: issue.title,
             description,
+            plan,
             discussion: vec![],
             stage,
             tool,
@@ -403,14 +404,12 @@ impl Backend for GitHubBackend {
     }
 
     async fn update_task_description(&self, id: u64, description: &str) -> Result<(), ZbobrError> {
-        use crate::backend::strip_checklist_from_description;
         let (owner, repo) = self.parse_repo()?;
-        // Ensure description doesn't contain checklist marker when storing
-        let clean_description = strip_checklist_from_description(description);
+        // Just store the description as-is, it should be pre-formatted by the caller
         self.octocrab
             .patch(
                 format!("/repos/{owner}/{repo}/issues/{id}"),
-                Some(&serde_json::json!({ "body": clean_description })),
+                Some(&serde_json::json!({ "body": description })),
             )
             .await
             .map(|_: serde_json::Value| ())?;
@@ -493,13 +492,14 @@ impl Backend for GitHubBackend {
                 .filter_map(|l| l.name.parse::<Label>().ok())
                 .collect();
 
-            // Extract checklist from description
-            let (description, checklist) = super::parse_description_with_checklist(&body);
+            // Extract plan and checklist from description
+            let (description, plan, checklist) = super::parse_description_with_plan_and_checklist(&body);
 
             tasks.push(Task {
                 id: issue.number,
                 title: issue.title,
                 description,
+                plan,
                 discussion: vec![],
                 stage,
                 tool: task_tool,

@@ -334,6 +334,7 @@ pub struct Task {
     pub id: u64,
     pub title: String,
     pub description: String,
+    pub plan: String,
     pub discussion: Vec<String>,
     pub stage: Stage,
     pub tool: Option<Tool>,
@@ -400,10 +401,25 @@ impl TaskSession {
         Ok(task.description)
     }
 
+    /// Get the current task plan.
+    pub async fn get_plan(&self) -> Result<String, ZbobrError> {
+        let task = self.zbobr.get_task(self.task_id).await?;
+        Ok(task.plan)
+    }
+
     /// Get the current task checklist.
     pub async fn get_checklist(&self) -> Result<Vec<ChecklistItem>, ZbobrError> {
         let task = self.zbobr.get_task(self.task_id).await?;
         Ok(task.checklist)
+    }
+
+    /// Update the task plan.
+    pub async fn update_plan(&self, description: &str, plan: &str, checklist: &[ChecklistItem]) -> Result<(), ZbobrError> {
+        use crate::backend::serialize_description_with_plan_and_checklist;
+        let description_with_plan_and_checklist = serialize_description_with_plan_and_checklist(description, plan, checklist);
+        self.zbobr
+            .update_task_description(self.task_id, &description_with_plan_and_checklist)
+            .await
     }
 
     /// Update the task description and checklist separately.
@@ -674,6 +690,7 @@ mod tests {
             id: 42,
             title: "Test task".to_string(),
             description: "Do something".to_string(),
+            plan: String::new(),
             discussion: vec!["Hello".to_string()],
             stage: Stage::Planning,
             tool: Some(Tool::Claude),

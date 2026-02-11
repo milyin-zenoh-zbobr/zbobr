@@ -8,22 +8,30 @@ use async_trait::async_trait;
 use crate::{Label, Model, Stage, Task, Tool, ZbobrError};
 use crate::task::ChecklistItem;
 
-// -- Checklist parsing and serialization helpers --
+// -- Plan and Checklist parsing and serialization helpers --
 
+const PLAN_SEPARATOR: &str = "\n---PLAN---\n";
 const CHECKLIST_SEPARATOR: &str = "\n---CHECKLIST---\n";
 
-/// Parse a task description, separating the original description from the checklist.
-/// Returns (original_description, checklist_items).
-pub fn parse_description_with_checklist(description: &str) -> (String, Vec<ChecklistItem>) {
-    let parts: Vec<&str> = description.split(CHECKLIST_SEPARATOR).collect();
-    if parts.len() < 2 {
-        // No checklist section
-        return (description.to_string(), Vec::new());
-    }
-
-    let original = parts[0].to_string();
-    let checklist_text = parts[1];
+/// Parse a task description into (description, plan, checklist).
+/// Format: description | ---PLAN--- | plan text | ---CHECKLIST--- | checklist
+pub fn parse_description_with_plan_and_checklist(full_text: &str) -> (String, String, Vec<ChecklistItem>) {
+    // First split by checklist
+    let parts: Vec<&str> = full_text.split(CHECKLIST_SEPARATOR).collect();
     
+    let (desc_and_plan, checklist_text) = match parts.len() {
+        1 => (parts[0], ""),
+        _ => (parts[0], parts[1]),
+    };
+    
+    // Now split desc_and_plan by plan separator
+    let plan_parts: Vec<&str> = desc_and_plan.split(PLAN_SEPARATOR).collect();
+    let (description, plan) = match plan_parts.len() {
+        1 => (plan_parts[0].to_string(), String::new()),
+        _ => (plan_parts[0].to_string(), plan_parts[1].trim().to_string()),
+    };
+    
+    // Parse checklist items
     let mut items = Vec::new();
     for line in checklist_text.lines() {
         let line = line.trim();
@@ -48,7 +56,22 @@ pub fn parse_description_with_checklist(description: &str) -> (String, Vec<Check
         }
     }
     
-    (original, items)
+    (description, plan, items)
+}
+
+/// Parse a task description, separating the original description from the checklist.
+/// Returns (original_description, checklist_items).
+/// This function now also strips the plan section automatically.
+pub fn parse_description_with_checklist(description: &str) -> (String, Vec<ChecklistItem>) {
+    let (desc, _, items) = parse_description_with_plan_and_checklist(description);
+    (desc, items)
+}
+
+/// Extract the original description, removing any existing plan and checklist sections.
+/// This ensures no duplicate separators in the description.
+pub fn strip_plan_and_checklist_from_description(description: &str) -> String {
+    let (original, _, _) = parse_description_with_plan_and_checklist(description);
+    original
 }
 
 /// Extract the original description, removing any existing checklist section.
@@ -58,25 +81,49 @@ pub fn strip_checklist_from_description(description: &str) -> String {
     original
 }
 
-/// Serialize checklist items back into the full description format.
-/// If the description contains an existing checklist, it will be replaced with the new one.
-pub fn serialize_description_with_checklist(original_description: &str, items: &[ChecklistItem]) -> String {
-    // Ensure the description doesn't contain checklist marker
-    let clean_description = strip_checklist_from_description(original_description);
-    
-    if items.is_empty() {
-        return clean_description;
-    }
+/// Extract the plan from a full description text.
+/// Returns an empty string if no plan section exists.
+pub fn extract_plan(full_text: &str) -> String {
+    let (_, plan, _) = parse_description_with_plan_and_checklist(full_text);
+    plan
+}
+
+/// Serialize description, plan and checklist items back into the full format.
+/// Format: description | ---PLAN--- | plan | ---CHECKLIST--- | checklist
+pub fn serialize_description_with_plan_and_checklist(
+    original_description: &str,
+    plan: &str,
+    items: &[ChecklistItem],
+) -> String {
+    // Strip both plan and checklist from the description first
+    let clean_description = strip_plan_and_checklist_from_description(original_description);
     
     let mut result = clean_description;
-    result.push_str(CHECKLIST_SEPARATOR);
     
-    for item in items {
-        let checkbox = if item.checked { "x" } else { " " };
-        result.push_str(&format!("- [{}] {}: {}\n", checkbox, item.id, item.text));
+    // Add plan if present
+    if !plan.is_empty() {
+        result.push_str(PLAN_SEPARATOR);
+        result.push_str(plan);
+    }
+    
+    // Add checklist if present
+    if !items.is_empty() {
+        result.push_str(CHECKLIST_SEPARATOR);
+        for item in items {
+            let checkbox = if item.checked { "x" } else { " " };
+            result.push_str(&format!("- [{}] {}: {}\n", checkbox, item.id, item.text));
+        }
     }
     
     result
+}
+
+/// Serialize checklist items back into the full description format.
+/// If the description contains an existing checklist, it will be replaced with the new one.
+pub fn serialize_description_with_checklist(original_description: &str, items: &[ChecklistItem]) -> String {
+    // Keep any existing plan, only replace checklist
+    let current_plan = extract_plan(original_description);
+    serialize_description_with_plan_and_checklist(original_description, &current_plan, items)
 }
 
 #[allow(clippy::too_many_arguments)]

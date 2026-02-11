@@ -173,6 +173,8 @@ mcp_tools! {
     planner_tools,
     GET_DESCRIPTION = "get_description",
     GET_DISCUSSION = "get_discussion",
+    GET_PLAN = "get_plan",
+    POST_PLAN = "post_plan",
     POST_MESSAGE = "post_message",
     PULL_BRANCH = "pull_branch",
     PULL_BRANCH_BY_PR = "pull_branch_by_pr",
@@ -187,6 +189,7 @@ mcp_tools! {
     worker_tools,
     GET_DESCRIPTION = "get_description",
     GET_DISCUSSION = "get_discussion",
+    GET_PLAN = "get_plan",
     POST_MESSAGE = "post_message",
     POST_QUESTION = "post_question",
     CREATE_BRANCH_NAME = "create_branch_name",
@@ -225,7 +228,8 @@ Investigate a task and create an implementation plan.
 
 You can access the internet and run local commands. Your restrictions:
 - Do NOT run git clone/pull/fetch — use `{pull_branch}` or `{pull_branch_by_pr}` instead
-- Use MCP `{post_message}` to communicate results (plans, questions)
+- Use MCP `{post_plan}` to post the implementation plan
+- Use MCP `{post_message}` to communicate results and questions
 - For reading GitHub data: use `git` and `gh` CLI only when no MCP tool provides the needed information
 - NEVER use git/gh for writing, pushing, or sending data to GitHub
 
@@ -240,21 +244,18 @@ Work autonomously. Do not ask the user for anything.
    - `{pull_branch_by_pr}` — shortcut: if the task mentions a PR, pull it directly without reading the PR to find its branch
 4. Explore the codebase, understand the problem
 5. Design a solution — focus on what and why, not detailed how
-6. **REQUIRED**: Call `{post_message}` with your implementation plan in markdown, and **REQUIRED**: use the plan format below with individual checkbox items for each implementation step
+6. **REQUIRED**: Call `{post_plan}` with your implementation plan in markdown
 
-The plan is posted as a task comment. The worker agent will later retrieve it from the discussion.
+The plan is stored as a separate field in the task (between description and checklist). The worker agent will later retrieve it using `{get_plan}`.
 
 ## Plan Format
 
-Post as markdown with sections: Overview, Changes Required (by repo/file), Testing Strategy, Risks, and include a checklist of implementation steps in the following format:
-
-```
----CHECKLIST---
-- [ ] item-id-1: First implementation step
-- [ ] item-id-2: Second implementation step
-```"#,
+Post markdown with sections: Overview, Changes Required (by repo/file), Testing Strategy, Risks.
+You can also create checklist items separately if needed using the checklist operations."#,
         get_description = planner_tools::GET_DESCRIPTION,
         get_discussion = planner_tools::GET_DISCUSSION,
+        get_plan = planner_tools::GET_PLAN,
+        post_plan = planner_tools::POST_PLAN,
         post_message = planner_tools::POST_MESSAGE,
         pull_branch = planner_tools::PULL_BRANCH,
         pull_branch_by_pr = planner_tools::PULL_BRANCH_BY_PR,
@@ -283,24 +284,26 @@ Work autonomously. Do not ask the user for anything.
 ## Workflow
 
 1. Call `{get_description}` to read the task
-2. Call `{get_discussion}` to retrieve the approved implementation plan (posted by the planner)
-3. Set up the repository using one of:
+2. Call `{get_plan}` to retrieve the approved implementation plan (posted by the planner)
+3. Call `{get_discussion}` if you need additional context from comments
+4. Set up the repository using one of:
    - `{pull_branch}` — pull any branch of any repository you need (forks automatically for write access)
    - `{pull_branch_by_pr}` — shortcut: if the task mentions a PR, pull it directly without reading the PR to find its branch
-4. `cd` into the returned path and implement the plan
-5. **REQUIRED**: Create a branch using `git checkout -b <name>` where `<name>` **must** come from `{create_branch_name}` (e.g. with short_name="implementation"). Do NOT use arbitrary branch names.
-6. Commit changes locally with clear messages
-7. Call `{push_branch_and_create_pr}` with local path and destination branch — this pushes to the fork and creates a PR within the fork
+5. `cd` into the returned path and implement the plan
+6. **REQUIRED**: Create a branch using `git checkout -b <name>` where `<name>` **must** come from `{create_branch_name}` (e.g. with short_name="implementation"). Do NOT use arbitrary branch names.
+7. Commit changes locally with clear messages
+8. Call `{push_branch_and_create_pr}` with local path and destination branch — this pushes to the fork and creates a PR within the fork
    - Or call `{push_branch}` if you only need to push without creating a PR
-8. When you complete implementation steps:
+9. When you complete implementation steps:
    - Update all checklist items to checked state as you complete them
    - Call `{post_message}` to summarize what was accomplished
    - When your session ends, if all checklist items are checked, the 'done' label will be automatically set
-9. If there are issues requiring user intervention:
-   - Call `{post_message}` to describe the problem
-   - Call `{post_question}` to post a question and set the 'question' label on the task"#,
+10. If there are issues requiring user intervention:
+    - Call `{post_message}` to describe the problem
+    - Call `{post_question}` to post a question and set the 'question' label on the task"#,
         get_description = worker_tools::GET_DESCRIPTION,
         get_discussion = worker_tools::GET_DISCUSSION,
+        get_plan = worker_tools::GET_PLAN,
         post_message = worker_tools::POST_MESSAGE,
         create_branch_name = worker_tools::CREATE_BRANCH_NAME,
         pull_branch = worker_tools::PULL_BRANCH,
@@ -425,6 +428,29 @@ impl PlannerMcp {
         {
             Ok(()) => "Message posted".to_string(),
             Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    #[tool(description = "Get the current implementation plan for this task")]
+    async fn get_plan(&self) -> String {
+        tracing::info!("[planner#{}] get_plan", self.session.task_id());
+        match self.session.get_plan().await {
+            Ok(plan) => plan,
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    #[tool(description = "Post or replace the implementation plan for this task")]
+    async fn post_plan(&self, Parameters(params): Parameters<DescriptionParam>) -> String {
+        tracing::info!("[planner#{}] post_plan", self.session.task_id());
+        match (self.session.get_description().await, self.session.get_checklist().await) {
+            (Ok(desc), Ok(items)) => {
+                match self.session.update_plan(&desc, &params.description, &items).await {
+                    Ok(()) => "Plan posted/updated".to_string(),
+                    Err(e) => format!("Error updating task: {e}"),
+                }
+            }
+            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
         }
     }
 
@@ -692,6 +718,15 @@ impl WorkerMcp {
         match self.session.add_label(Label::Question).await {
             Ok(()) => "Question posted and label set".to_string(),
             Err(e) => format!("Message posted but error setting label: {e}"),
+        }
+    }
+
+    #[tool(description = "Get the current implementation plan for this task")]
+    async fn get_plan(&self) -> String {
+        tracing::info!("[worker#{}] get_plan", self.session.task_id());
+        match self.session.get_plan().await {
+            Ok(plan) => plan,
+            Err(e) => format!("Error: {e}"),
         }
     }
 
@@ -1386,4 +1421,73 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].id, "new1");
         assert_eq!(items[0].text, "New item");
-    }}
+    }
+
+    #[test]
+    fn test_plan_parsing_and_serialization() {
+        use crate::backend::{parse_description_with_plan_and_checklist, serialize_description_with_plan_and_checklist, extract_plan};
+        
+        // Test with no plan or checklist
+        let desc = "This is a task description";
+        let (original, plan, items) = parse_description_with_plan_and_checklist(desc);
+        assert_eq!(original, desc);
+        assert_eq!(plan, "");
+        assert!(items.is_empty());
+
+        // Test with plan and checklist
+        let full_text = "Task description\n---PLAN---\nImplementation plan here\n---CHECKLIST---\n- [ ] item1: First item\n- [x] item2: Done item\n";
+        let (original, plan, items) = parse_description_with_plan_and_checklist(full_text);
+        assert_eq!(original, "Task description");
+        assert_eq!(plan, "Implementation plan here");
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].id, "item1");
+        assert!(!items[0].checked);
+        assert_eq!(items[1].id, "item2");
+        assert!(items[1].checked);
+
+        // Test extract_plan function
+        let extracted_plan = extract_plan(full_text);
+        assert_eq!(extracted_plan, "Implementation plan here");
+
+        // Test serialization
+        let serialized = serialize_description_with_plan_and_checklist(&original, &plan, &items);
+        assert!(serialized.contains("Task description"));
+        assert!(serialized.contains("---PLAN---"));
+        assert!(serialized.contains("Implementation plan here"));
+        assert!(serialized.contains("---CHECKLIST---"));
+        assert!(serialized.contains("- [ ] item1: First item"));
+        assert!(serialized.contains("- [x] item2: Done item"));
+
+        // Test round-trip
+        let (original2, plan2, items2) = parse_description_with_plan_and_checklist(&serialized);
+        assert_eq!(original, original2);
+        assert_eq!(plan, plan2);
+        assert_eq!(items.len(), items2.len());
+        for (item1, item2) in items.iter().zip(items2.iter()) {
+            assert_eq!(item1.id, item2.id);
+            assert_eq!(item1.text, item2.text);
+            assert_eq!(item1.checked, item2.checked);
+        }
+    }
+
+    #[test]
+    fn test_plan_replacement() {
+        use crate::backend::{parse_description_with_plan_and_checklist, serialize_description_with_plan_and_checklist};
+        
+        // Test replacing an existing plan
+        let old_full = "Task description\n---PLAN---\nOld plan\n---CHECKLIST---\n- [ ] item1: Item\n";
+        let new_plan = "New implementation plan";
+        let (desc, _, items) = parse_description_with_plan_and_checklist(old_full);
+        
+        let serialized = serialize_description_with_plan_and_checklist(&desc, &new_plan, &items);
+        assert!(serialized.contains("New implementation plan"));
+        assert!(!serialized.contains("Old plan"));
+        assert!(serialized.contains("- [ ] item1: Item"));
+        
+        // Verify it parses correctly
+        let (parsed_desc, parsed_plan, parsed_items) = parse_description_with_plan_and_checklist(&serialized);
+        assert_eq!(parsed_desc, "Task description");
+        assert_eq!(parsed_plan, "New implementation plan");
+        assert_eq!(parsed_items.len(), 1);
+    }
+}
