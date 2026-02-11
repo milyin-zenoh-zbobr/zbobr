@@ -585,23 +585,21 @@ async fn run_role_session(
         }
     };
 
-    // On exit, check if all checklist items are completed and set done label if so
+    // On exit, check if all checklist items are completed and set done signal if so
     let task = zbobr.get_task(task_id).await?;
     if !task.checklist.is_empty() && task.checklist.iter().all(|item| item.checked) {
-        // All checklist items are checked - set the done label
-        if let Err(e) = zbobr.add_task_label(task_id, zbobr_lib::Label::Done).await {
-            tracing::warn!("Failed to set done label on task #{}: {}", task_id, e);
+        // All checklist items are checked - set the done signal
+        if let Err(e) = zbobr.set_task_signal(task_id, Some(zbobr_lib::Signal::Done)).await {
+            tracing::warn!("Failed to set done signal on task #{}: {}", task_id, e);
         } else {
-            tracing::info!("All checklist items checked - set done label on task #{}", task_id);
+            tracing::info!("All checklist items checked - set done signal on task #{}", task_id);
         }
     }
 
-    // Set stage based on labels (refetch task to get updated labels)
+    // Set stage based on signal (refetch task to get updated signal)
     let task = zbobr.get_task(task_id).await?;
-    let has_done_or_question = task.labels.contains(&zbobr_lib::Label::Done) 
-        || task.labels.contains(&zbobr_lib::Label::Question);
-    
-    let final_stage = if has_done_or_question {
+    let final_stage = if task.signal.is_some() {
+        // If any signal is set, transition to Pending
         Stage::Pending
     } else {
         Stage::GoWorking

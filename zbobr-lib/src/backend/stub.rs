@@ -7,7 +7,7 @@ use std::{
 use async_trait::async_trait;
 
 use super::Backend;
-use crate::{Label, Model, Stage, Task, Tool, ZbobrError};
+use crate::{Model, Stage, Task, Tool, ZbobrError};
 
 #[derive(Debug)]
 struct StubState {
@@ -38,7 +38,6 @@ impl Default for StubState {
                 destination_repo: None,
                 destination_branch: None,
                 done: false,
-                labels: vec![],
                 checklist: vec![],
                 signal: None,
             },
@@ -114,7 +113,6 @@ impl Backend for StubBackend {
             destination_repo,
             destination_branch,
             done: false,
-            labels: vec![],
             checklist: vec![],
             signal: None,
         };
@@ -154,34 +152,6 @@ impl Backend for StubBackend {
                 None => return Err(ZbobrError::Other(format!("Unknown stage {stage_name}"))),
             };
             task.stage = stage;
-            Ok(())
-        } else {
-            Err(ZbobrError::Other(format!("Task {id} not found")))
-        }
-    }
-
-    async fn add_task_label(&self, id: u64, label: Label) -> Result<(), ZbobrError> {
-        let mut state = self.state.write().unwrap();
-        if let Some(task) = state.tasks.get_mut(&id) {
-            if label == Label::Done {
-                task.done = true;
-            }
-            if !task.labels.contains(&label) {
-                task.labels.push(label);
-            }
-            Ok(())
-        } else {
-            Err(ZbobrError::Other(format!("Task {id} not found")))
-        }
-    }
-
-    async fn remove_task_label(&self, id: u64, label: Label) -> Result<(), ZbobrError> {
-        let mut state = self.state.write().unwrap();
-        if let Some(task) = state.tasks.get_mut(&id) {
-            if label == Label::Done {
-                task.done = false;
-            }
-            task.labels.retain(|l| l != &label);
             Ok(())
         } else {
             Err(ZbobrError::Other(format!("Task {id} not found")))
@@ -387,8 +357,11 @@ impl Backend for StubBackend {
 
         // Initialize labels
         state.labels.clear();
-        state.labels.insert(Label::Done.as_str().to_string());
-        state.labels.insert(Label::Question.as_str().to_string());
+
+        // Add signal labels
+        for signal in crate::Signal::all() {
+            state.labels.insert(signal.as_str().to_string());
+        }
 
         // Add tool labels
         for tool in Tool::all() {

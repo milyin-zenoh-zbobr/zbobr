@@ -1,4 +1,4 @@
-use crate::{backend::parse_description_with_plan_and_checklist, Label, Stage, Task, Zbobr, ZbobrError};
+use crate::{backend::parse_description_with_plan_and_checklist, Signal, Stage, Task, Zbobr, ZbobrError};
 
 #[derive(Debug, serde::Deserialize)]
 struct IssueResponse {
@@ -57,14 +57,15 @@ impl Zbobr {
             .iter()
             .find_map(|l| l.name.strip_prefix("copilot:").map(String::from));
 
-        let done = issue.labels.iter().any(|l| l.name == Label::Done.as_str());
+        // Check if 'done' signal is present
+        let done = issue.labels.iter().any(|l| l.name == Signal::Done.as_str());
 
-        // Extract and parse labels
-        let labels: Vec<Label> = issue
+        // Extract signal from labels (highest priority wins)
+        let signal = issue
             .labels
             .iter()
-            .filter_map(|l| l.name.parse::<Label>().ok())
-            .collect();
+            .filter_map(|l| l.name.parse::<Signal>().ok())
+            .min(); // min() because lower enum value = higher priority
 
         // Extract plan and checklist from description
         let body_str = issue.body.unwrap_or_default();
@@ -83,8 +84,8 @@ impl Zbobr {
             destination_repo: None,
             destination_branch: None,
             done,
-            labels,
             checklist,
+            signal,
         })
     }
 
@@ -234,14 +235,16 @@ impl Zbobr {
                 .labels
                 .iter()
                 .find_map(|l| l.name.strip_prefix("copilot:").map(String::from));
-            let done = issue.labels.iter().any(|l| l.name == Label::Done.as_str());
+            
+            // Check if 'done' signal is present
+            let done = issue.labels.iter().any(|l| l.name == Signal::Done.as_str());
 
-            // Extract and parse labels
-            let labels: Vec<Label> = issue
+            // Extract signal from labels (highest priority wins)
+            let signal = issue
                 .labels
                 .iter()
-                .filter_map(|l| l.name.parse::<Label>().ok())
-                .collect();
+                .filter_map(|l| l.name.parse::<Signal>().ok())
+                .min(); // min() because lower enum value = higher priority
 
             // Extract checklist from description
             let body_str = issue.body.unwrap_or_default();
@@ -251,6 +254,7 @@ impl Zbobr {
                 id: issue.number,
                 title: issue.title,
                 description,
+                plan: String::new(),
                 discussion: vec![],
                 stage,
                 tool: None,
@@ -259,8 +263,8 @@ impl Zbobr {
                 destination_repo: None,
                 destination_branch: None,
                 done,
-                labels,
                 checklist,
+                signal,
             });
         }
         Ok(tasks)

@@ -12,7 +12,7 @@ use rmcp::{
 use serde_json::Value;
 
 use crate::{
-    task::{Label, Model, ChecklistItem, Role, Stage, TaskSession, Tool},
+    task::{Model, ChecklistItem, Role, Stage, TaskSession, Tool},
     Zbobr,
 };
 
@@ -113,12 +113,6 @@ pub struct SetStageParam {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-pub struct LabelParam {
-    pub id: u64,
-    pub label: String,
-}
-
-#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct StageParam {
     #[schemars(description = "Stage name (e.g. PENDING, GO_PLANNING, etc.)")]
     pub stage: String,
@@ -208,8 +202,6 @@ mcp_tools! {
     GET_TASK = "get_task",
     UPDATE_TASK_DESCRIPTION = "update_task_description",
     SET_TASK_STAGE = "set_task_stage",
-    ADD_TASK_LABEL = "add_task_label",
-    REMOVE_TASK_LABEL = "remove_task_label",
     GET_DISCUSSION = "get_discussion",
     DEBUG_STATE = "debug_state",
 }
@@ -294,10 +286,9 @@ Work autonomously. Do not ask the user for anything.
 9. When you complete implementation steps:
    - Update all checklist items to checked state as you complete them
    - Call `{post_message}` to summarize what was accomplished
-   - When your session ends, if all checklist items are checked, the 'done' label will be automatically set
 10. If there are issues requiring user intervention:
     - Call `{post_message}` to describe the problem
-    - Call `{post_question}` to post a question and set the 'question' label on the task"#,
+    - Call `{post_question}` to post a question and request human input"#,
         get_description = worker_tools::GET_DESCRIPTION,
         get_discussion = worker_tools::GET_DISCUSSION,
         get_plan = worker_tools::GET_PLAN,
@@ -594,16 +585,11 @@ pub trait WorkerMcpImpl: CommonMcpImpl {
             return format!("Error posting message: {e}");
         }
         
-        match self.session().add_label(Label::Question).await {
-            Ok(()) => {
-                // Set signal to go_ask after posting question
-                if let Err(e) = self.session().set_signal(crate::Signal::GoAsk).await {
-                    return format!("Question posted and label set but error setting signal: {e}");
-                }
-                "Question posted and label set".to_string()
-            }
-            Err(e) => format!("Message posted but error setting label: {e}"),
+        // Set signal to go_ask after posting question
+        if let Err(e) = self.session().set_signal(crate::Signal::GoAsk).await {
+            return format!("Question posted but error setting signal: {e}");
         }
+        "Question posted and signal set".to_string()
     }
 
     async fn create_branch_name_impl(&self, short_name: &str) -> String {
@@ -1000,38 +986,6 @@ impl AdminMcp {
         {
             Ok(()) => format!("Stage updated to {}", params.stage),
             Err(e) => format!("Error: {e}"),
-        }
-    }
-
-    #[tool(description = "Add a label to a task")]
-    async fn add_task_label(&self, Parameters(params): Parameters<LabelParam>) -> String {
-        tracing::info!(
-            "[admin] add_task_label id={} label={}",
-            params.id,
-            params.label
-        );
-        match params.label.parse::<Label>() {
-            Ok(label) => match self.zbobr.add_task_label(params.id, label).await {
-                Ok(()) => format!("Label '{}' added", params.label),
-                Err(e) => format!("Error: {e}"),
-            },
-            Err(e) => format!("Invalid label '{}': {}", params.label, e),
-        }
-    }
-
-    #[tool(description = "Remove a label from a task")]
-    async fn remove_task_label(&self, Parameters(params): Parameters<LabelParam>) -> String {
-        tracing::info!(
-            "[admin] remove_task_label id={} label={}",
-            params.id,
-            params.label
-        );
-        match params.label.parse::<Label>() {
-            Ok(label) => match self.zbobr.remove_task_label(params.id, label).await {
-                Ok(()) => format!("Label '{}' removed", params.label),
-                Err(e) => format!("Error: {e}"),
-            },
-            Err(e) => format!("Invalid label '{}': {}", params.label, e),
         }
     }
 

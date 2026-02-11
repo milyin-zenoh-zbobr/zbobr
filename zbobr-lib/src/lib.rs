@@ -11,7 +11,7 @@ use std::{path::PathBuf, sync::Arc};
 
 pub use config::{TomlConfig, ZbobrConfig};
 pub use mcp::{planner_instructions, worker_instructions, PlannerMcp, WorkerMcp};
-pub use task::{Label, Model, ChecklistItem, Signal, Stage, Task, TaskSession, Tool};
+pub use task::{Model, ChecklistItem, Signal, Stage, Task, TaskSession, Tool};
 pub use tool_executor::{ClaudeExecutor, CopilotExecutor, StubExecutor, ToolExecutor};
 
 use crate::{
@@ -119,14 +119,6 @@ impl Zbobr {
         stage_name: &str,
     ) -> Result<(), ZbobrError> {
         self.backend.set_task_stage(id, stage_name).await
-    }
-
-    pub async fn add_task_label(&self, id: u64, label: Label) -> Result<(), ZbobrError> {
-        self.backend.add_task_label(id, label).await
-    }
-
-    pub async fn remove_task_label(&self, id: u64, label: Label) -> Result<(), ZbobrError> {
-        self.backend.remove_task_label(id, label).await
     }
 
     pub async fn set_task_signal(&self, id: u64, signal: Option<Signal>) -> Result<(), ZbobrError> {

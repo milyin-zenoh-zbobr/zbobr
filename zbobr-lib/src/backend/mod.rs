@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 
-use crate::{Label, Model, Signal, Stage, Task, Tool, ZbobrError};
+use crate::{Model, Signal, Stage, Task, Tool, ZbobrError};
 use crate::task::ChecklistItem;
 
 // -- Plan and Checklist parsing and serialization helpers --
@@ -163,12 +163,6 @@ pub trait Backend: Send + Sync {
 
     /// Set the stage on a task by stage name.
     async fn set_task_stage(&self, id: u64, stage_name: &str) -> Result<(), ZbobrError>;
-
-    /// Add an arbitrary label to a task.
-    async fn add_task_label(&self, id: u64, label: Label) -> Result<(), ZbobrError>;
-
-    /// Remove a label from a task.
-    async fn remove_task_label(&self, id: u64, label: Label) -> Result<(), ZbobrError>;
 
     /// Set or clear a signal on a task.
     async fn set_task_signal(&self, id: u64, signal: Option<Signal>) -> Result<(), ZbobrError>;

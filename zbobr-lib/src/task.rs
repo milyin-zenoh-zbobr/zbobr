@@ -97,17 +97,6 @@ impl std::str::FromStr for Role {
     }
 }
 
-/// Label for task status/state.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
-)]
-pub enum Label {
-    #[serde(rename = "done")]
-    Done,
-    #[serde(rename = "question")]
-    Question,
-}
-
 /// Signal for task flow control (mapped to labels in GitHub backend).
 /// Ordered by priority (highest to lowest).
 #[derive(
@@ -124,21 +113,6 @@ pub enum Signal {
     GoWork = 3,
     #[serde(rename = "go_plan")]
     GoPlan = 4,
-}
-
-impl Label {
-    /// Returns the label name as a string.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Label::Done => "done",
-            Label::Question => "question",
-        }
-    }
-
-    /// Returns all available labels.
-    pub fn all() -> &'static [Label] {
-        &[Label::Done, Label::Question]
-    }
 }
 
 impl Signal {
@@ -175,23 +149,6 @@ impl Signal {
             Signal::Stop | Signal::Done | Signal::GoAsk => Stage::Pending,
             Signal::GoWork => Stage::GoWorking,
             Signal::GoPlan => Stage::GoPlanning,
-        }
-    }
-}
-
-impl std::fmt::Display for Label {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl std::str::FromStr for Label {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "done" => Ok(Label::Done),
-            "question" => Ok(Label::Question),
-            _ => Err(format!("Unknown label: {}", s)),
         }
     }
 }
@@ -420,7 +377,6 @@ pub struct Task {
     pub destination_repo: Option<String>,
     pub destination_branch: Option<String>,
     pub done: bool,
-    pub labels: Vec<Label>,
     pub checklist: Vec<ChecklistItem>,
     pub signal: Option<Signal>,
 }
@@ -532,11 +488,6 @@ impl TaskSession {
         self.zbobr
             .post_task_comment(self.task_id, msg, role, hostname)
             .await
-    }
-
-    /// Add a label to the task.
-    pub async fn add_label(&self, label: Label) -> Result<(), ZbobrError> {
-        self.zbobr.add_task_label(self.task_id, label).await
     }
 
     /// Get the current signal on the task.
@@ -760,13 +711,11 @@ impl TaskSession {
         Ok(pr_url)
     }
 
-    /// Mark task as done (sets done flag and transitions to Pending).
+    /// Mark task as done (sets signal to Done and transitions to Pending).
     pub async fn mark_done(&self) -> Result<(), ZbobrError> {
+        self.set_signal(Signal::Done).await?;
         self.zbobr
             .set_task_stage(self.task_id, Stage::Pending)
-            .await?;
-        self.zbobr
-            .add_task_label(self.task_id, Label::Done)
             .await?;
         Ok(())
     }
@@ -814,7 +763,6 @@ mod tests {
             destination_branch: None,
             done: false,
             checklist: vec![],
-            labels: vec![],
             signal: None,
         };
         let json = serde_json::to_string(&task).unwrap();
