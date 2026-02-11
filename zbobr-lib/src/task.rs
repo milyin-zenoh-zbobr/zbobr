@@ -295,7 +295,6 @@ pub struct Task {
 #[derive(Debug, Clone)]
 struct TrackedRepo {
     repo: String,
-    branch: String,
     local_path: std::path::PathBuf,
 }
 
@@ -372,7 +371,6 @@ impl TaskSession {
             repo.to_string(),
             TrackedRepo {
                 repo: repo.to_string(),
-                branch: branch.to_string(),
                 local_path: path,
             },
         );
@@ -391,7 +389,6 @@ impl TaskSession {
             repo.to_string(),
             TrackedRepo {
                 repo: repo.to_string(),
-                branch: branch.to_string(),
                 local_path: path,
             },
         );
