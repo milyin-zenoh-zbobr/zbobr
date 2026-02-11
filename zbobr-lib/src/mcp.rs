@@ -176,7 +176,7 @@ const PLAN_SEPARATOR: &str = "\n---PLAN---\n";
 
 /// Parse a task description, separating the original description from the plan.
 /// Returns (original_description, plan_items).
-fn parse_description_with_plan(description: &str) -> (String, Vec<PlanItem>) {
+pub fn parse_description_with_plan(description: &str) -> (String, Vec<PlanItem>) {
     let parts: Vec<&str> = description.split(PLAN_SEPARATOR).collect();
     if parts.len() < 2 {
         // No plan section
@@ -364,8 +364,8 @@ Work autonomously. Do not ask the user for anything.
    - Or call `{push_branch}` if you only need to push without creating a PR
 8. When you complete implementation steps:
    - Update all plan items to checked state as you complete them
-   - When **all plan items are checked**, the 'done' label is automatically set
    - Call `{post_message}` to summarize what was accomplished
+   - When your session ends, if all plan items are checked, the 'done' label will be automatically set
 9. If there are issues requiring user intervention:
    - Call `{post_message}` to describe the problem
    - Call `{post_question}` to post a question and set the 'question' label on the task"#,
@@ -977,18 +977,7 @@ impl WorkerMcp {
                     let new_desc = serialize_description_with_plan(&original, &items);
                     match self.session.update_description(&new_desc).await {
                         Ok(()) => {
-                            let message = format!("Plan item '{}' checked state updated to {}", params.id, params.checked);
-                            
-                            // Check if all items are now checked
-                            if items.iter().all(|item| item.checked) && !items.is_empty() {
-                                // Auto-set the done label
-                                if let Err(e) = self.session.add_label(Label::Done).await {
-                                    return format!("{} (warning: could not set done label: {})", message, e);
-                                }
-                                format!("{} - All items checked, 'done' label set automatically", message)
-                            } else {
-                                message
-                            }
+                            format!("Plan item '{}' checked state updated to {}", params.id, params.checked)
                         },
                         Err(e) => format!("Error updating task: {e}"),
                     }
