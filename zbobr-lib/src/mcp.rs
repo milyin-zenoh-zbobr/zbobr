@@ -185,7 +185,8 @@ mcp_tools! {
     GET_DISCUSSION = "get_discussion",
     GET_PLAN = "get_plan",
     POST_MESSAGE = "post_message",
-    POST_QUESTION = "post_question",
+    ASK_USER = "ask_user",
+    ASK_PLANNER = "ask_planner",
     CREATE_BRANCH_NAME = "create_branch_name",
     PULL_BRANCH = "pull_branch",
     PULL_BRANCH_BY_PR = "pull_branch_by_pr",
@@ -264,7 +265,7 @@ You can access the internet and run local commands. Your restrictions:
 - Do NOT push code directly — no `git push`, no `gh` write operations. Use `{push_branch}` or `{push_branch_and_create_pr}` instead. Access rights are configured to prevent gh-based pushes anyway.
 - Do NOT run git clone/pull/fetch — use `{pull_branch}` or `{pull_branch_by_pr}` instead
 - Use MCP `{push_branch_and_create_pr}` to submit your work
-- Use MCP `{post_message}`, `{post_question}` to communicate results
+- Use MCP `{post_message}`, `{ask_user}`, `{ask_planner}` to communicate and request input
 - For reading GitHub data: use `git` and `gh` CLI only when no MCP tool provides the needed information
 - NEVER use git/gh for writing, pushing, or sending data to GitHub
 
@@ -286,9 +287,10 @@ Work autonomously. Do not ask the user for anything.
 9. When you complete implementation steps:
    - Update all checklist items to checked state as you complete them
    - Call `{post_message}` to summarize what was accomplished
-10. If there are issues requiring user intervention:
+10. If there are issues requiring user or planner intervention:
     - Call `{post_message}` to describe the problem
-    - Call `{post_question}` to post a question and request human input"#,
+    - Call `{ask_user}` to ask the user for input
+    - Call `{ask_planner}` to ask the planner for clarification"#,
         get_description = worker_tools::GET_DESCRIPTION,
         get_discussion = worker_tools::GET_DISCUSSION,
         get_plan = worker_tools::GET_PLAN,
@@ -298,7 +300,8 @@ Work autonomously. Do not ask the user for anything.
         pull_branch_by_pr = worker_tools::PULL_BRANCH_BY_PR,
         push_branch = worker_tools::PUSH_BRANCH,
         push_branch_and_create_pr = worker_tools::PUSH_BRANCH_AND_CREATE_PR,
-        post_question = worker_tools::POST_QUESTION,
+        ask_user = worker_tools::ASK_USER,
+        ask_planner = worker_tools::ASK_PLANNER,
     )
 }
 
@@ -580,8 +583,8 @@ pub trait PlannerMcpImpl: CommonMcpImpl {
 /// Worker-specific MCP implementations
 #[allow(async_fn_in_trait)]
 pub trait WorkerMcpImpl: CommonMcpImpl {
-    async fn post_question_impl(&self, message: &str) -> String {
-        tracing::info!("[worker#{}] post_question", self.session().task_id());
+    async fn ask_user_impl(&self, message: &str) -> String {
+        tracing::info!("[worker#{}] ask_user", self.session().task_id());
         let hostname = get_hostname();
         
         if let Err(e) = self.session().post_message(message, self.role().as_str(), &hostname).await {
@@ -593,6 +596,21 @@ pub trait WorkerMcpImpl: CommonMcpImpl {
             return format!("Question posted but error setting signal: {e}");
         }
         "Question posted and signal set".to_string()
+    }
+
+    async fn ask_planner_impl(&self, message: &str) -> String {
+        tracing::info!("[worker#{}] ask_planner", self.session().task_id());
+        let hostname = get_hostname();
+        
+        if let Err(e) = self.session().post_message(message, self.role().as_str(), &hostname).await {
+            return format!("Error posting message: {e}");
+        }
+        
+        // Set signal to go_plan after posting question to planner
+        if let Err(e) = self.session().set_signal(crate::Signal::GoPlan).await {
+            return format!("Message posted but error setting signal: {e}");
+        }
+        "Question posted to planner and signal set".to_string()
     }
 
     async fn create_branch_name_impl(&self, short_name: &str) -> String {
@@ -800,9 +818,14 @@ impl WorkerMcp {
         self.post_message_impl(&params.message).await
     }
 
-    #[tool(description = "Post a question to the task discussion and set the 'question' label")]
-    async fn post_question(&self, Parameters(params): Parameters<MessageParam>) -> String {
-        self.post_question_impl(&params.message).await
+    #[tool(description = "Ask the user a question and set the 'go_ask' signal")]
+    async fn ask_user(&self, Parameters(params): Parameters<MessageParam>) -> String {
+        self.ask_user_impl(&params.message).await
+    }
+
+    #[tool(description = "Ask the planner a question and set the 'go_plan' signal")]
+    async fn ask_planner(&self, Parameters(params): Parameters<MessageParam>) -> String {
+        self.ask_planner_impl(&params.message).await
     }
 
     #[tool(description = "Get the current implementation plan for this task")]
