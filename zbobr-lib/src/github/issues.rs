@@ -59,13 +59,22 @@ impl Zbobr {
 
         let done = issue.labels.iter().any(|l| l.name == "done");
 
+        // Extract all label names
+        let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
+
         Ok(Task {
             id: issue.number,
             title: issue.title,
             description: issue.body.unwrap_or_default(),
+            discussion: vec![],
             stage,
-            model,
+            tool: None,
+            model: None,
+            parent_task_id: None,
+            destination_repo: None,
+            destination_branch: None,
             done,
+            labels,
         })
     }
 
@@ -216,13 +225,23 @@ impl Zbobr {
                 .iter()
                 .find_map(|l| l.name.strip_prefix("copilot:").map(String::from));
             let done = issue.labels.iter().any(|l| l.name == "done");
+
+            // Extract all label names
+            let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
+
             tasks.push(Task {
                 id: issue.number,
                 title: issue.title,
                 description: issue.body.unwrap_or_default(),
+                discussion: vec![],
                 stage,
-                model,
+                tool: None,
+                model: None,
+                parent_task_id: None,
+                destination_repo: None,
+                destination_branch: None,
                 done,
+                labels,
             });
         }
         Ok(tasks)

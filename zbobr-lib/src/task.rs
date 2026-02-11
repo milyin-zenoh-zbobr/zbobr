@@ -286,6 +286,7 @@ pub struct Task {
     pub destination_repo: Option<String>,
     pub destination_branch: Option<String>,
     pub done: bool,
+    pub labels: Vec<String>,
 }
 
 /// Tracked repository information for a task session.
@@ -364,6 +365,11 @@ impl TaskSession {
         self.zbobr
             .post_task_comment(self.task_id, msg, role, hostname)
             .await
+    }
+
+    /// Add a label to the task.
+    pub async fn add_label(&self, label: &str) -> Result<(), ZbobrError> {
+        self.zbobr.add_task_label(self.task_id, label).await
     }
 
     /// Clone target repo and checkout specific branch (read-only, for planner).
@@ -601,6 +607,7 @@ mod tests {
             destination_repo: None,
             destination_branch: None,
             done: false,
+            labels: vec![],
         };
         let json = serde_json::to_string(&task).unwrap();
         let back: Task = serde_json::from_str(&json).unwrap();

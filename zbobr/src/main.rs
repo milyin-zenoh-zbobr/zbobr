@@ -585,12 +585,22 @@ async fn run_role_session(
         }
     };
 
-    // On exit, set stage to Pending
-    zbobr.set_task_stage(task_id, Stage::Pending).await?;
-    if execution_result {
-        tracing::info!("Session interrupted, task #{task_id} set to PENDING");
+    // On exit, set stage based on labels
+    let task = zbobr.get_task(task_id).await?;
+    let has_done_or_question = task.labels.contains(&"done".to_string()) 
+        || task.labels.contains(&"question".to_string());
+    
+    let final_stage = if has_done_or_question {
+        Stage::Pending
     } else {
-        tracing::info!("Session complete, task #{task_id} set to PENDING");
+        Stage::GoWorking
+    };
+    
+    zbobr.set_task_stage(task_id, final_stage).await?;
+    if execution_result {
+        tracing::info!("Session interrupted, task #{task_id} set to {:?}", final_stage);
+    } else {
+        tracing::info!("Session complete, task #{task_id} set to {:?}", final_stage);
     }
 
     // Shut down server

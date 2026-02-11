@@ -258,12 +258,12 @@ mcp_tools! {
     GET_DESCRIPTION = "get_description",
     GET_DISCUSSION = "get_discussion",
     POST_MESSAGE = "post_message",
+    POST_QUESTION = "post_question",
     CREATE_BRANCH_NAME = "create_branch_name",
     PULL_BRANCH = "pull_branch",
     PULL_BRANCH_BY_PR = "pull_branch_by_pr",
     PUSH_BRANCH = "push_branch",
     PUSH_BRANCH_AND_CREATE_PR = "push_branch_and_create_pr",
-    MARK_DONE = "mark_done",
     GET_PLAN = "get_plan",
     INSERT_PLAN_ITEM = "insert_plan_item",
     UPDATE_PLAN_ITEM = "update_plan_item",
@@ -310,13 +310,19 @@ Work autonomously. Do not ask the user for anything.
    - `{pull_branch_by_pr}` — shortcut: if the task mentions a PR, pull it directly without reading the PR to find its branch
 4. Explore the codebase, understand the problem
 5. Design a solution — focus on what and why, not detailed how
-6. **REQUIRED**: Call `{post_message}` with your implementation plan in markdown
+6. **REQUIRED**: Call `{post_message}` with your implementation plan in markdown, and **REQUIRED**: use the plan format below with individual checkbox items for each implementation step
 
 The plan is posted as a task comment. The worker agent will later retrieve it from the discussion.
 
 ## Plan Format
 
-Post as markdown with sections: Overview, Changes Required (by repo/file), Testing Strategy, Risks."#,
+Post as markdown with sections: Overview, Changes Required (by repo/file), Testing Strategy, Risks, and include a checklist of implementation steps in the following format:
+
+```
+---PLAN---
+- [ ] item-id-1: First implementation step
+- [ ] item-id-2: Second implementation step
+```"#,
         get_description = planner_tools::GET_DESCRIPTION,
         get_discussion = planner_tools::GET_DISCUSSION,
         post_message = planner_tools::POST_MESSAGE,
@@ -338,7 +344,7 @@ You can access the internet and run local commands. Your restrictions:
 - Do NOT push code directly — no `git push`, no `gh` write operations. Use `{push_branch}` or `{push_branch_and_create_pr}` instead. Access rights are configured to prevent gh-based pushes anyway.
 - Do NOT run git clone/pull/fetch — use `{pull_branch}` or `{pull_branch_by_pr}` instead
 - Use MCP `{push_branch_and_create_pr}` to submit your work
-- Use MCP `{post_message}`, `{mark_done}` to communicate results
+- Use MCP `{post_message}`, `{post_question}` to communicate results
 - For reading GitHub data: use `git` and `gh` CLI only when no MCP tool provides the needed information
 - NEVER use git/gh for writing, pushing, or sending data to GitHub
 
@@ -356,12 +362,13 @@ Work autonomously. Do not ask the user for anything.
 6. Commit changes locally with clear messages
 7. Call `{push_branch_and_create_pr}` with the local path and destination branch — this pushes to the fork and creates a PR within the fork
    - Or call `{push_branch}` if you only need to push without creating a PR
-8. If task is complete:
-   - Call `{post_message}` to summarize what was done
-   - Call `{mark_done}` to complete the task
+8. When you complete implementation steps:
+   - Update all plan items to checked state as you complete them
+   - When **all plan items are checked**, the 'done' label is automatically set
+   - Call `{post_message}` to summarize what was accomplished
 9. If there are issues requiring user intervention:
-   - Call `{post_message}` to describe the problem or question
-   - Do NOT call `{mark_done}` — leave the task open for the user"#,
+   - Call `{post_message}` to describe the problem
+   - Call `{post_question}` to post a question and set the 'question' label on the task"#,
         get_description = worker_tools::GET_DESCRIPTION,
         get_discussion = worker_tools::GET_DISCUSSION,
         post_message = worker_tools::POST_MESSAGE,
@@ -370,7 +377,7 @@ Work autonomously. Do not ask the user for anything.
         pull_branch_by_pr = worker_tools::PULL_BRANCH_BY_PR,
         push_branch = worker_tools::PUSH_BRANCH,
         push_branch_and_create_pr = worker_tools::PUSH_BRANCH_AND_CREATE_PR,
-        mark_done = worker_tools::MARK_DONE,
+        post_question = worker_tools::POST_QUESTION,
     )
 }
 
@@ -756,6 +763,27 @@ impl WorkerMcp {
         }
     }
 
+    #[tool(description = "Post a question to the task discussion and set the 'question' label")]
+    async fn post_question(&self, Parameters(params): Parameters<MessageParam>) -> String {
+        tracing::info!("[worker#{}] post_question", self.session.task_id());
+        let hostname = get_hostname();
+        
+        // Post the message
+        if let Err(e) = self
+            .session
+            .post_message(&params.message, Role::Worker.as_str(), &hostname)
+            .await
+        {
+            return format!("Error posting message: {e}");
+        }
+        
+        // Set the question label
+        match self.session.add_label("question").await {
+            Ok(()) => "Question posted and label set".to_string(),
+            Err(e) => format!("Message posted but error setting label: {e}"),
+        }
+    }
+
     #[tool(
         description = "Generate a branch name with the proper prefix for this task. Use the returned name with 'git checkout -b <name>' to create the branch locally."
     )]
@@ -837,15 +865,6 @@ impl WorkerMcp {
             .await
         {
             Ok(pr_url) => format!("PR created: {pr_url}"),
-            Err(e) => format!("Error: {e}"),
-        }
-    }
-
-    #[tool(description = "Mark this task as done")]
-    async fn mark_done(&self) -> String {
-        tracing::info!("[worker#{}] mark_done", self.session.task_id());
-        match self.session.mark_done().await {
-            Ok(()) => "Task marked as done".to_string(),
             Err(e) => format!("Error: {e}"),
         }
     }
@@ -957,7 +976,20 @@ impl WorkerMcp {
                     
                     let new_desc = serialize_description_with_plan(&original, &items);
                     match self.session.update_description(&new_desc).await {
-                        Ok(()) => format!("Plan item '{}' checked state updated to {}", params.id, params.checked),
+                        Ok(()) => {
+                            let message = format!("Plan item '{}' checked state updated to {}", params.id, params.checked);
+                            
+                            // Check if all items are now checked
+                            if items.iter().all(|item| item.checked) && !items.is_empty() {
+                                // Auto-set the done label
+                                if let Err(e) = self.session.add_label("done").await {
+                                    return format!("{} (warning: could not set done label: {})", message, e);
+                                }
+                                format!("{} - All items checked, 'done' label set automatically", message)
+                            } else {
+                                message
+                            }
+                        },
                         Err(e) => format!("Error updating task: {e}"),
                     }
                 } else {

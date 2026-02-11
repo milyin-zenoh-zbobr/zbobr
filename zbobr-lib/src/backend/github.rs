@@ -239,6 +239,9 @@ impl Backend for GitHubBackend {
 
         let done = issue.labels.iter().any(|l| l.name == "done");
 
+        // Extract all label names
+        let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
+
         // Discussion is not fetched by default for performance in listings,
         // but for a single get_task we could.
         // However, the trait has get_task_comments for that.
@@ -255,6 +258,7 @@ impl Backend for GitHubBackend {
             destination_repo,
             destination_branch,
             done,
+            labels,
         })
     }
 
@@ -471,6 +475,9 @@ impl Backend for GitHubBackend {
             let destination_branch = extract_hidden_field(&body, "destination_branch");
             let done = issue.labels.iter().any(|l| l.name == "done");
 
+            // Extract all label names
+            let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
+
             tasks.push(Task {
                 id: issue.number,
                 title: issue.title,
@@ -483,6 +490,7 @@ impl Backend for GitHubBackend {
                 destination_repo,
                 destination_branch,
                 done,
+                labels,
             });
         }
         Ok(tasks)
