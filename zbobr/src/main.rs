@@ -587,8 +587,7 @@ async fn run_role_session(
 
     // On exit, check if all plan items are completed and set done label if so
     let task = zbobr.get_task(task_id).await?;
-    let (_original, items) = zbobr_lib::mcp::parse_description_with_plan(&task.description);
-    if !items.is_empty() && items.iter().all(|item| item.checked) {
+    if !task.plan.is_empty() && task.plan.iter().all(|item| item.checked) {
         // All plan items are checked - set the done label
         if let Err(e) = zbobr.add_task_label(task_id, zbobr_lib::Label::Done).await {
             tracing::warn!("Failed to set done label on task #{}: {}", task_id, e);

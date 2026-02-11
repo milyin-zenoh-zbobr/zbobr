@@ -38,6 +38,7 @@ impl Default for StubState {
                 destination_branch: None,
                 done: false,
                 labels: vec![],
+                plan: vec![],
             },
         );
 
@@ -111,6 +112,7 @@ impl Backend for StubBackend {
             destination_branch,
             done: false,
             labels: vec![],
+            plan: vec![],
         };
         state.tasks.insert(id, task);
         Ok(id)

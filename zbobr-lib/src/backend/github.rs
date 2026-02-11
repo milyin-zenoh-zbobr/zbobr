@@ -246,6 +246,9 @@ impl Backend for GitHubBackend {
             .filter_map(|l| l.name.parse::<Label>().ok())
             .collect();
 
+        // Extract plan from description
+        let (description, plan) = super::parse_description_with_plan(&body);
+
         // Discussion is not fetched by default for performance in listings,
         // but for a single get_task we could.
         // However, the trait has get_task_comments for that.
@@ -253,7 +256,7 @@ impl Backend for GitHubBackend {
         Ok(Task {
             id: issue.number,
             title: issue.title,
-            description: body,
+            description,
             discussion: vec![],
             stage,
             tool,
@@ -263,6 +266,7 @@ impl Backend for GitHubBackend {
             destination_branch,
             done,
             labels,
+            plan,
         })
     }
 
@@ -486,10 +490,13 @@ impl Backend for GitHubBackend {
                 .filter_map(|l| l.name.parse::<Label>().ok())
                 .collect();
 
+            // Extract plan from description
+            let (description, plan) = super::parse_description_with_plan(&body);
+
             tasks.push(Task {
                 id: issue.number,
                 title: issue.title,
-                description: body,
+                description,
                 discussion: vec![],
                 stage,
                 tool: task_tool,
@@ -499,6 +506,7 @@ impl Backend for GitHubBackend {
                 destination_branch,
                 done,
                 labels,
+                plan,
             });
         }
         Ok(tasks)

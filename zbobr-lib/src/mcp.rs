@@ -12,7 +12,7 @@ use rmcp::{
 use serde_json::Value;
 
 use crate::{
-    task::{Label, Model, Role, Stage, TaskSession, Tool},
+    task::{Label, Model, PlanItem, Role, Stage, TaskSession, Tool},
     Zbobr,
 };
 
@@ -129,16 +129,6 @@ pub struct StageParam {
 // -- Plan parameter types --
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-pub struct PlanItem {
-    #[schemars(description = "Unique identifier for the plan item")]
-    pub id: String,
-    #[schemars(description = "Checkbox state (true = checked, false = unchecked)")]
-    pub checked: bool,
-    #[schemars(description = "Plan item text")]
-    pub text: String,
-}
-
-#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct InsertPlanItemParam {
     #[schemars(description = "Unique identifier for the new plan item")]
     pub id: String,
@@ -168,66 +158,6 @@ pub struct CheckPlanItemParam {
 pub struct DeletePlanItemParam {
     #[schemars(description = "ID of the plan item to delete")]
     pub id: String,
-}
-
-// -- Plan parsing and serialization helpers --
-
-const PLAN_SEPARATOR: &str = "\n---PLAN---\n";
-
-/// Parse a task description, separating the original description from the plan.
-/// Returns (original_description, plan_items).
-pub fn parse_description_with_plan(description: &str) -> (String, Vec<PlanItem>) {
-    let parts: Vec<&str> = description.split(PLAN_SEPARATOR).collect();
-    if parts.len() < 2 {
-        // No plan section
-        return (description.to_string(), Vec::new());
-    }
-
-    let original = parts[0].to_string();
-    let plan_text = parts[1];
-    
-    let mut items = Vec::new();
-    for line in plan_text.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        
-        // Parse checkbox format: - [ ] id: text or - [x] id: text
-        if let Some(rest) = line.strip_prefix("- [") {
-            if let Some(pos) = rest.find(']') {
-                let checkbox = &rest[..pos];
-                let checked = checkbox.trim() == "x" || checkbox.trim() == "X";
-                
-                let after_checkbox = rest[pos + 1..].trim();
-                if let Some(colon_pos) = after_checkbox.find(':') {
-                    let id = after_checkbox[..colon_pos].trim().to_string();
-                    let text = after_checkbox[colon_pos + 1..].trim().to_string();
-                    
-                    items.push(PlanItem { id, checked, text });
-                }
-            }
-        }
-    }
-    
-    (original, items)
-}
-
-/// Serialize plan items back into the full description format.
-fn serialize_description_with_plan(original_description: &str, items: &[PlanItem]) -> String {
-    if items.is_empty() {
-        return original_description.to_string();
-    }
-    
-    let mut result = original_description.to_string();
-    result.push_str(PLAN_SEPARATOR);
-    
-    for item in items {
-        let checkbox = if item.checked { "x" } else { " " };
-        result.push_str(&format!("- [{}] {}: {}\n", checkbox, item.id, item.text));
-    }
-    
-    result
 }
 
 macro_rules! mcp_tools {
@@ -460,14 +390,11 @@ impl PlannerMcp {
         }
     }
 
-    #[tool(description = "Get the current description/plan for this task (read-only)")]
+    #[tool(description = "Get the current description for this task (read-only)")]
     async fn get_description(&self) -> String {
         tracing::info!("[planner#{}] get_description", self.session.task_id());
         match self.session.get_description().await {
-            Ok(desc) => {
-                let (original, _plan) = parse_description_with_plan(&desc);
-                original
-            }
+            Ok(desc) => desc,
             Err(e) => format!("Error: {e}"),
         }
     }
@@ -539,9 +466,8 @@ impl PlannerMcp {
     #[tool(description = "Get the task plan as a list of checkbox items")]
     async fn get_plan(&self) -> String {
         tracing::info!("[planner#{}] get_plan", self.session.task_id());
-        match self.session.get_description().await {
-            Ok(desc) => {
-                let (_original, items) = parse_description_with_plan(&desc);
+        match self.session.get_plan().await {
+            Ok(items) => {
                 match serde_json::to_string_pretty(&items) {
                     Ok(json) => json,
                     Err(e) => format!("Error serializing plan: {e}"),
@@ -560,10 +486,8 @@ impl PlannerMcp {
             params.after_id
         );
         
-        match self.session.get_description().await {
-            Ok(desc) => {
-                let (original, mut items) = parse_description_with_plan(&desc);
-                
+        match (self.session.get_description().await, self.session.get_plan().await) {
+            (Ok(desc), Ok(mut items)) => {
                 // Check if ID already exists
                 if items.iter().any(|item| item.id == params.id) {
                     return format!("Error: Plan item with id '{}' already exists", params.id);
@@ -587,13 +511,12 @@ impl PlannerMcp {
                     items.push(new_item);
                 }
                 
-                let new_desc = serialize_description_with_plan(&original, &items);
-                match self.session.update_description(&new_desc).await {
+                match self.session.update_plan(&desc, &items).await {
                     Ok(()) => format!("Plan item '{}' inserted", params.id),
                     Err(e) => format!("Error updating task: {e}"),
                 }
             }
-            Err(e) => format!("Error: {e}"),
+            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
         }
     }
 
@@ -605,15 +528,12 @@ impl PlannerMcp {
             params.id
         );
         
-        match self.session.get_description().await {
-            Ok(desc) => {
-                let (original, mut items) = parse_description_with_plan(&desc);
-                
+        match (self.session.get_description().await, self.session.get_plan().await) {
+            (Ok(desc), Ok(mut items)) => {
                 if let Some(item) = items.iter_mut().find(|item| item.id == params.id) {
                     item.text = params.text.clone();
                     
-                    let new_desc = serialize_description_with_plan(&original, &items);
-                    match self.session.update_description(&new_desc).await {
+                    match self.session.update_plan(&desc, &items).await {
                         Ok(()) => format!("Plan item '{}' updated", params.id),
                         Err(e) => format!("Error updating task: {e}"),
                     }
@@ -621,7 +541,7 @@ impl PlannerMcp {
                     format!("Error: Plan item with id '{}' not found", params.id)
                 }
             }
-            Err(e) => format!("Error: {e}"),
+            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
         }
     }
 
@@ -634,15 +554,12 @@ impl PlannerMcp {
             params.checked
         );
         
-        match self.session.get_description().await {
-            Ok(desc) => {
-                let (original, mut items) = parse_description_with_plan(&desc);
-                
+        match (self.session.get_description().await, self.session.get_plan().await) {
+            (Ok(desc), Ok(mut items)) => {
                 if let Some(item) = items.iter_mut().find(|item| item.id == params.id) {
                     item.checked = params.checked;
                     
-                    let new_desc = serialize_description_with_plan(&original, &items);
-                    match self.session.update_description(&new_desc).await {
+                    match self.session.update_plan(&desc, &items).await {
                         Ok(()) => format!("Plan item '{}' checked state updated to {}", params.id, params.checked),
                         Err(e) => format!("Error updating task: {e}"),
                     }
@@ -650,7 +567,7 @@ impl PlannerMcp {
                     format!("Error: Plan item with id '{}' not found", params.id)
                 }
             }
-            Err(e) => format!("Error: {e}"),
+            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
         }
     }
 
@@ -662,10 +579,8 @@ impl PlannerMcp {
             params.id
         );
         
-        match self.session.get_description().await {
-            Ok(desc) => {
-                let (original, mut items) = parse_description_with_plan(&desc);
-                
+        match (self.session.get_description().await, self.session.get_plan().await) {
+            (Ok(desc), Ok(mut items)) => {
                 let original_len = items.len();
                 items.retain(|item| item.id != params.id);
                 
@@ -673,13 +588,12 @@ impl PlannerMcp {
                     return format!("Error: Plan item with id '{}' not found", params.id);
                 }
                 
-                let new_desc = serialize_description_with_plan(&original, &items);
-                match self.session.update_description(&new_desc).await {
+                match self.session.update_plan(&desc, &items).await {
                     Ok(()) => format!("Plan item '{}' deleted", params.id),
                     Err(e) => format!("Error updating task: {e}"),
                 }
             }
-            Err(e) => format!("Error: {e}"),
+            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
         }
     }
 }
@@ -722,14 +636,11 @@ impl WorkerMcp {
         }
     }
 
-    #[tool(description = "Get the current description/plan for this task")]
+    #[tool(description = "Get the current description for this task")]
     async fn get_description(&self) -> String {
         tracing::info!("[worker#{}] get_description", self.session.task_id());
         match self.session.get_description().await {
-            Ok(desc) => {
-                let (original, _plan) = parse_description_with_plan(&desc);
-                original
-            }
+            Ok(desc) => desc,
             Err(e) => format!("Error: {e}"),
         }
     }
@@ -872,9 +783,8 @@ impl WorkerMcp {
     #[tool(description = "Get the task plan as a list of checkbox items")]
     async fn get_plan(&self) -> String {
         tracing::info!("[worker#{}] get_plan", self.session.task_id());
-        match self.session.get_description().await {
-            Ok(desc) => {
-                let (_original, items) = parse_description_with_plan(&desc);
+        match self.session.get_plan().await {
+            Ok(items) => {
                 match serde_json::to_string_pretty(&items) {
                     Ok(json) => json,
                     Err(e) => format!("Error serializing plan: {e}"),
@@ -893,10 +803,8 @@ impl WorkerMcp {
             params.after_id
         );
         
-        match self.session.get_description().await {
-            Ok(desc) => {
-                let (original, mut items) = parse_description_with_plan(&desc);
-                
+        match (self.session.get_description().await, self.session.get_plan().await) {
+            (Ok(desc), Ok(mut items)) => {
                 // Check if ID already exists
                 if items.iter().any(|item| item.id == params.id) {
                     return format!("Error: Plan item with id '{}' already exists", params.id);
@@ -920,13 +828,12 @@ impl WorkerMcp {
                     items.push(new_item);
                 }
                 
-                let new_desc = serialize_description_with_plan(&original, &items);
-                match self.session.update_description(&new_desc).await {
+                match self.session.update_plan(&desc, &items).await {
                     Ok(()) => format!("Plan item '{}' inserted", params.id),
                     Err(e) => format!("Error updating task: {e}"),
                 }
             }
-            Err(e) => format!("Error: {e}"),
+            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
         }
     }
 
@@ -938,15 +845,12 @@ impl WorkerMcp {
             params.id
         );
         
-        match self.session.get_description().await {
-            Ok(desc) => {
-                let (original, mut items) = parse_description_with_plan(&desc);
-                
+        match (self.session.get_description().await, self.session.get_plan().await) {
+            (Ok(desc), Ok(mut items)) => {
                 if let Some(item) = items.iter_mut().find(|item| item.id == params.id) {
                     item.text = params.text.clone();
                     
-                    let new_desc = serialize_description_with_plan(&original, &items);
-                    match self.session.update_description(&new_desc).await {
+                    match self.session.update_plan(&desc, &items).await {
                         Ok(()) => format!("Plan item '{}' updated", params.id),
                         Err(e) => format!("Error updating task: {e}"),
                     }
@@ -954,7 +858,7 @@ impl WorkerMcp {
                     format!("Error: Plan item with id '{}' not found", params.id)
                 }
             }
-            Err(e) => format!("Error: {e}"),
+            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
         }
     }
 
@@ -967,15 +871,12 @@ impl WorkerMcp {
             params.checked
         );
         
-        match self.session.get_description().await {
-            Ok(desc) => {
-                let (original, mut items) = parse_description_with_plan(&desc);
-                
+        match (self.session.get_description().await, self.session.get_plan().await) {
+            (Ok(desc), Ok(mut items)) => {
                 if let Some(item) = items.iter_mut().find(|item| item.id == params.id) {
                     item.checked = params.checked;
                     
-                    let new_desc = serialize_description_with_plan(&original, &items);
-                    match self.session.update_description(&new_desc).await {
+                    match self.session.update_plan(&desc, &items).await {
                         Ok(()) => {
                             format!("Plan item '{}' checked state updated to {}", params.id, params.checked)
                         },
@@ -985,7 +886,7 @@ impl WorkerMcp {
                     format!("Error: Plan item with id '{}' not found", params.id)
                 }
             }
-            Err(e) => format!("Error: {e}"),
+            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
         }
     }
 
@@ -997,10 +898,8 @@ impl WorkerMcp {
             params.id
         );
         
-        match self.session.get_description().await {
-            Ok(desc) => {
-                let (original, mut items) = parse_description_with_plan(&desc);
-                
+        match (self.session.get_description().await, self.session.get_plan().await) {
+            (Ok(desc), Ok(mut items)) => {
                 let original_len = items.len();
                 items.retain(|item| item.id != params.id);
                 
@@ -1008,13 +907,12 @@ impl WorkerMcp {
                     return format!("Error: Plan item with id '{}' not found", params.id);
                 }
                 
-                let new_desc = serialize_description_with_plan(&original, &items);
-                match self.session.update_description(&new_desc).await {
+                match self.session.update_plan(&desc, &items).await {
                     Ok(()) => format!("Plan item '{}' deleted", params.id),
                     Err(e) => format!("Error updating task: {e}"),
                 }
             }
-            Err(e) => format!("Error: {e}"),
+            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
         }
     }
 }
@@ -1421,6 +1319,8 @@ mod tests {
 
     #[test]
     fn test_plan_parsing_and_serialization() {
+        use crate::backend::{parse_description_with_plan, serialize_description_with_plan};
+        
         // Test with no plan
         let desc = "This is a task description";
         let (original, items) = parse_description_with_plan(desc);

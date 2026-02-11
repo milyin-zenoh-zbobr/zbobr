@@ -1,4 +1,4 @@
-use crate::{Label, Stage, Task, Zbobr, ZbobrError};
+use crate::{backend::parse_description_with_plan, Label, Stage, Task, Zbobr, ZbobrError};
 
 #[derive(Debug, serde::Deserialize)]
 struct IssueResponse {
@@ -66,10 +66,14 @@ impl Zbobr {
             .filter_map(|l| l.name.parse::<Label>().ok())
             .collect();
 
+        // Extract plan from description
+        let body_str = issue.body.unwrap_or_default();
+        let (description, plan) = parse_description_with_plan(&body_str);
+
         Ok(Task {
             id: issue.number,
             title: issue.title,
-            description: issue.body.unwrap_or_default(),
+            description,
             discussion: vec![],
             stage,
             tool: None,
@@ -79,6 +83,7 @@ impl Zbobr {
             destination_branch: None,
             done,
             labels,
+            plan,
         })
     }
 
@@ -237,10 +242,14 @@ impl Zbobr {
                 .filter_map(|l| l.name.parse::<Label>().ok())
                 .collect();
 
+            // Extract plan from description
+            let body_str = issue.body.unwrap_or_default();
+            let (description, plan) = parse_description_with_plan(&body_str);
+
             tasks.push(Task {
                 id: issue.number,
                 title: issue.title,
-                description: issue.body.unwrap_or_default(),
+                description,
                 discussion: vec![],
                 stage,
                 tool: None,
@@ -250,6 +259,7 @@ impl Zbobr {
                 destination_branch: None,
                 done,
                 labels,
+                plan,
             });
         }
         Ok(tasks)

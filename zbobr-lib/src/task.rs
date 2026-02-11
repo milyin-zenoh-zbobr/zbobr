@@ -5,6 +5,19 @@ use std::{
 
 use crate::{Zbobr, ZbobrError};
 
+// -- Plan item types --
+
+/// A single item in a task's plan.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct PlanItem {
+    #[schemars(description = "Unique identifier for the plan item")]
+    pub id: String,
+    #[schemars(description = "Checkbox state (true = checked, false = unchecked)")]
+    pub checked: bool,
+    #[schemars(description = "Plan item text")]
+    pub text: String,
+}
+
 /// Workflow stage (maps to GitHub milestones internally).
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
@@ -330,6 +343,7 @@ pub struct Task {
     pub destination_branch: Option<String>,
     pub done: bool,
     pub labels: Vec<Label>,
+    pub plan: Vec<PlanItem>,
 }
 
 /// Tracked repository information for a task session.
@@ -384,6 +398,22 @@ impl TaskSession {
     pub async fn get_description(&self) -> Result<String, ZbobrError> {
         let task = self.zbobr.get_task(self.task_id).await?;
         Ok(task.description)
+    }
+
+    /// Get the current task plan.
+    pub async fn get_plan(&self) -> Result<Vec<PlanItem>, ZbobrError> {
+        let task = self.zbobr.get_task(self.task_id).await?;
+        Ok(task.plan)
+    }
+
+    /// Update the task description and plan separately.
+    /// The plan will be serialized into the description for storage via the backend.
+    pub async fn update_plan(&self, description: &str, plan: &[PlanItem]) -> Result<(), ZbobrError> {
+        use crate::backend::serialize_description_with_plan;
+        let description_with_plan = serialize_description_with_plan(description, plan);
+        self.zbobr
+            .update_task_description(self.task_id, &description_with_plan)
+            .await
     }
 
     /// Update the task description.
@@ -652,6 +682,7 @@ mod tests {
             destination_repo: None,
             destination_branch: None,
             done: false,
+            plan: vec![],
             labels: vec![],
         };
         let json = serde_json::to_string(&task).unwrap();
