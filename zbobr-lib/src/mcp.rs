@@ -375,8 +375,8 @@ fn generate_api_docs_from_router<T: Send + Sync + 'static>(
 
 // -- MCP Trait Hierarchy --
 
-/// Common trait for MCP services (Planner, Worker)
-pub trait CommonMcpTrait: Send + Sync {
+/// Common trait for MCP services (Planner, Worker) - shared implementations
+pub trait CommonMcpImpl: Send + Sync {
     fn session(&self) -> &TaskSession;
     fn role(&self) -> Role;
     
@@ -460,6 +460,172 @@ pub trait CommonMcpTrait: Send + Sync {
     }
 }
 
+/// Planner-specific MCP implementations
+pub trait PlannerMcpImpl: CommonMcpImpl {
+    async fn post_plan_impl(&self, plan: &str) -> String {
+        tracing::info!("[planner#{}] post_plan", self.session().task_id());
+        match (self.session().get_description().await, self.session().get_checklist().await) {
+            (Ok(desc), Ok(items)) => {
+                match self.session().update_plan(&desc, plan, &items).await {
+                    Ok(()) => "Plan posted/updated".to_string(),
+                    Err(e) => format!("Error updating task: {e}"),
+                }
+            }
+            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
+        }
+    }
+
+    async fn pull_branch_impl(&self, repo: &str, branch: &str) -> String {
+        tracing::info!("[planner#{}] pull_branch repo={} branch={}", self.session().task_id(), repo, branch);
+        match self.session().request_branch_readonly(repo, branch).await {
+            Ok(path) => path,
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    async fn pull_branch_by_pr_impl(&self, pr: &str) -> String {
+        tracing::info!("[planner#{}] pull_branch_by_pr pr={}", self.session().task_id(), pr);
+        match self.session().request_branch_by_pr(pr, true).await {
+            Ok(path) => path,
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    async fn insert_checklist_item_impl(&self, id: &str, after_id: Option<String>, text: &str) -> String {
+        tracing::info!("[planner#{}] insert_checklist_item id={} after_id={:?}", self.session().task_id(), id, after_id);
+        match (self.session().get_description().await, self.session().get_checklist().await) {
+            (Ok(desc), Ok(mut items)) => {
+                if items.iter().any(|item| item.id == id) {
+                    return format!("Error: Checklist item with id '{}' already exists", id);
+                }
+                
+                let new_item = ChecklistItem {
+                    id: id.to_string(),
+                    checked: false,
+                    text: text.to_string(),
+                };
+                
+                if let Some(after_id) = after_id {
+                    if let Some(pos) = items.iter().position(|item| item.id == after_id) {
+                        items.insert(pos + 1, new_item);
+                    } else {
+                        return format!("Error: Checklist item with id '{}' not found", after_id);
+                    }
+                } else {
+                    items.push(new_item);
+                }
+                
+                match self.session().update_checklist(&desc, &items).await {
+                    Ok(()) => format!("Checklist item '{}' inserted", id),
+                    Err(e) => format!("Error updating task: {e}"),
+                }
+            }
+            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
+        }
+    }
+
+    async fn update_checklist_item_impl(&self, id: &str, text: &str) -> String {
+        tracing::info!("[planner#{}] update_checklist_item id={}", self.session().task_id(), id);
+        match (self.session().get_description().await, self.session().get_checklist().await) {
+            (Ok(desc), Ok(mut items)) => {
+                if let Some(item) = items.iter_mut().find(|item| item.id == id) {
+                    item.text = text.to_string();
+                    
+                    match self.session().update_checklist(&desc, &items).await {
+                        Ok(()) => format!("Checklist item '{}' updated", id),
+                        Err(e) => format!("Error updating task: {e}"),
+                    }
+                } else {
+                    format!("Error: Checklist item with id '{}' not found", id)
+                }
+            }
+            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
+        }
+    }
+
+    async fn delete_checklist_item_impl(&self, id: &str) -> String {
+        tracing::info!("[planner#{}] delete_checklist_item id={}", self.session().task_id(), id);
+        match (self.session().get_description().await, self.session().get_checklist().await) {
+            (Ok(desc), Ok(mut items)) => {
+                let original_len = items.len();
+                items.retain(|item| item.id != id);
+                
+                if items.len() == original_len {
+                    return format!("Error: Checklist item with id '{}' not found", id);
+                }
+                
+                match self.session().update_checklist(&desc, &items).await {
+                    Ok(()) => format!("Checklist item '{}' deleted", id),
+                    Err(e) => format!("Error updating task: {e}"),
+                }
+            }
+            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
+        }
+    }
+}
+
+/// Worker-specific MCP implementations
+pub trait WorkerMcpImpl: CommonMcpImpl {
+    async fn post_question_impl(&self, message: &str) -> String {
+        tracing::info!("[worker#{}] post_question", self.session().task_id());
+        let hostname = get_hostname();
+        
+        if let Err(e) = self.session().post_message(message, self.role().as_str(), &hostname).await {
+            return format!("Error posting message: {e}");
+        }
+        
+        match self.session().add_label(Label::Question).await {
+            Ok(()) => "Question posted and label set".to_string(),
+            Err(e) => format!("Message posted but error setting label: {e}"),
+        }
+    }
+
+    async fn create_branch_name_impl(&self, short_name: &str) -> String {
+        tracing::info!("[worker#{}] create_branch_name short_name={}", self.session().task_id(), short_name);
+        self.session().create_branch_name(short_name)
+    }
+
+    async fn pull_branch_impl(&self, repo: &str, branch: &str) -> String {
+        tracing::info!("[worker#{}] pull_branch repo={} branch={}", self.session().task_id(), repo, branch);
+        match self.session().request_branch(repo, branch).await {
+            Ok(path) => path,
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    async fn pull_branch_by_pr_impl(&self, pr: &str) -> String {
+        tracing::info!("[worker#{}] pull_branch_by_pr pr={}", self.session().task_id(), pr);
+        match self.session().request_branch_by_pr(pr, false).await {
+            Ok(path) => path,
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    async fn push_branch_impl(&self, path: &str) -> String {
+        tracing::info!("[worker#{}] push_branch path={}", self.session().task_id(), path);
+        match self.session().push_branch(path).await {
+            Ok(()) => "Branch pushed to fork".to_string(),
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    async fn push_branch_and_create_pr_impl(&self, path: &str, destination_branch: &str) -> String {
+        tracing::info!("[worker#{}] push_branch_and_create_pr path={} destination_branch={}", self.session().task_id(), path, destination_branch);
+        match self.session().push_branch_and_create_pr(path, destination_branch).await {
+            Ok(pr_url) => format!("PR created: {pr_url}"),
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    async fn mark_done_impl(&self) -> String {
+        tracing::info!("[worker#{}] mark_done", self.session().task_id());
+        match self.session().mark_done().await {
+            Ok(()) => "Task marked as done".to_string(),
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+}
+
 // -- Planner MCP service --
 
 #[derive(Clone)]
@@ -468,7 +634,7 @@ pub struct PlannerMcp {
     tool_router: ToolRouter<Self>,
 }
 
-impl CommonMcpTrait for PlannerMcp {
+impl CommonMcpImpl for PlannerMcp {
     fn session(&self) -> &TaskSession {
         &self.session
     }
@@ -477,6 +643,8 @@ impl CommonMcpTrait for PlannerMcp {
         Role::Planner
     }
 }
+
+impl PlannerMcpImpl for PlannerMcp {}
 
 #[tool_router]
 impl PlannerMcp {
@@ -509,51 +677,21 @@ impl PlannerMcp {
 
     #[tool(description = "Post or replace the implementation plan for this task")]
     async fn post_plan(&self, Parameters(params): Parameters<DescriptionParam>) -> String {
-        tracing::info!("[planner#{}] post_plan", self.session.task_id());
-        match (self.session.get_description().await, self.session.get_checklist().await) {
-            (Ok(desc), Ok(items)) => {
-                match self.session.update_plan(&desc, &params.description, &items).await {
-                    Ok(()) => "Plan posted/updated".to_string(),
-                    Err(e) => format!("Error updating task: {e}"),
-                }
-            }
-            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
-        }
+        self.post_plan_impl(&params.description).await
     }
 
     #[tool(
         description = "Pull a repository and checkout a specific branch for investigation (read-only). Returns the local path."
     )]
     async fn pull_branch(&self, Parameters(params): Parameters<BranchParam>) -> String {
-        tracing::info!(
-            "[planner#{}] pull_branch repo={} branch={}",
-            self.session.task_id(),
-            params.repo,
-            params.branch
-        );
-        match self
-            .session
-            .request_branch_readonly(&params.repo, &params.branch)
-            .await
-        {
-            Ok(path) => path,
-            Err(e) => format!("Error: {e}"),
-        }
+        self.pull_branch_impl(&params.repo, &params.branch).await
     }
 
     #[tool(
         description = "Pull a repository and checkout the branch from a PR (read-only). Takes PR URL or 'owner/repo#123' format. Returns the local path."
     )]
     async fn pull_branch_by_pr(&self, Parameters(params): Parameters<PrParam>) -> String {
-        tracing::info!(
-            "[planner#{}] pull_branch_by_pr pr={}",
-            self.session.task_id(),
-            params.pr
-        );
-        match self.session.request_branch_by_pr(&params.pr, true).await {
-            Ok(path) => path,
-            Err(e) => format!("Error: {e}"),
-        }
+        self.pull_branch_by_pr_impl(&params.pr).await
     }
 
     #[tool(description = "Get the task checklist as a list of checkbox items")]
@@ -563,70 +701,12 @@ impl PlannerMcp {
 
     #[tool(description = "Insert a new checklist item (always created in unchecked state)")]
     async fn insert_checklist_item(&self, Parameters(params): Parameters<InsertChecklistItemParam>) -> String {
-        tracing::info!(
-            "[planner#{}] insert_checklist_item id={} after_id={:?}",
-            self.session.task_id(),
-            params.id,
-            params.after_id
-        );
-        
-        match (self.session.get_description().await, self.session.get_checklist().await) {
-            (Ok(desc), Ok(mut items)) => {
-                // Check if ID already exists
-                if items.iter().any(|item| item.id == params.id) {
-                    return format!("Error: Checklist item with id '{}' already exists", params.id);
-                }
-                
-                let new_item = ChecklistItem {
-                    id: params.id.clone(),
-                    checked: false,
-                    text: params.text.clone(),
-                };
-                
-                // Insert at the correct position
-                if let Some(after_id) = &params.after_id {
-                    if let Some(pos) = items.iter().position(|item| &item.id == after_id) {
-                        items.insert(pos + 1, new_item);
-                    } else {
-                        return format!("Error: Checklist item with id '{}' not found", after_id);
-                    }
-                } else {
-                    // Add to end
-                    items.push(new_item);
-                }
-                
-                match self.session.update_checklist(&desc, &items).await {
-                    Ok(()) => format!("Checklist item '{}' inserted", params.id),
-                    Err(e) => format!("Error updating task: {e}"),
-                }
-            }
-            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
-        }
+        self.insert_checklist_item_impl(&params.id, params.after_id.clone(), &params.text).await
     }
 
     #[tool(description = "Update a checklist item's text")]
     async fn update_checklist_item(&self, Parameters(params): Parameters<UpdateChecklistItemParam>) -> String {
-        tracing::info!(
-            "[planner#{}] update_checklist_item id={}",
-            self.session.task_id(),
-            params.id
-        );
-        
-        match (self.session.get_description().await, self.session.get_checklist().await) {
-            (Ok(desc), Ok(mut items)) => {
-                if let Some(item) = items.iter_mut().find(|item| item.id == params.id) {
-                    item.text = params.text.clone();
-                    
-                    match self.session.update_checklist(&desc, &items).await {
-                        Ok(()) => format!("Checklist item '{}' updated", params.id),
-                        Err(e) => format!("Error updating task: {e}"),
-                    }
-                } else {
-                    format!("Error: Checklist item with id '{}' not found", params.id)
-                }
-            }
-            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
-        }
+        self.update_checklist_item_impl(&params.id, &params.text).await
     }
 
     #[tool(description = "Check or uncheck a checklist item")]
@@ -636,28 +716,7 @@ impl PlannerMcp {
 
     #[tool(description = "Delete a checklist item")]
     async fn delete_checklist_item(&self, Parameters(params): Parameters<DeleteChecklistItemParam>) -> String {
-        tracing::info!(
-            "[planner#{}] delete_checklist_item id={}",
-            self.session.task_id(),
-            params.id
-        );
-        
-        match (self.session.get_description().await, self.session.get_checklist().await) {
-            (Ok(desc), Ok(mut items)) => {
-                let original_len = items.len();
-                items.retain(|item| item.id != params.id);
-                
-                if items.len() == original_len {
-                    return format!("Error: Checklist item with id '{}' not found", params.id);
-                }
-                
-                match self.session.update_checklist(&desc, &items).await {
-                    Ok(()) => format!("Checklist item '{}' deleted", params.id),
-                    Err(e) => format!("Error updating task: {e}"),
-                }
-            }
-            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
-        }
+        self.delete_checklist_item_impl(&params.id).await
     }
 }
 
@@ -690,7 +749,7 @@ pub struct WorkerMcp {
     tool_router: ToolRouter<Self>,
 }
 
-impl CommonMcpTrait for WorkerMcp {
+impl CommonMcpImpl for WorkerMcp {
     fn session(&self) -> &TaskSession {
         &self.session
     }
@@ -699,6 +758,8 @@ impl CommonMcpTrait for WorkerMcp {
         Role::Worker
     }
 }
+
+impl WorkerMcpImpl for WorkerMcp {}
 
 #[tool_router]
 impl WorkerMcp {
@@ -726,23 +787,7 @@ impl WorkerMcp {
 
     #[tool(description = "Post a question to the task discussion and set the 'question' label")]
     async fn post_question(&self, Parameters(params): Parameters<MessageParam>) -> String {
-        tracing::info!("[worker#{}] post_question", self.session.task_id());
-        let hostname = get_hostname();
-        
-        // Post the message
-        if let Err(e) = self
-            .session
-            .post_message(&params.message, Role::Worker.as_str(), &hostname)
-            .await
-        {
-            return format!("Error posting message: {e}");
-        }
-        
-        // Set the question label
-        match self.session.add_label(Label::Question).await {
-            Ok(()) => "Question posted and label set".to_string(),
-            Err(e) => format!("Message posted but error setting label: {e}"),
-        }
+        self.post_question_impl(&params.message).await
     }
 
     #[tool(description = "Get the current implementation plan for this task")]
@@ -754,62 +799,28 @@ impl WorkerMcp {
         description = "Generate a branch name with the proper prefix for this task. Use the returned name with 'git checkout -b <name>' to create the branch locally."
     )]
     async fn create_branch_name(&self, Parameters(params): Parameters<ShortNameParam>) -> String {
-        tracing::info!(
-            "[worker#{}] create_branch_name short_name={}",
-            self.session.task_id(),
-            params.short_name
-        );
-        self.session.create_branch_name(&params.short_name)
+        self.create_branch_name_impl(&params.short_name).await
     }
 
     #[tool(
         description = "Pull a repository (forking if needed) and checkout a specific branch for implementation. Returns the local path."
     )]
     async fn pull_branch(&self, Parameters(params): Parameters<BranchParam>) -> String {
-        tracing::info!(
-            "[worker#{}] pull_branch repo={} branch={}",
-            self.session.task_id(),
-            params.repo,
-            params.branch
-        );
-        match self
-            .session
-            .request_branch(&params.repo, &params.branch)
-            .await
-        {
-            Ok(path) => path,
-            Err(e) => format!("Error: {e}"),
-        }
+        self.pull_branch_impl(&params.repo, &params.branch).await
     }
 
     #[tool(
         description = "Pull a repository (forking if needed) and checkout the branch from a PR for implementation. Takes PR URL or 'owner/repo#123' format. Returns the local path."
     )]
     async fn pull_branch_by_pr(&self, Parameters(params): Parameters<PrParam>) -> String {
-        tracing::info!(
-            "[worker#{}] pull_branch_by_pr pr={}",
-            self.session.task_id(),
-            params.pr
-        );
-        match self.session.request_branch_by_pr(&params.pr, false).await {
-            Ok(path) => path,
-            Err(e) => format!("Error: {e}"),
-        }
+        self.pull_branch_by_pr_impl(&params.pr).await
     }
 
     #[tool(
         description = "Push the current branch to the fork remote. REQUIREMENT: The branch name must have been created using create_branch_name() — branches with other names are rejected. Takes the local path to the repository."
     )]
     async fn push_branch(&self, Parameters(params): Parameters<PathParam>) -> String {
-        tracing::info!(
-            "[worker#{}] push_branch path={}",
-            self.session.task_id(),
-            params.path
-        );
-        match self.session.push_branch(&params.path).await {
-            Ok(()) => "Branch pushed to fork".to_string(),
-            Err(e) => format!("Error: {e}"),
-        }
+        self.push_branch_impl(&params.path).await
     }
 
     #[tool(
@@ -819,20 +830,7 @@ impl WorkerMcp {
         &self,
         Parameters(params): Parameters<PushBranchAndCreatePrParam>,
     ) -> String {
-        tracing::info!(
-            "[worker#{}] push_branch_and_create_pr path={} destination_branch={}",
-            self.session.task_id(),
-            params.path,
-            params.destination_branch
-        );
-        match self
-            .session
-            .push_branch_and_create_pr(&params.path, &params.destination_branch)
-            .await
-        {
-            Ok(pr_url) => format!("PR created: {pr_url}"),
-            Err(e) => format!("Error: {e}"),
-        }
+        self.push_branch_and_create_pr_impl(&params.path, &params.destination_branch).await
     }
 
     #[tool(description = "Get the task checklist as a list of checkbox items")]
