@@ -183,6 +183,7 @@ async fn test_blackbox_process_flow() -> anyhow::Result<()> {
     // 2. Start zbobr loop with admin port
     let mut child = tokio::process::Command::new(&exe)
         .env("GH_TOKEN", "stub-token")
+        .env("ZBOBR_AGENT_GH_TOKEN", "stub-agent-token")
         .env("RUST_LOG", "info")
         .args([
             "--admin-port",

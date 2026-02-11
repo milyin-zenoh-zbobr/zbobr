@@ -208,7 +208,8 @@ impl Backend for StubBackend {
             .filter(|t| t.stage == target_stage)
             .filter(|t| {
                 if let Some(requested_tool) = tool_filter {
-                    t.tool == Some(requested_tool)
+                    // Accept tasks that explicitly request this tool OR have no tool specified
+                    t.tool == Some(requested_tool) || t.tool.is_none()
                 } else {
                     true
                 }
