@@ -367,6 +367,7 @@ fn generate_api_docs_from_router<T: Send + Sync + 'static>(
 // -- MCP Trait Hierarchy --
 
 /// Common trait for MCP services (Planner, Worker) - shared implementations
+#[allow(async_fn_in_trait)]
 pub trait CommonMcpImpl: Send + Sync {
     fn session(&self) -> &TaskSession;
     fn role(&self) -> Role;
@@ -466,6 +467,7 @@ pub trait CommonMcpImpl: Send + Sync {
 }
 
 /// Planner-specific MCP implementations
+#[allow(async_fn_in_trait)]
 pub trait PlannerMcpImpl: CommonMcpImpl {
     async fn post_plan_impl(&self, plan: &str) -> String {
         tracing::info!("[planner#{}] post_plan", self.session().task_id());
@@ -576,6 +578,7 @@ pub trait PlannerMcpImpl: CommonMcpImpl {
 }
 
 /// Worker-specific MCP implementations
+#[allow(async_fn_in_trait)]
 pub trait WorkerMcpImpl: CommonMcpImpl {
     async fn post_question_impl(&self, message: &str) -> String {
         tracing::info!("[worker#{}] post_question", self.session().task_id());
