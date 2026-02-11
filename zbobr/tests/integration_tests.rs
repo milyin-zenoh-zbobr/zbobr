@@ -221,13 +221,15 @@ async fn test_blackbox_process_flow() -> anyhow::Result<()> {
     println!("Transitioning to GO_PLANNING...");
     admin.set_task_stage(task_id, Stage::GoPlanning).await?;
 
-    // 3. Wait for manager to pick it up and transition to PLANNING
-    println!("Waiting for transition to PLANNING...");
+    // 3. Wait for planner to post a plan and transition to GO_WORKING
+    println!("Waiting for planner to post a plan...");
     let mut plan_ready = false;
     for _ in 0..30 {
         let info = admin.get_task_info(task_id).await?;
         let discussion = admin.get_discussion(task_id).await?;
-        if info.contains("Stage: Pending") && discussion.contains("Implementation plan") {
+        let has_plan = discussion.contains("Implementation Plan")
+            || discussion.contains("Implementation plan");
+        if info.contains("Stage: GoWorking") && has_plan {
             println!("Planner finished, plan is available in discussion.");
             plan_ready = true;
             break;
