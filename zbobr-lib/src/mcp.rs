@@ -198,10 +198,7 @@ mcp_tools! {
     PUSH_BRANCH = "push_branch",
     PUSH_BRANCH_AND_CREATE_PR = "push_branch_and_create_pr",
     GET_CHECKLIST = "get_checklist",
-    INSERT_CHECKLIST_ITEM = "insert_checklist_item",
-    UPDATE_CHECKLIST_ITEM = "update_checklist_item",
     CHECK_CHECKLIST_ITEM = "check_checklist_item",
-    DELETE_CHECKLIST_ITEM = "delete_checklist_item",
 }
 
 mcp_tools! {
@@ -829,74 +826,6 @@ impl WorkerMcp {
         }
     }
 
-    #[tool(description = "Insert a new checklist item (always created in unchecked state)")]
-    async fn insert_checklist_item(&self, Parameters(params): Parameters<InsertChecklistItemParam>) -> String {
-        tracing::info!(
-            "[worker#{}] insert_checklist_item id={} after_id={:?}",
-            self.session.task_id(),
-            params.id,
-            params.after_id
-        );
-        
-        match (self.session.get_description().await, self.session.get_checklist().await) {
-            (Ok(desc), Ok(mut items)) => {
-                // Check if ID already exists
-                if items.iter().any(|item| item.id == params.id) {
-                    return format!("Error: Checklist item with id '{}' already exists", params.id);
-                }
-                
-                let new_item = ChecklistItem {
-                    id: params.id.clone(),
-                    checked: false,
-                    text: params.text.clone(),
-                };
-                
-                // Insert at the correct position
-                if let Some(after_id) = &params.after_id {
-                    if let Some(pos) = items.iter().position(|item| &item.id == after_id) {
-                        items.insert(pos + 1, new_item);
-                    } else {
-                        return format!("Error: Checklist item with id '{}' not found", after_id);
-                    }
-                } else {
-                    // Add to end
-                    items.push(new_item);
-                }
-                
-                match self.session.update_checklist(&desc, &items).await {
-                    Ok(()) => format!("Checklist item '{}' inserted", params.id),
-                    Err(e) => format!("Error updating task: {e}"),
-                }
-            }
-            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
-        }
-    }
-
-    #[tool(description = "Update a checklist item's text")]
-    async fn update_checklist_item(&self, Parameters(params): Parameters<UpdateChecklistItemParam>) -> String {
-        tracing::info!(
-            "[worker#{}] update_checklist_item id={}",
-            self.session.task_id(),
-            params.id
-        );
-        
-        match (self.session.get_description().await, self.session.get_checklist().await) {
-            (Ok(desc), Ok(mut items)) => {
-                if let Some(item) = items.iter_mut().find(|item| item.id == params.id) {
-                    item.text = params.text.clone();
-                    
-                    match self.session.update_checklist(&desc, &items).await {
-                        Ok(()) => format!("Checklist item '{}' updated", params.id),
-                        Err(e) => format!("Error updating task: {e}"),
-                    }
-                } else {
-                    format!("Error: Checklist item with id '{}' not found", params.id)
-                }
-            }
-            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
-        }
-    }
-
     #[tool(description = "Check or uncheck a checklist item")]
     async fn check_checklist_item(&self, Parameters(params): Parameters<CheckChecklistItemParam>) -> String {
         tracing::info!(
@@ -919,32 +848,6 @@ impl WorkerMcp {
                     }
                 } else {
                     format!("Error: Checklist item with id '{}' not found", params.id)
-                }
-            }
-            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
-        }
-    }
-
-    #[tool(description = "Delete a checklist item")]
-    async fn delete_checklist_item(&self, Parameters(params): Parameters<DeleteChecklistItemParam>) -> String {
-        tracing::info!(
-            "[worker#{}] delete_checklist_item id={}",
-            self.session.task_id(),
-            params.id
-        );
-        
-        match (self.session.get_description().await, self.session.get_checklist().await) {
-            (Ok(desc), Ok(mut items)) => {
-                let original_len = items.len();
-                items.retain(|item| item.id != params.id);
-                
-                if items.len() == original_len {
-                    return format!("Error: Checklist item with id '{}' not found", params.id);
-                }
-                
-                match self.session.update_checklist(&desc, &items).await {
-                    Ok(()) => format!("Checklist item '{}' deleted", params.id),
-                    Err(e) => format!("Error updating task: {e}"),
                 }
             }
             (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
