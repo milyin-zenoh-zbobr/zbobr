@@ -444,7 +444,7 @@ pub trait CommonMcpImpl: Send + Sync {
                     
                     match self.session().update_checklist(&desc, &items).await {
                         Ok(()) => {
-                            // Determine signal based on checklist state
+                            // Signal task completion status: if unchecked items remain, ready for work; otherwise done
                             let has_unchecked = items.iter().any(|i| !i.checked);
                             let signal = if has_unchecked {
                                 crate::Signal::GoWork
@@ -453,7 +453,7 @@ pub trait CommonMcpImpl: Send + Sync {
                             };
                             
                             if let Err(e) = self.session().set_signal(signal).await {
-                                return format!("Checklist item '{}' checked state updated to {} but error setting signal: {}", id, checked, e);
+                                return format!("Checklist item '{}' checked state updated to {} but error updating task state: {}", id, checked, e);
                             }
                             
                             format!("Checklist item '{}' checked state updated to {}", id, checked)
@@ -478,11 +478,11 @@ pub trait PlannerMcpImpl: CommonMcpImpl {
             (Ok(desc), Ok(items)) => {
                 match self.session().update_plan(&desc, plan, &items).await {
                     Ok(()) => {
-                        // Set signal to go_work after posting plan
+                        // Mark plan as ready for worker to implement
                         if let Err(e) = self.session().set_signal(crate::Signal::GoWork).await {
-                            return format!("Plan posted but error setting signal: {e}");
+                            return format!("Plan posted but error marking task ready for work: {e}");
                         }
-                        "Plan posted/updated".to_string()
+                        "Plan posted and task ready for worker implementation".to_string()
                     }
                     Err(e) => format!("Error updating task: {e}"),
                 }
@@ -591,11 +591,11 @@ pub trait WorkerMcpImpl: CommonMcpImpl {
             return format!("Error posting message: {e}");
         }
         
-        // Set signal to go_ask after posting question
+        // Signal to pause task processing and wait for user response
         if let Err(e) = self.session().set_signal(crate::Signal::GoAsk).await {
-            return format!("Question posted but error setting signal: {e}");
+            return format!("Question posted but error pausing task: {e}");
         }
-        "Question posted and signal set".to_string()
+        "Message posted to user - task paused pending response".to_string()
     }
 
     async fn ask_planner_impl(&self, message: &str) -> String {
@@ -606,11 +606,11 @@ pub trait WorkerMcpImpl: CommonMcpImpl {
             return format!("Error posting message: {e}");
         }
         
-        // Set signal to go_plan after posting question to planner
+        // Pass task back to planner agent for clarification or re-planning
         if let Err(e) = self.session().set_signal(crate::Signal::GoPlan).await {
-            return format!("Message posted but error setting signal: {e}");
+            return format!("Message posted but error returning to planner: {e}");
         }
-        "Question posted to planner and signal set".to_string()
+        "Message posted to planner - task returned for clarification".to_string()
     }
 
     async fn create_branch_name_impl(&self, short_name: &str) -> String {
@@ -818,12 +818,12 @@ impl WorkerMcp {
         self.post_message_impl(&params.message).await
     }
 
-    #[tool(description = "Ask the user a question and set the 'go_ask' signal")]
+    #[tool(description = "Post a message to the user and pause task processing until user responds")]
     async fn ask_user(&self, Parameters(params): Parameters<MessageParam>) -> String {
         self.ask_user_impl(&params.message).await
     }
 
-    #[tool(description = "Ask the planner a question and set the 'go_plan' signal")]
+    #[tool(description = "Post a message to the planner and pass the task back for clarification or re-planning")]
     async fn ask_planner(&self, Parameters(params): Parameters<MessageParam>) -> String {
         self.ask_planner_impl(&params.message).await
     }
