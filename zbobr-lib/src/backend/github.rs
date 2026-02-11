@@ -226,13 +226,7 @@ impl Backend for GitHubBackend {
 
         let model = issue.labels.iter().find_map(|l| {
             if let Some(name) = l.name.strip_prefix("model:") {
-                match name {
-                    "gpt-4o" => Some(Model::Gpt4o),
-                    "gpt-5-mini" => Some(Model::Gpt5Mini),
-                    "claude-3-5-sonnet" => Some(Model::Claude35Sonnet),
-                    "claude-3-opus" => Some(Model::Claude3Opus),
-                    _ => None,
-                }
+                name.parse::<Model>().ok()
             } else {
                 None
             }
@@ -465,13 +459,7 @@ impl Backend for GitHubBackend {
 
             let model = issue.labels.iter().find_map(|l| {
                 if let Some(name) = l.name.strip_prefix("model:") {
-                    match name {
-                        "gpt-4o" => Some(Model::Gpt4o),
-                        "gpt-5-mini" => Some(Model::Gpt5Mini),
-                        "claude-3-5-sonnet" => Some(Model::Claude35Sonnet),
-                        "claude-3-opus" => Some(Model::Claude3Opus),
-                        _ => None,
-                    }
+                    name.parse::<Model>().ok()
                 } else {
                     None
                 }
