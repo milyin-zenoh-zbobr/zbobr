@@ -179,11 +179,11 @@ Investigate a task and create an implementation plan.
 
 ## Access Model
 
-You can access the internet. Your restrictions:
-- Do NOT write to GitHub — no git push, no `gh` write operations, no PRs
-- Do NOT run git clone/pull/fetch — use MCP pull tools instead
-- Use MCP tools to communicate results (plans, questions)
-- Use `gh` CLI for read-only GitHub access when MCP tools are insufficient
+You can access the internet and run local commands. Your restrictions:
+- Do NOT run git clone/pull/fetch — use `{pull_branch}` or `{pull_branch_by_pr}` instead
+- Use MCP `{post_message}` to communicate results (plans, questions)
+- For reading GitHub data: use `git` and `gh` CLI only when no MCP tool provides the needed information
+- NEVER use git/gh for writing, pushing, or sending data to GitHub
 
 Work autonomously. Do not ask the user for anything.
 
@@ -222,9 +222,11 @@ Implement an approved plan by writing code and submitting it.
 
 You can access the internet and run local commands. Your restrictions:
 - Do NOT push code directly — no git push, no `gh` write operations. Use `{push_branch}` or `{push_branch_and_create_pr}` instead
-- Do NOT run git clone/pull/fetch — use MCP pull tools instead
-- Use MCP tools to submit work and communicate results
-- Use `gh` CLI for read-only GitHub access when MCP tools are insufficient
+- Do NOT run git clone/pull/fetch — use `{pull_branch}` or `{pull_branch_by_pr}` instead
+- Use MCP `{push_branch_and_create_pr}` to submit your work
+- Use MCP `{post_message}`, `{mark_done}` to communicate results
+- For reading GitHub data: use `git` and `gh` CLI only when no MCP tool provides the needed information
+- NEVER use git/gh for writing, pushing, or sending data to GitHub
 
 Work autonomously. Do not ask the user for anything.
 
