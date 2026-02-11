@@ -15,6 +15,7 @@ struct AdminClient {
 }
 
 impl AdminClient {
+    #[allow(clippy::single_match)]
     async fn new(url: &str) -> anyhow::Result<Self> {
         let client = reqwest::Client::builder()
             .default_headers({

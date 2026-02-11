@@ -67,6 +67,7 @@ impl Zbobr {
         self.backend.get_task(id).await
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_task(
         &self,
         title: &str,
@@ -197,7 +198,7 @@ impl Zbobr {
     /// Accepts formats:
     /// - "https://github.com/owner/repo/pull/123"
     /// - "owner/repo#123"
-    /// Returns (repo, branch_name)
+    ///   Returns (repo, branch_name)
     pub async fn parse_pr_to_repo_branch(
         &self,
         pr_ref: &str,

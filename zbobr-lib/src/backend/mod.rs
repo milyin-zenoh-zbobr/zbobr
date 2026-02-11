@@ -7,12 +7,14 @@ use async_trait::async_trait;
 
 use crate::{Model, Stage, Task, Tool, ZbobrError};
 
+#[allow(clippy::too_many_arguments)]
 #[async_trait]
 pub trait Backend: Send + Sync {
     /// Get a task by ID.
     async fn get_task(&self, id: u64) -> Result<Task, ZbobrError>;
 
     /// Create a new task. Returns the task ID.
+    #[allow(clippy::too_many_arguments)]
     async fn create_task(
         &self,
         title: &str,

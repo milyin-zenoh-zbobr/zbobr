@@ -139,8 +139,8 @@ impl McpClient {
         let text = resp.text().await?;
         for line in text.lines() {
             let line = line.trim();
-            if line.starts_with("data:") {
-                let data = line["data:".len()..].trim();
+            if let Some(stripped) = line.strip_prefix("data:") {
+                let data = stripped.trim();
                 if !data.is_empty() && data.starts_with('{') {
                     return Ok(serde_json::from_str(data)?);
                 }

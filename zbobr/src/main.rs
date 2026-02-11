@@ -1,3 +1,4 @@
+#![allow(clippy::needless_borrows_for_generic_args)]
 use std::path::PathBuf;
 
 use anyhow::Context;
@@ -185,12 +186,10 @@ fn load_prompts(paths: &[PathBuf], base_path: Option<&PathBuf>) -> anyhow::Resul
             } else {
                 path.clone()
             }
+        } else if path.is_relative() {
+            std::env::current_dir()?.join(path)
         } else {
-            if path.is_relative() {
-                std::env::current_dir()?.join(path)
-            } else {
-                path.clone()
-            }
+            path.clone()
         };
 
         let content = match std::fs::read_to_string(&resolved_path) {
