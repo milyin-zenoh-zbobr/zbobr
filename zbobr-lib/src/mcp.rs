@@ -12,7 +12,7 @@ use rmcp::{
 use serde_json::Value;
 
 use crate::{
-    task::{Model, Role, Stage, TaskSession, Tool},
+    task::{Label, Model, Role, Stage, TaskSession, Tool},
     Zbobr,
 };
 
@@ -778,7 +778,7 @@ impl WorkerMcp {
         }
         
         // Set the question label
-        match self.session.add_label("question").await {
+        match self.session.add_label(Label::Question).await {
             Ok(()) => "Question posted and label set".to_string(),
             Err(e) => format!("Message posted but error setting label: {e}"),
         }
@@ -982,7 +982,7 @@ impl WorkerMcp {
                             // Check if all items are now checked
                             if items.iter().all(|item| item.checked) && !items.is_empty() {
                                 // Auto-set the done label
-                                if let Err(e) = self.session.add_label("done").await {
+                                if let Err(e) = self.session.add_label(Label::Done).await {
                                     return format!("{} (warning: could not set done label: {})", message, e);
                                 }
                                 format!("{} - All items checked, 'done' label set automatically", message)
@@ -1170,9 +1170,12 @@ impl AdminMcp {
             params.id,
             params.label
         );
-        match self.zbobr.add_task_label(params.id, &params.label).await {
-            Ok(()) => format!("Label '{}' added", params.label),
-            Err(e) => format!("Error: {e}"),
+        match params.label.parse::<Label>() {
+            Ok(label) => match self.zbobr.add_task_label(params.id, label).await {
+                Ok(()) => format!("Label '{}' added", params.label),
+                Err(e) => format!("Error: {e}"),
+            },
+            Err(e) => format!("Invalid label '{}': {}", params.label, e),
         }
     }
 
@@ -1183,9 +1186,12 @@ impl AdminMcp {
             params.id,
             params.label
         );
-        match self.zbobr.remove_task_label(params.id, &params.label).await {
-            Ok(()) => format!("Label '{}' removed", params.label),
-            Err(e) => format!("Error: {e}"),
+        match params.label.parse::<Label>() {
+            Ok(label) => match self.zbobr.remove_task_label(params.id, label).await {
+                Ok(()) => format!("Label '{}' removed", params.label),
+                Err(e) => format!("Error: {e}"),
+            },
+            Err(e) => format!("Invalid label '{}': {}", params.label, e),
         }
     }
 

@@ -3,7 +3,7 @@ use std::{path::PathBuf, sync::Arc};
 use async_trait::async_trait;
 
 use super::Backend;
-use crate::{Model, Stage, Task, Tool, ZbobrConfig, ZbobrError};
+use crate::{Label, Model, Stage, Task, Tool, ZbobrConfig, ZbobrError};
 
 pub struct GitHubBackend {
     config: Arc<ZbobrConfig>,
@@ -237,10 +237,14 @@ impl Backend for GitHubBackend {
         let destination_repo = extract_hidden_field(&body, "destination_repo");
         let destination_branch = extract_hidden_field(&body, "destination_branch");
 
-        let done = issue.labels.iter().any(|l| l.name == "done");
+        let done = issue.labels.iter().any(|l| l.name == Label::Done.as_str());
 
-        // Extract all label names
-        let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
+        // Extract and parse labels
+        let labels: Vec<Label> = issue
+            .labels
+            .iter()
+            .filter_map(|l| l.name.parse::<Label>().ok())
+            .collect();
 
         // Discussion is not fetched by default for performance in listings,
         // but for a single get_task we could.
@@ -375,21 +379,21 @@ impl Backend for GitHubBackend {
         Ok(())
     }
 
-    async fn add_task_label(&self, id: u64, label: &str) -> Result<(), ZbobrError> {
+    async fn add_task_label(&self, id: u64, label: Label) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         self.octocrab
             .issues(owner, repo)
-            .add_labels(id, &[label.to_string()])
+            .add_labels(id, &[label.as_str().to_string()])
             .await?;
         Ok(())
     }
 
-    async fn remove_task_label(&self, id: u64, label: &str) -> Result<(), ZbobrError> {
+    async fn remove_task_label(&self, id: u64, label: Label) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         let _ = self
             .octocrab
             .issues(owner, repo)
-            .remove_label(id, label)
+            .remove_label(id, label.as_str())
             .await;
         Ok(())
     }
@@ -473,10 +477,14 @@ impl Backend for GitHubBackend {
                 extract_hidden_field(&body, "parent_task_id").and_then(|s| s.parse().ok());
             let destination_repo = extract_hidden_field(&body, "destination_repo");
             let destination_branch = extract_hidden_field(&body, "destination_branch");
-            let done = issue.labels.iter().any(|l| l.name == "done");
+            let done = issue.labels.iter().any(|l| l.name == Label::Done.as_str());
 
-            // Extract all label names
-            let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
+            // Extract and parse labels
+            let labels: Vec<Label> = issue
+                .labels
+                .iter()
+                .filter_map(|l| l.name.parse::<Label>().ok())
+                .collect();
 
             tasks.push(Task {
                 id: issue.number,
@@ -1021,30 +1029,29 @@ impl Backend for GitHubBackend {
         // Create labels
         let existing_labels = self.list_labels().await?;
 
-        const DONE_LABEL: &str = "done";
         const DONE_LABEL_COLOR: &str = "5319e7";
         const TOOL_LABEL_COLOR: &str = "d4c5f9";
         const MODEL_LABEL_COLOR: &str = "bfd4f2";
 
         // Create "done" label
-        if !existing_labels.contains(&DONE_LABEL.to_string()) {
-            tracing::info!("Creating label '{DONE_LABEL}'");
+        if !existing_labels.contains(&Label::Done.to_string()) {
+            tracing::info!("Creating label '{}'", Label::Done);
             self.create_label(
-                DONE_LABEL,
+                Label::Done.as_str(),
                 DONE_LABEL_COLOR,
                 "Task implementation completed",
             )
             .await?;
         } else if force {
-            tracing::info!("Updating label '{DONE_LABEL}' (force)");
+            tracing::info!("Updating label '{}' (force)", Label::Done);
             self.update_label(
-                DONE_LABEL,
+                Label::Done.as_str(),
                 DONE_LABEL_COLOR,
                 "Task implementation completed",
             )
             .await?;
         } else {
-            tracing::info!("Label '{DONE_LABEL}' already exists");
+            tracing::info!("Label '{}' already exists", Label::Done);
         }
 
         // Create tool labels for all available tools

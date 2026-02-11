@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 
-use crate::{Model, Stage, Task, Tool, ZbobrError};
+use crate::{Label, Model, Stage, Task, Tool, ZbobrError};
 
 #[allow(clippy::too_many_arguments)]
 #[async_trait]
@@ -46,10 +46,10 @@ pub trait Backend: Send + Sync {
     async fn set_task_stage(&self, id: u64, stage_name: &str) -> Result<(), ZbobrError>;
 
     /// Add an arbitrary label to a task.
-    async fn add_task_label(&self, id: u64, label: &str) -> Result<(), ZbobrError>;
+    async fn add_task_label(&self, id: u64, label: Label) -> Result<(), ZbobrError>;
 
     /// Remove a label from a task.
-    async fn remove_task_label(&self, id: u64, label: &str) -> Result<(), ZbobrError>;
+    async fn remove_task_label(&self, id: u64, label: Label) -> Result<(), ZbobrError>;
 
     /// Update the task description.
     async fn update_task_description(&self, id: u64, description: &str) -> Result<(), ZbobrError>;

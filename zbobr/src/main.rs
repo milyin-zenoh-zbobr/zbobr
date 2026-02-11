@@ -587,8 +587,8 @@ async fn run_role_session(
 
     // On exit, set stage based on labels
     let task = zbobr.get_task(task_id).await?;
-    let has_done_or_question = task.labels.contains(&"done".to_string()) 
-        || task.labels.contains(&"question".to_string());
+    let has_done_or_question = task.labels.contains(&zbobr_lib::Label::Done) 
+        || task.labels.contains(&zbobr_lib::Label::Question);
     
     let final_stage = if has_done_or_question {
         Stage::Pending

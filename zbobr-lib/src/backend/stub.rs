@@ -7,7 +7,7 @@ use std::{
 use async_trait::async_trait;
 
 use super::Backend;
-use crate::{Model, Stage, Task, Tool, ZbobrError};
+use crate::{Label, Model, Stage, Task, Tool, ZbobrError};
 
 #[derive(Debug)]
 struct StubState {
@@ -154,20 +154,14 @@ impl Backend for StubBackend {
         }
     }
 
-    async fn add_task_label(&self, id: u64, label: &str) -> Result<(), ZbobrError> {
+    async fn add_task_label(&self, id: u64, label: Label) -> Result<(), ZbobrError> {
         let mut state = self.state.write().unwrap();
         if let Some(task) = state.tasks.get_mut(&id) {
-            if label == "done" {
+            if label == Label::Done {
                 task.done = true;
-            } else if let Some(model_name) = label.strip_prefix("model:") {
-                // Not really used in stub as we have the model field directly, but for compatibility:
-                if let Ok(m) = serde_json::from_str(&format!("\"{model_name}\"")) {
-                    task.model = Some(m);
-                }
-            } else if let Some(tool_name) = label.strip_prefix("tool:") {
-                if let Ok(t) = serde_json::from_str(&format!("\"{tool_name}\"")) {
-                    task.tool = Some(t);
-                }
+            }
+            if !task.labels.contains(&label) {
+                task.labels.push(label);
             }
             Ok(())
         } else {
@@ -175,12 +169,13 @@ impl Backend for StubBackend {
         }
     }
 
-    async fn remove_task_label(&self, id: u64, label: &str) -> Result<(), ZbobrError> {
+    async fn remove_task_label(&self, id: u64, label: Label) -> Result<(), ZbobrError> {
         let mut state = self.state.write().unwrap();
         if let Some(task) = state.tasks.get_mut(&id) {
-            if label == "done" {
+            if label == Label::Done {
                 task.done = false;
             }
+            task.labels.retain(|l| l != &label);
             Ok(())
         } else {
             Err(ZbobrError::Other(format!("Task {id} not found")))
@@ -374,7 +369,8 @@ impl Backend for StubBackend {
 
         // Initialize labels
         state.labels.clear();
-        state.labels.insert("done".to_string());
+        state.labels.insert(Label::Done.as_str().to_string());
+        state.labels.insert(Label::Question.as_str().to_string());
 
         // Add tool labels
         for tool in Tool::all() {

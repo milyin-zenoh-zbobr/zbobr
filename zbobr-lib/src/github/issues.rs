@@ -1,4 +1,4 @@
-use crate::{Stage, Task, Zbobr, ZbobrError};
+use crate::{Label, Stage, Task, Zbobr, ZbobrError};
 
 #[derive(Debug, serde::Deserialize)]
 struct IssueResponse {
@@ -57,10 +57,14 @@ impl Zbobr {
             .iter()
             .find_map(|l| l.name.strip_prefix("copilot:").map(String::from));
 
-        let done = issue.labels.iter().any(|l| l.name == "done");
+        let done = issue.labels.iter().any(|l| l.name == Label::Done.as_str());
 
-        // Extract all label names
-        let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
+        // Extract and parse labels
+        let labels: Vec<Label> = issue
+            .labels
+            .iter()
+            .filter_map(|l| l.name.parse::<Label>().ok())
+            .collect();
 
         Ok(Task {
             id: issue.number,
@@ -224,10 +228,14 @@ impl Zbobr {
                 .labels
                 .iter()
                 .find_map(|l| l.name.strip_prefix("copilot:").map(String::from));
-            let done = issue.labels.iter().any(|l| l.name == "done");
+            let done = issue.labels.iter().any(|l| l.name == Label::Done.as_str());
 
-            // Extract all label names
-            let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
+            // Extract and parse labels
+            let labels: Vec<Label> = issue
+                .labels
+                .iter()
+                .filter_map(|l| l.name.parse::<Label>().ok())
+                .collect();
 
             tasks.push(Task {
                 id: issue.number,

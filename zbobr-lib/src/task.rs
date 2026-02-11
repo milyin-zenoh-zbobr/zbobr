@@ -84,6 +84,49 @@ impl std::str::FromStr for Role {
     }
 }
 
+/// Label for task status/state.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+pub enum Label {
+    #[serde(rename = "done")]
+    Done,
+    #[serde(rename = "question")]
+    Question,
+}
+
+impl Label {
+    /// Returns the label name as a string.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Label::Done => "done",
+            Label::Question => "question",
+        }
+    }
+
+    /// Returns all available labels.
+    pub fn all() -> &'static [Label] {
+        &[Label::Done, Label::Question]
+    }
+}
+
+impl std::fmt::Display for Label {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for Label {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "done" => Ok(Label::Done),
+            "question" => Ok(Label::Question),
+            _ => Err(format!("Unknown label: {}", s)),
+        }
+    }
+}
+
 /// AI Tool/Agent to use.
 #[derive(
     Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq, schemars::JsonSchema,
@@ -286,7 +329,7 @@ pub struct Task {
     pub destination_repo: Option<String>,
     pub destination_branch: Option<String>,
     pub done: bool,
-    pub labels: Vec<String>,
+    pub labels: Vec<Label>,
 }
 
 /// Tracked repository information for a task session.
@@ -368,7 +411,7 @@ impl TaskSession {
     }
 
     /// Add a label to the task.
-    pub async fn add_label(&self, label: &str) -> Result<(), ZbobrError> {
+    pub async fn add_label(&self, label: Label) -> Result<(), ZbobrError> {
         self.zbobr.add_task_label(self.task_id, label).await
     }
 
@@ -562,7 +605,9 @@ impl TaskSession {
         self.zbobr
             .set_task_stage(self.task_id, Stage::Pending)
             .await?;
-        self.zbobr.add_task_label(self.task_id, "done").await?;
+        self.zbobr
+            .add_task_label(self.task_id, Label::Done)
+            .await?;
         Ok(())
     }
 }
