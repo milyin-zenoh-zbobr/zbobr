@@ -206,17 +206,17 @@ async fn main() -> anyhow::Result<()> {
         .await?;
         tracing::info!("Stub: work submitted via MCP.");
 
-        tracing::info!("Stub: marking all plan items as done...");
-        // Check all plan items to trigger auto-done label
+        tracing::info!("Stub: marking all checklist items as done...");
+        // Check all checklist items to trigger auto-done label
         mcp.call_tool(
-            worker_tools::CHECK_PLAN_ITEM,
+            worker_tools::CHECK_CHECKLIST_ITEM,
             json!({
                 "id": "stub-item-1",
                 "checked": true
             }),
         )
         .await?;
-        tracing::info!("Stub: plan item marked as done, done label should be auto-set.");
+        tracing::info!("Stub: checklist item marked as done, done label should be auto-set.");
     }
 
     tracing::info!("Stub: Work complete.");

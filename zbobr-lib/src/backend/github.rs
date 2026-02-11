@@ -246,8 +246,8 @@ impl Backend for GitHubBackend {
             .filter_map(|l| l.name.parse::<Label>().ok())
             .collect();
 
-        // Extract plan from description
-        let (description, plan) = super::parse_description_with_plan(&body);
+        // Extract checklist from description
+        let (description, checklist) = super::parse_description_with_checklist(&body);
 
         // Discussion is not fetched by default for performance in listings,
         // but for a single get_task we could.
@@ -266,7 +266,7 @@ impl Backend for GitHubBackend {
             destination_branch,
             done,
             labels,
-            plan,
+            checklist,
         })
     }
 
@@ -403,10 +403,10 @@ impl Backend for GitHubBackend {
     }
 
     async fn update_task_description(&self, id: u64, description: &str) -> Result<(), ZbobrError> {
-        use crate::backend::strip_plan_from_description;
+        use crate::backend::strip_checklist_from_description;
         let (owner, repo) = self.parse_repo()?;
-        // Ensure description doesn't contain plan marker when storing
-        let clean_description = strip_plan_from_description(description);
+        // Ensure description doesn't contain checklist marker when storing
+        let clean_description = strip_checklist_from_description(description);
         self.octocrab
             .patch(
                 format!("/repos/{owner}/{repo}/issues/{id}"),
@@ -493,8 +493,8 @@ impl Backend for GitHubBackend {
                 .filter_map(|l| l.name.parse::<Label>().ok())
                 .collect();
 
-            // Extract plan from description
-            let (description, plan) = super::parse_description_with_plan(&body);
+            // Extract checklist from description
+            let (description, checklist) = super::parse_description_with_checklist(&body);
 
             tasks.push(Task {
                 id: issue.number,
@@ -509,7 +509,7 @@ impl Backend for GitHubBackend {
                 destination_branch,
                 done,
                 labels,
-                plan,
+                checklist,
             });
         }
         Ok(tasks)

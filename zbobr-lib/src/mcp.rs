@@ -12,7 +12,7 @@ use rmcp::{
 use serde_json::Value;
 
 use crate::{
-    task::{Label, Model, PlanItem, Role, Stage, TaskSession, Tool},
+    task::{Label, Model, ChecklistItem, Role, Stage, TaskSession, Tool},
     Zbobr,
 };
 
@@ -126,37 +126,37 @@ pub struct StageParam {
     pub tool: Option<Tool>,
 }
 
-// -- Plan parameter types --
+// -- Checklist parameter types --
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-pub struct InsertPlanItemParam {
-    #[schemars(description = "Unique identifier for the new plan item")]
+pub struct InsertChecklistItemParam {
+    #[schemars(description = "Unique identifier for the new checklist item")]
     pub id: String,
-    #[schemars(description = "Plan item text")]
+    #[schemars(description = "Checklist item text")]
     pub text: String,
     #[schemars(description = "Optional ID of the item to insert after (if omitted, adds to end)")]
     pub after_id: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-pub struct UpdatePlanItemParam {
-    #[schemars(description = "ID of the plan item to update")]
+pub struct UpdateChecklistItemParam {
+    #[schemars(description = "ID of the checklist item to update")]
     pub id: String,
-    #[schemars(description = "New text for the plan item")]
+    #[schemars(description = "New text for the checklist item")]
     pub text: String,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-pub struct CheckPlanItemParam {
-    #[schemars(description = "ID of the plan item to check/uncheck")]
+pub struct CheckChecklistItemParam {
+    #[schemars(description = "ID of the checklist item to check/uncheck")]
     pub id: String,
     #[schemars(description = "New checkbox state (true = checked, false = unchecked)")]
     pub checked: bool,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-pub struct DeletePlanItemParam {
-    #[schemars(description = "ID of the plan item to delete")]
+pub struct DeleteChecklistItemParam {
+    #[schemars(description = "ID of the checklist item to delete")]
     pub id: String,
 }
 
@@ -176,11 +176,11 @@ mcp_tools! {
     POST_MESSAGE = "post_message",
     PULL_BRANCH = "pull_branch",
     PULL_BRANCH_BY_PR = "pull_branch_by_pr",
-    GET_PLAN = "get_plan",
-    INSERT_PLAN_ITEM = "insert_plan_item",
-    UPDATE_PLAN_ITEM = "update_plan_item",
-    CHECK_PLAN_ITEM = "check_plan_item",
-    DELETE_PLAN_ITEM = "delete_plan_item",
+    GET_CHECKLIST = "get_checklist",
+    INSERT_CHECKLIST_ITEM = "insert_checklist_item",
+    UPDATE_CHECKLIST_ITEM = "update_checklist_item",
+    CHECK_CHECKLIST_ITEM = "check_checklist_item",
+    DELETE_CHECKLIST_ITEM = "delete_checklist_item",
 }
 
 mcp_tools! {
@@ -194,11 +194,11 @@ mcp_tools! {
     PULL_BRANCH_BY_PR = "pull_branch_by_pr",
     PUSH_BRANCH = "push_branch",
     PUSH_BRANCH_AND_CREATE_PR = "push_branch_and_create_pr",
-    GET_PLAN = "get_plan",
-    INSERT_PLAN_ITEM = "insert_plan_item",
-    UPDATE_PLAN_ITEM = "update_plan_item",
-    CHECK_PLAN_ITEM = "check_plan_item",
-    DELETE_PLAN_ITEM = "delete_plan_item",
+    GET_CHECKLIST = "get_checklist",
+    INSERT_CHECKLIST_ITEM = "insert_checklist_item",
+    UPDATE_CHECKLIST_ITEM = "update_checklist_item",
+    CHECK_CHECKLIST_ITEM = "check_checklist_item",
+    DELETE_CHECKLIST_ITEM = "delete_checklist_item",
 }
 
 mcp_tools! {
@@ -249,7 +249,7 @@ The plan is posted as a task comment. The worker agent will later retrieve it fr
 Post as markdown with sections: Overview, Changes Required (by repo/file), Testing Strategy, Risks, and include a checklist of implementation steps in the following format:
 
 ```
----PLAN---
+---CHECKLIST---
 - [ ] item-id-1: First implementation step
 - [ ] item-id-2: Second implementation step
 ```"#,
@@ -290,12 +290,12 @@ Work autonomously. Do not ask the user for anything.
 4. `cd` into the returned path and implement the plan
 5. **REQUIRED**: Create a branch using `git checkout -b <name>` where `<name>` **must** come from `{create_branch_name}` (e.g. with short_name="implementation"). Do NOT use arbitrary branch names.
 6. Commit changes locally with clear messages
-7. Call `{push_branch_and_create_pr}` with the local path and destination branch — this pushes to the fork and creates a PR within the fork
+7. Call `{push_branch_and_create_pr}` with local path and destination branch — this pushes to the fork and creates a PR within the fork
    - Or call `{push_branch}` if you only need to push without creating a PR
 8. When you complete implementation steps:
-   - Update all plan items to checked state as you complete them
+   - Update all checklist items to checked state as you complete them
    - Call `{post_message}` to summarize what was accomplished
-   - When your session ends, if all plan items are checked, the 'done' label will be automatically set
+   - When your session ends, if all checklist items are checked, the 'done' label will be automatically set
 9. If there are issues requiring user intervention:
    - Call `{post_message}` to describe the problem
    - Call `{post_question}` to post a question and set the 'question' label on the task"#,
@@ -463,37 +463,37 @@ impl PlannerMcp {
         }
     }
 
-    #[tool(description = "Get the task plan as a list of checkbox items")]
-    async fn get_plan(&self) -> String {
-        tracing::info!("[planner#{}] get_plan", self.session.task_id());
-        match self.session.get_plan().await {
+    #[tool(description = "Get the task checklist as a list of checkbox items")]
+    async fn get_checklist(&self) -> String {
+        tracing::info!("[planner#{}] get_checklist", self.session.task_id());
+        match self.session.get_checklist().await {
             Ok(items) => {
                 match serde_json::to_string_pretty(&items) {
                     Ok(json) => json,
-                    Err(e) => format!("Error serializing plan: {e}"),
+                    Err(e) => format!("Error serializing checklist: {e}"),
                 }
             }
             Err(e) => format!("Error: {e}"),
         }
     }
 
-    #[tool(description = "Insert a new plan item (always created in unchecked state)")]
-    async fn insert_plan_item(&self, Parameters(params): Parameters<InsertPlanItemParam>) -> String {
+    #[tool(description = "Insert a new checklist item (always created in unchecked state)")]
+    async fn insert_checklist_item(&self, Parameters(params): Parameters<InsertChecklistItemParam>) -> String {
         tracing::info!(
-            "[planner#{}] insert_plan_item id={} after_id={:?}",
+            "[planner#{}] insert_checklist_item id={} after_id={:?}",
             self.session.task_id(),
             params.id,
             params.after_id
         );
         
-        match (self.session.get_description().await, self.session.get_plan().await) {
+        match (self.session.get_description().await, self.session.get_checklist().await) {
             (Ok(desc), Ok(mut items)) => {
                 // Check if ID already exists
                 if items.iter().any(|item| item.id == params.id) {
-                    return format!("Error: Plan item with id '{}' already exists", params.id);
+                    return format!("Error: Checklist item with id '{}' already exists", params.id);
                 }
                 
-                let new_item = PlanItem {
+                let new_item = ChecklistItem {
                     id: params.id.clone(),
                     checked: false,
                     text: params.text.clone(),
@@ -504,15 +504,15 @@ impl PlannerMcp {
                     if let Some(pos) = items.iter().position(|item| &item.id == after_id) {
                         items.insert(pos + 1, new_item);
                     } else {
-                        return format!("Error: Plan item with id '{}' not found", after_id);
+                        return format!("Error: Checklist item with id '{}' not found", after_id);
                     }
                 } else {
                     // Add to end
                     items.push(new_item);
                 }
                 
-                match self.session.update_plan(&desc, &items).await {
-                    Ok(()) => format!("Plan item '{}' inserted", params.id),
+                match self.session.update_checklist(&desc, &items).await {
+                    Ok(()) => format!("Checklist item '{}' inserted", params.id),
                     Err(e) => format!("Error updating task: {e}"),
                 }
             }
@@ -520,76 +520,76 @@ impl PlannerMcp {
         }
     }
 
-    #[tool(description = "Update a plan item's text")]
-    async fn update_plan_item(&self, Parameters(params): Parameters<UpdatePlanItemParam>) -> String {
+    #[tool(description = "Update a checklist item's text")]
+    async fn update_checklist_item(&self, Parameters(params): Parameters<UpdateChecklistItemParam>) -> String {
         tracing::info!(
-            "[planner#{}] update_plan_item id={}",
+            "[planner#{}] update_checklist_item id={}",
             self.session.task_id(),
             params.id
         );
         
-        match (self.session.get_description().await, self.session.get_plan().await) {
+        match (self.session.get_description().await, self.session.get_checklist().await) {
             (Ok(desc), Ok(mut items)) => {
                 if let Some(item) = items.iter_mut().find(|item| item.id == params.id) {
                     item.text = params.text.clone();
                     
-                    match self.session.update_plan(&desc, &items).await {
-                        Ok(()) => format!("Plan item '{}' updated", params.id),
+                    match self.session.update_checklist(&desc, &items).await {
+                        Ok(()) => format!("Checklist item '{}' updated", params.id),
                         Err(e) => format!("Error updating task: {e}"),
                     }
                 } else {
-                    format!("Error: Plan item with id '{}' not found", params.id)
+                    format!("Error: Checklist item with id '{}' not found", params.id)
                 }
             }
             (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
         }
     }
 
-    #[tool(description = "Check or uncheck a plan item")]
-    async fn check_plan_item(&self, Parameters(params): Parameters<CheckPlanItemParam>) -> String {
+    #[tool(description = "Check or uncheck a checklist item")]
+    async fn check_checklist_item(&self, Parameters(params): Parameters<CheckChecklistItemParam>) -> String {
         tracing::info!(
-            "[planner#{}] check_plan_item id={} checked={}",
+            "[planner#{}] check_checklist_item id={} checked={}",
             self.session.task_id(),
             params.id,
             params.checked
         );
         
-        match (self.session.get_description().await, self.session.get_plan().await) {
+        match (self.session.get_description().await, self.session.get_checklist().await) {
             (Ok(desc), Ok(mut items)) => {
                 if let Some(item) = items.iter_mut().find(|item| item.id == params.id) {
                     item.checked = params.checked;
                     
-                    match self.session.update_plan(&desc, &items).await {
-                        Ok(()) => format!("Plan item '{}' checked state updated to {}", params.id, params.checked),
+                    match self.session.update_checklist(&desc, &items).await {
+                        Ok(()) => format!("Checklist item '{}' checked state updated to {}", params.id, params.checked),
                         Err(e) => format!("Error updating task: {e}"),
                     }
                 } else {
-                    format!("Error: Plan item with id '{}' not found", params.id)
+                    format!("Error: Checklist item with id '{}' not found", params.id)
                 }
             }
             (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
         }
     }
 
-    #[tool(description = "Delete a plan item")]
-    async fn delete_plan_item(&self, Parameters(params): Parameters<DeletePlanItemParam>) -> String {
+    #[tool(description = "Delete a checklist item")]
+    async fn delete_checklist_item(&self, Parameters(params): Parameters<DeleteChecklistItemParam>) -> String {
         tracing::info!(
-            "[planner#{}] delete_plan_item id={}",
+            "[planner#{}] delete_checklist_item id={}",
             self.session.task_id(),
             params.id
         );
         
-        match (self.session.get_description().await, self.session.get_plan().await) {
+        match (self.session.get_description().await, self.session.get_checklist().await) {
             (Ok(desc), Ok(mut items)) => {
                 let original_len = items.len();
                 items.retain(|item| item.id != params.id);
                 
                 if items.len() == original_len {
-                    return format!("Error: Plan item with id '{}' not found", params.id);
+                    return format!("Error: Checklist item with id '{}' not found", params.id);
                 }
                 
-                match self.session.update_plan(&desc, &items).await {
-                    Ok(()) => format!("Plan item '{}' deleted", params.id),
+                match self.session.update_checklist(&desc, &items).await {
+                    Ok(()) => format!("Checklist item '{}' deleted", params.id),
                     Err(e) => format!("Error updating task: {e}"),
                 }
             }
@@ -780,37 +780,37 @@ impl WorkerMcp {
         }
     }
 
-    #[tool(description = "Get the task plan as a list of checkbox items")]
-    async fn get_plan(&self) -> String {
-        tracing::info!("[worker#{}] get_plan", self.session.task_id());
-        match self.session.get_plan().await {
+    #[tool(description = "Get the task checklist as a list of checkbox items")]
+    async fn get_checklist(&self) -> String {
+        tracing::info!("[worker#{}] get_checklist", self.session.task_id());
+        match self.session.get_checklist().await {
             Ok(items) => {
                 match serde_json::to_string_pretty(&items) {
                     Ok(json) => json,
-                    Err(e) => format!("Error serializing plan: {e}"),
+                    Err(e) => format!("Error serializing checklist: {e}"),
                 }
             }
             Err(e) => format!("Error: {e}"),
         }
     }
 
-    #[tool(description = "Insert a new plan item (always created in unchecked state)")]
-    async fn insert_plan_item(&self, Parameters(params): Parameters<InsertPlanItemParam>) -> String {
+    #[tool(description = "Insert a new checklist item (always created in unchecked state)")]
+    async fn insert_checklist_item(&self, Parameters(params): Parameters<InsertChecklistItemParam>) -> String {
         tracing::info!(
-            "[worker#{}] insert_plan_item id={} after_id={:?}",
+            "[worker#{}] insert_checklist_item id={} after_id={:?}",
             self.session.task_id(),
             params.id,
             params.after_id
         );
         
-        match (self.session.get_description().await, self.session.get_plan().await) {
+        match (self.session.get_description().await, self.session.get_checklist().await) {
             (Ok(desc), Ok(mut items)) => {
                 // Check if ID already exists
                 if items.iter().any(|item| item.id == params.id) {
-                    return format!("Error: Plan item with id '{}' already exists", params.id);
+                    return format!("Error: Checklist item with id '{}' already exists", params.id);
                 }
                 
-                let new_item = PlanItem {
+                let new_item = ChecklistItem {
                     id: params.id.clone(),
                     checked: false,
                     text: params.text.clone(),
@@ -821,15 +821,15 @@ impl WorkerMcp {
                     if let Some(pos) = items.iter().position(|item| &item.id == after_id) {
                         items.insert(pos + 1, new_item);
                     } else {
-                        return format!("Error: Plan item with id '{}' not found", after_id);
+                        return format!("Error: Checklist item with id '{}' not found", after_id);
                     }
                 } else {
                     // Add to end
                     items.push(new_item);
                 }
                 
-                match self.session.update_plan(&desc, &items).await {
-                    Ok(()) => format!("Plan item '{}' inserted", params.id),
+                match self.session.update_checklist(&desc, &items).await {
+                    Ok(()) => format!("Checklist item '{}' inserted", params.id),
                     Err(e) => format!("Error updating task: {e}"),
                 }
             }
@@ -837,78 +837,78 @@ impl WorkerMcp {
         }
     }
 
-    #[tool(description = "Update a plan item's text")]
-    async fn update_plan_item(&self, Parameters(params): Parameters<UpdatePlanItemParam>) -> String {
+    #[tool(description = "Update a checklist item's text")]
+    async fn update_checklist_item(&self, Parameters(params): Parameters<UpdateChecklistItemParam>) -> String {
         tracing::info!(
-            "[worker#{}] update_plan_item id={}",
+            "[worker#{}] update_checklist_item id={}",
             self.session.task_id(),
             params.id
         );
         
-        match (self.session.get_description().await, self.session.get_plan().await) {
+        match (self.session.get_description().await, self.session.get_checklist().await) {
             (Ok(desc), Ok(mut items)) => {
                 if let Some(item) = items.iter_mut().find(|item| item.id == params.id) {
                     item.text = params.text.clone();
                     
-                    match self.session.update_plan(&desc, &items).await {
-                        Ok(()) => format!("Plan item '{}' updated", params.id),
+                    match self.session.update_checklist(&desc, &items).await {
+                        Ok(()) => format!("Checklist item '{}' updated", params.id),
                         Err(e) => format!("Error updating task: {e}"),
                     }
                 } else {
-                    format!("Error: Plan item with id '{}' not found", params.id)
+                    format!("Error: Checklist item with id '{}' not found", params.id)
                 }
             }
             (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
         }
     }
 
-    #[tool(description = "Check or uncheck a plan item")]
-    async fn check_plan_item(&self, Parameters(params): Parameters<CheckPlanItemParam>) -> String {
+    #[tool(description = "Check or uncheck a checklist item")]
+    async fn check_checklist_item(&self, Parameters(params): Parameters<CheckChecklistItemParam>) -> String {
         tracing::info!(
-            "[worker#{}] check_plan_item id={} checked={}",
+            "[worker#{}] check_checklist_item id={} checked={}",
             self.session.task_id(),
             params.id,
             params.checked
         );
         
-        match (self.session.get_description().await, self.session.get_plan().await) {
+        match (self.session.get_description().await, self.session.get_checklist().await) {
             (Ok(desc), Ok(mut items)) => {
                 if let Some(item) = items.iter_mut().find(|item| item.id == params.id) {
                     item.checked = params.checked;
                     
-                    match self.session.update_plan(&desc, &items).await {
+                    match self.session.update_checklist(&desc, &items).await {
                         Ok(()) => {
-                            format!("Plan item '{}' checked state updated to {}", params.id, params.checked)
+                            format!("Checklist item '{}' checked state updated to {}", params.id, params.checked)
                         },
                         Err(e) => format!("Error updating task: {e}"),
                     }
                 } else {
-                    format!("Error: Plan item with id '{}' not found", params.id)
+                    format!("Error: Checklist item with id '{}' not found", params.id)
                 }
             }
             (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
         }
     }
 
-    #[tool(description = "Delete a plan item")]
-    async fn delete_plan_item(&self, Parameters(params): Parameters<DeletePlanItemParam>) -> String {
+    #[tool(description = "Delete a checklist item")]
+    async fn delete_checklist_item(&self, Parameters(params): Parameters<DeleteChecklistItemParam>) -> String {
         tracing::info!(
-            "[worker#{}] delete_plan_item id={}",
+            "[worker#{}] delete_checklist_item id={}",
             self.session.task_id(),
             params.id
         );
         
-        match (self.session.get_description().await, self.session.get_plan().await) {
+        match (self.session.get_description().await, self.session.get_checklist().await) {
             (Ok(desc), Ok(mut items)) => {
                 let original_len = items.len();
                 items.retain(|item| item.id != params.id);
                 
                 if items.len() == original_len {
-                    return format!("Error: Plan item with id '{}' not found", params.id);
+                    return format!("Error: Checklist item with id '{}' not found", params.id);
                 }
                 
-                match self.session.update_plan(&desc, &items).await {
-                    Ok(()) => format!("Plan item '{}' deleted", params.id),
+                match self.session.update_checklist(&desc, &items).await {
+                    Ok(()) => format!("Checklist item '{}' deleted", params.id),
                     Err(e) => format!("Error updating task: {e}"),
                 }
             }
@@ -1318,18 +1318,18 @@ mod tests {
     }
 
     #[test]
-    fn test_plan_parsing_and_serialization() {
-        use crate::backend::{parse_description_with_plan, serialize_description_with_plan};
+    fn test_checklist_parsing_and_serialization() {
+        use crate::backend::{parse_description_with_checklist, serialize_description_with_checklist};
         
-        // Test with no plan
+        // Test with no checklist
         let desc = "This is a task description";
-        let (original, items) = parse_description_with_plan(desc);
+        let (original, items) = parse_description_with_checklist(desc);
         assert_eq!(original, desc);
         assert!(items.is_empty());
 
-        // Test with plan
-        let desc_with_plan = "Task description\n---PLAN---\n- [ ] item1: First item\n- [x] item2: Second item checked\n- [ ] item3: Third item\n";
-        let (original, items) = parse_description_with_plan(desc_with_plan);
+        // Test with checklist
+        let desc_with_checklist = "Task description\n---CHECKLIST---\n- [ ] item1: First item\n- [x] item2: Second item checked\n- [ ] item3: Third item\n";
+        let (original, items) = parse_description_with_checklist(desc_with_checklist);
         assert_eq!(original, "Task description");
         assert_eq!(items.len(), 3);
         assert_eq!(items[0].id, "item1");
@@ -1343,15 +1343,15 @@ mod tests {
         assert!(!items[2].checked);
 
         // Test serialization
-        let serialized = serialize_description_with_plan(&original, &items);
+        let serialized = serialize_description_with_checklist(&original, &items);
         assert!(serialized.contains("Task description"));
-        assert!(serialized.contains("---PLAN---"));
+        assert!(serialized.contains("---CHECKLIST---"));
         assert!(serialized.contains("- [ ] item1: First item"));
         assert!(serialized.contains("- [x] item2: Second item checked"));
         assert!(serialized.contains("- [ ] item3: Third item"));
 
         // Test round-trip
-        let (original2, items2) = parse_description_with_plan(&serialized);
+        let (original2, items2) = parse_description_with_checklist(&serialized);
         assert_eq!(original, original2);
         assert_eq!(items.len(), items2.len());
         for (item1, item2) in items.iter().zip(items2.iter()) {
@@ -1362,26 +1362,26 @@ mod tests {
     }
 
     #[test]
-    fn test_description_plan_validation() {
-        use crate::backend::{parse_description_with_plan, serialize_description_with_plan, strip_plan_from_description};
+    fn test_description_checklist_validation() {
+        use crate::backend::{parse_description_with_checklist, serialize_description_with_checklist, strip_checklist_from_description};
         
-        // Test stripping existing plan from description
-        let desc_with_old_plan = "Task description\n---PLAN---\n- [ ] old1: Old item\n";
-        let stripped = strip_plan_from_description(desc_with_old_plan);
+        // Test stripping existing checklist from description
+        let desc_with_old_checklist = "Task description\n---CHECKLIST---\n- [ ] old1: Old item\n";
+        let stripped = strip_checklist_from_description(desc_with_old_checklist);
         assert_eq!(stripped, "Task description");
         
-        // Test that serialize_description_with_plan replaces old plan with new one
-        let new_plan = vec![
-            PlanItem { id: "new1".to_string(), checked: false, text: "New item".to_string() },
+        // Test that serialize_description_with_checklist replaces old checklist with new one
+        let new_checklist = vec![
+            ChecklistItem { id: "new1".to_string(), checked: false, text: "New item".to_string() },
         ];
-        let serialized = serialize_description_with_plan(desc_with_old_plan, &new_plan);
+        let serialized = serialize_description_with_checklist(desc_with_old_checklist, &new_checklist);
         
-        // Should contain the new plan, not the old one
+        // Should contain the new checklist, not the old one
         assert!(serialized.contains("- [ ] new1: New item"));
         assert!(!serialized.contains("old1"));
         
         // Should parse correctly
-        let (original, items) = parse_description_with_plan(&serialized);
+        let (original, items) = parse_description_with_checklist(&serialized);
         assert_eq!(original, "Task description");
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].id, "new1");

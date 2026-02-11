@@ -5,16 +5,16 @@ use std::{
 
 use crate::{Zbobr, ZbobrError};
 
-// -- Plan item types --
+// -- Checklist item types --
 
-/// A single item in a task's plan.
+/// A single item in a task's checklist.
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-pub struct PlanItem {
-    #[schemars(description = "Unique identifier for the plan item")]
+pub struct ChecklistItem {
+    #[schemars(description = "Unique identifier for the checklist item")]
     pub id: String,
     #[schemars(description = "Checkbox state (true = checked, false = unchecked)")]
     pub checked: bool,
-    #[schemars(description = "Plan item text")]
+    #[schemars(description = "Checklist item text")]
     pub text: String,
 }
 
@@ -343,7 +343,7 @@ pub struct Task {
     pub destination_branch: Option<String>,
     pub done: bool,
     pub labels: Vec<Label>,
-    pub plan: Vec<PlanItem>,
+    pub checklist: Vec<ChecklistItem>,
 }
 
 /// Tracked repository information for a task session.
@@ -400,19 +400,19 @@ impl TaskSession {
         Ok(task.description)
     }
 
-    /// Get the current task plan.
-    pub async fn get_plan(&self) -> Result<Vec<PlanItem>, ZbobrError> {
+    /// Get the current task checklist.
+    pub async fn get_checklist(&self) -> Result<Vec<ChecklistItem>, ZbobrError> {
         let task = self.zbobr.get_task(self.task_id).await?;
-        Ok(task.plan)
+        Ok(task.checklist)
     }
 
-    /// Update the task description and plan separately.
-    /// The plan will be serialized into the description for storage via the backend.
-    pub async fn update_plan(&self, description: &str, plan: &[PlanItem]) -> Result<(), ZbobrError> {
-        use crate::backend::serialize_description_with_plan;
-        let description_with_plan = serialize_description_with_plan(description, plan);
+    /// Update the task description and checklist separately.
+    /// The checklist will be serialized into the description for storage via the backend.
+    pub async fn update_checklist(&self, description: &str, checklist: &[ChecklistItem]) -> Result<(), ZbobrError> {
+        use crate::backend::serialize_description_with_checklist;
+        let description_with_checklist = serialize_description_with_checklist(description, checklist);
         self.zbobr
-            .update_task_description(self.task_id, &description_with_plan)
+            .update_task_description(self.task_id, &description_with_checklist)
             .await
     }
 
@@ -682,7 +682,7 @@ mod tests {
             destination_repo: None,
             destination_branch: None,
             done: false,
-            plan: vec![],
+            checklist: vec![],
             labels: vec![],
         };
         let json = serde_json::to_string(&task).unwrap();

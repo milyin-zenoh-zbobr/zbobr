@@ -6,26 +6,26 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 
 use crate::{Label, Model, Stage, Task, Tool, ZbobrError};
-use crate::task::PlanItem;
+use crate::task::ChecklistItem;
 
-// -- Plan parsing and serialization helpers --
+// -- Checklist parsing and serialization helpers --
 
-const PLAN_SEPARATOR: &str = "\n---PLAN---\n";
+const CHECKLIST_SEPARATOR: &str = "\n---CHECKLIST---\n";
 
-/// Parse a task description, separating the original description from the plan.
-/// Returns (original_description, plan_items).
-pub fn parse_description_with_plan(description: &str) -> (String, Vec<PlanItem>) {
-    let parts: Vec<&str> = description.split(PLAN_SEPARATOR).collect();
+/// Parse a task description, separating the original description from the checklist.
+/// Returns (original_description, checklist_items).
+pub fn parse_description_with_checklist(description: &str) -> (String, Vec<ChecklistItem>) {
+    let parts: Vec<&str> = description.split(CHECKLIST_SEPARATOR).collect();
     if parts.len() < 2 {
-        // No plan section
+        // No checklist section
         return (description.to_string(), Vec::new());
     }
 
     let original = parts[0].to_string();
-    let plan_text = parts[1];
+    let checklist_text = parts[1];
     
     let mut items = Vec::new();
-    for line in plan_text.lines() {
+    for line in checklist_text.lines() {
         let line = line.trim();
         if line.is_empty() {
             continue;
@@ -42,7 +42,7 @@ pub fn parse_description_with_plan(description: &str) -> (String, Vec<PlanItem>)
                     let id = after_checkbox[..colon_pos].trim().to_string();
                     let text = after_checkbox[colon_pos + 1..].trim().to_string();
                     
-                    items.push(PlanItem { id, checked, text });
+                    items.push(ChecklistItem { id, checked, text });
                 }
             }
         }
@@ -51,25 +51,25 @@ pub fn parse_description_with_plan(description: &str) -> (String, Vec<PlanItem>)
     (original, items)
 }
 
-/// Extract the original description, removing any existing plan section.
-/// This ensures no duplicate plan separators in the description.
-pub fn strip_plan_from_description(description: &str) -> String {
-    let (original, _) = parse_description_with_plan(description);
+/// Extract the original description, removing any existing checklist section.
+/// This ensures no duplicate checklist separators in the description.
+pub fn strip_checklist_from_description(description: &str) -> String {
+    let (original, _) = parse_description_with_checklist(description);
     original
 }
 
-/// Serialize plan items back into the full description format.
-/// If the description contains an existing plan, it will be replaced with the new one.
-pub fn serialize_description_with_plan(original_description: &str, items: &[PlanItem]) -> String {
-    // Ensure the description doesn't contain plan marker
-    let clean_description = strip_plan_from_description(original_description);
+/// Serialize checklist items back into the full description format.
+/// If the description contains an existing checklist, it will be replaced with the new one.
+pub fn serialize_description_with_checklist(original_description: &str, items: &[ChecklistItem]) -> String {
+    // Ensure the description doesn't contain checklist marker
+    let clean_description = strip_checklist_from_description(original_description);
     
     if items.is_empty() {
         return clean_description;
     }
     
     let mut result = clean_description;
-    result.push_str(PLAN_SEPARATOR);
+    result.push_str(CHECKLIST_SEPARATOR);
     
     for item in items {
         let checkbox = if item.checked { "x" } else { " " };

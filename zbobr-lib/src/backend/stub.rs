@@ -38,7 +38,7 @@ impl Default for StubState {
                 destination_branch: None,
                 done: false,
                 labels: vec![],
-                plan: vec![],
+                checklist: vec![],
             },
         );
 
@@ -112,7 +112,7 @@ impl Backend for StubBackend {
             destination_branch,
             done: false,
             labels: vec![],
-            plan: vec![],
+            checklist: vec![],
         };
         state.tasks.insert(id, task);
         Ok(id)
@@ -185,11 +185,11 @@ impl Backend for StubBackend {
     }
 
     async fn update_task_description(&self, id: u64, description: &str) -> Result<(), ZbobrError> {
-        use crate::backend::strip_plan_from_description;
+        use crate::backend::strip_checklist_from_description;
         let mut state = self.state.write().unwrap();
         if let Some(task) = state.tasks.get_mut(&id) {
-            // Ensure description doesn't contain plan marker when storing
-            task.description = strip_plan_from_description(description);
+            // Ensure description doesn't contain checklist marker when storing
+            task.description = strip_checklist_from_description(description);
             Ok(())
         } else {
             Err(ZbobrError::Other(format!("Task {id} not found")))

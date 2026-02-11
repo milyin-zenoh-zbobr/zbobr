@@ -585,14 +585,14 @@ async fn run_role_session(
         }
     };
 
-    // On exit, check if all plan items are completed and set done label if so
+    // On exit, check if all checklist items are completed and set done label if so
     let task = zbobr.get_task(task_id).await?;
-    if !task.plan.is_empty() && task.plan.iter().all(|item| item.checked) {
-        // All plan items are checked - set the done label
+    if !task.checklist.is_empty() && task.checklist.iter().all(|item| item.checked) {
+        // All checklist items are checked - set the done label
         if let Err(e) = zbobr.add_task_label(task_id, zbobr_lib::Label::Done).await {
             tracing::warn!("Failed to set done label on task #{}: {}", task_id, e);
         } else {
-            tracing::info!("All plan items checked - set done label on task #{}", task_id);
+            tracing::info!("All checklist items checked - set done label on task #{}", task_id);
         }
     }
 
