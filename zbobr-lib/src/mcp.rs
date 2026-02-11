@@ -1,14 +1,20 @@
 use std::sync::Arc;
 
-use crate::task::{Model, Role, Stage, TaskSession, Tool};
-use crate::Zbobr;
-use rmcp::handler::server::router::tool::ToolRouter;
-use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{ServerCapabilities, ServerInfo};
-use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
-use rmcp::transport::streamable_http_server::StreamableHttpService;
-use rmcp::{tool, tool_handler, tool_router, ServerHandler};
+use rmcp::{
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
+    model::{ServerCapabilities, ServerInfo},
+    tool, tool_handler, tool_router,
+    transport::streamable_http_server::{
+        session::local::LocalSessionManager, StreamableHttpService,
+    },
+    ServerHandler,
+};
 use serde_json::Value;
+
+use crate::{
+    task::{Model, Role, Stage, TaskSession, Tool},
+    Zbobr,
+};
 
 /// Get the current hostname, or "unknown" if it cannot be determined.
 fn get_hostname() -> String {
@@ -54,7 +60,9 @@ pub struct BranchParam {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct PrParam {
-    #[schemars(description = "Pull request reference (URL like 'https://github.com/owner/repo/pull/123' or 'owner/repo#123')")]
+    #[schemars(
+        description = "Pull request reference (URL like 'https://github.com/owner/repo/pull/123' or 'owner/repo#123')"
+    )]
     pub pr: String,
 }
 
@@ -251,7 +259,10 @@ Work autonomously. Do not ask the user for anything.
 }
 
 /// Generate concise API documentation from a tool router
-fn generate_api_docs_from_router<T: Send + Sync + 'static>(router: &ToolRouter<T>, role_name: &str) -> String {
+fn generate_api_docs_from_router<T: Send + Sync + 'static>(
+    router: &ToolRouter<T>,
+    role_name: &str,
+) -> String {
     let tools = router.list_all();
 
     let mut doc = format!("## {} MCP API\n\n", role_name);
@@ -259,46 +270,49 @@ fn generate_api_docs_from_router<T: Send + Sync + 'static>(router: &ToolRouter<T
 
     for tool in tools {
         doc.push_str(&format!("### `{}`\n\n", tool.name));
-        doc.push_str(&format!("{}\n\n", tool.description.as_deref().unwrap_or("No description")));
+        doc.push_str(&format!(
+            "{}\n\n",
+            tool.description.as_deref().unwrap_or("No description")
+        ));
 
         // Parameters
         let schema = &tool.input_schema;
-        let properties_obj = schema.get("properties")
-            .and_then(|v: &Value| v.as_object());
+        let properties_obj = schema.get("properties").and_then(|v: &Value| v.as_object());
 
         if let Some(properties) = properties_obj {
-                if !properties.is_empty() {
-                    doc.push_str("**Parameters:**\n");
-                    for (name, prop_val) in properties {
-                        let required_arr = schema
-                            .get("required")
-                            .and_then(|v: &Value| v.as_array());
-                        let required = required_arr
-                            .map(|arr| arr.iter().any(|v: &Value| v.as_str() == Some(name.as_str())))
-                            .unwrap_or(false);
-                        let desc = match prop_val.get("description") {
-                            Some(v) => v.as_str().unwrap_or(""),
-                            None => "",
-                        };
-                        let type_str = match prop_val.get("type") {
-                            Some(v) => v.as_str().unwrap_or("any"),
-                            None => "any",
-                        };
-                        doc.push_str(&format!(
-                            "- `{}` ({}{}) - {}\n",
-                            name,
-                            type_str,
-                            if required { ", required" } else { "" },
-                            desc
-                        ));
-                    }
-                    doc.push('\n');
-                } else {
-                    doc.push_str("**Parameters:** None\n\n");
+            if !properties.is_empty() {
+                doc.push_str("**Parameters:**\n");
+                for (name, prop_val) in properties {
+                    let required_arr = schema.get("required").and_then(|v: &Value| v.as_array());
+                    let required = required_arr
+                        .map(|arr| {
+                            arr.iter()
+                                .any(|v: &Value| v.as_str() == Some(name.as_str()))
+                        })
+                        .unwrap_or(false);
+                    let desc = match prop_val.get("description") {
+                        Some(v) => v.as_str().unwrap_or(""),
+                        None => "",
+                    };
+                    let type_str = match prop_val.get("type") {
+                        Some(v) => v.as_str().unwrap_or("any"),
+                        None => "any",
+                    };
+                    doc.push_str(&format!(
+                        "- `{}` ({}{}) - {}\n",
+                        name,
+                        type_str,
+                        if required { ", required" } else { "" },
+                        desc
+                    ));
                 }
+                doc.push('\n');
             } else {
                 doc.push_str("**Parameters:** None\n\n");
             }
+        } else {
+            doc.push_str("**Parameters:** None\n\n");
+        }
 
         doc.push_str("---\n\n");
     }
@@ -351,7 +365,11 @@ impl PlannerMcp {
     async fn post_message(&self, Parameters(params): Parameters<MessageParam>) -> String {
         tracing::info!("[planner#{}] post_message", self.session.task_id());
         let hostname = get_hostname();
-        match self.session.post_message(&params.message, Role::Planner.as_str(), &hostname).await {
+        match self
+            .session
+            .post_message(&params.message, Role::Planner.as_str(), &hostname)
+            .await
+        {
             Ok(()) => "Message posted".to_string(),
             Err(e) => format!("Error: {e}"),
         }
@@ -361,8 +379,17 @@ impl PlannerMcp {
         description = "Pull a repository and checkout a specific branch for investigation (read-only). Returns the local path."
     )]
     async fn pull_branch(&self, Parameters(params): Parameters<BranchParam>) -> String {
-        tracing::info!("[planner#{}] pull_branch repo={} branch={}", self.session.task_id(), params.repo, params.branch);
-        match self.session.request_branch_readonly(&params.repo, &params.branch).await {
+        tracing::info!(
+            "[planner#{}] pull_branch repo={} branch={}",
+            self.session.task_id(),
+            params.repo,
+            params.branch
+        );
+        match self
+            .session
+            .request_branch_readonly(&params.repo, &params.branch)
+            .await
+        {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
         }
@@ -372,7 +399,11 @@ impl PlannerMcp {
         description = "Pull a repository and checkout the branch from a PR (read-only). Takes PR URL or 'owner/repo#123' format. Returns the local path."
     )]
     async fn pull_branch_by_pr(&self, Parameters(params): Parameters<PrParam>) -> String {
-        tracing::info!("[planner#{}] pull_branch_by_pr pr={}", self.session.task_id(), params.pr);
+        tracing::info!(
+            "[planner#{}] pull_branch_by_pr pr={}",
+            self.session.task_id(),
+            params.pr
+        );
         match self.session.request_branch_by_pr(&params.pr, true).await {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
@@ -446,15 +477,25 @@ impl WorkerMcp {
     async fn post_message(&self, Parameters(params): Parameters<MessageParam>) -> String {
         tracing::info!("[worker#{}] post_message", self.session.task_id());
         let hostname = get_hostname();
-        match self.session.post_message(&params.message, Role::Worker.as_str(), &hostname).await {
+        match self
+            .session
+            .post_message(&params.message, Role::Worker.as_str(), &hostname)
+            .await
+        {
             Ok(()) => "Message posted".to_string(),
             Err(e) => format!("Error: {e}"),
         }
     }
 
-    #[tool(description = "Generate a branch name with the proper prefix for this task. Use the returned name with 'git checkout -b <name>' to create the branch locally.")]
+    #[tool(
+        description = "Generate a branch name with the proper prefix for this task. Use the returned name with 'git checkout -b <name>' to create the branch locally."
+    )]
     async fn create_branch_name(&self, Parameters(params): Parameters<ShortNameParam>) -> String {
-        tracing::info!("[worker#{}] create_branch_name short_name={}", self.session.task_id(), params.short_name);
+        tracing::info!(
+            "[worker#{}] create_branch_name short_name={}",
+            self.session.task_id(),
+            params.short_name
+        );
         self.session.create_branch_name(&params.short_name)
     }
 
@@ -462,8 +503,17 @@ impl WorkerMcp {
         description = "Pull a repository (forking if needed) and checkout a specific branch for implementation. Returns the local path."
     )]
     async fn pull_branch(&self, Parameters(params): Parameters<BranchParam>) -> String {
-        tracing::info!("[worker#{}] pull_branch repo={} branch={}", self.session.task_id(), params.repo, params.branch);
-        match self.session.request_branch(&params.repo, &params.branch).await {
+        tracing::info!(
+            "[worker#{}] pull_branch repo={} branch={}",
+            self.session.task_id(),
+            params.repo,
+            params.branch
+        );
+        match self
+            .session
+            .request_branch(&params.repo, &params.branch)
+            .await
+        {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
         }
@@ -473,7 +523,11 @@ impl WorkerMcp {
         description = "Pull a repository (forking if needed) and checkout the branch from a PR for implementation. Takes PR URL or 'owner/repo#123' format. Returns the local path."
     )]
     async fn pull_branch_by_pr(&self, Parameters(params): Parameters<PrParam>) -> String {
-        tracing::info!("[worker#{}] pull_branch_by_pr pr={}", self.session.task_id(), params.pr);
+        tracing::info!(
+            "[worker#{}] pull_branch_by_pr pr={}",
+            self.session.task_id(),
+            params.pr
+        );
         match self.session.request_branch_by_pr(&params.pr, false).await {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
@@ -484,7 +538,11 @@ impl WorkerMcp {
         description = "Push the current branch to the fork remote. The branch name must have been created using create_branch_name. Takes the local path to the repository."
     )]
     async fn push_branch(&self, Parameters(params): Parameters<PathParam>) -> String {
-        tracing::info!("[worker#{}] push_branch path={}", self.session.task_id(), params.path);
+        tracing::info!(
+            "[worker#{}] push_branch path={}",
+            self.session.task_id(),
+            params.path
+        );
         match self.session.push_branch(&params.path).await {
             Ok(()) => "Branch pushed to fork".to_string(),
             Err(e) => format!("Error: {e}"),
@@ -494,9 +552,21 @@ impl WorkerMcp {
     #[tool(
         description = "Push the current branch to the fork and create a PR within the fork. The branch name must have been created using create_branch_name. Takes the local path and destination branch for the PR base. Returns PR URL."
     )]
-    async fn push_branch_and_create_pr(&self, Parameters(params): Parameters<PushBranchAndCreatePrParam>) -> String {
-        tracing::info!("[worker#{}] push_branch_and_create_pr path={} destination_branch={}", self.session.task_id(), params.path, params.destination_branch);
-        match self.session.push_branch_and_create_pr(&params.path, &params.destination_branch).await {
+    async fn push_branch_and_create_pr(
+        &self,
+        Parameters(params): Parameters<PushBranchAndCreatePrParam>,
+    ) -> String {
+        tracing::info!(
+            "[worker#{}] push_branch_and_create_pr path={} destination_branch={}",
+            self.session.task_id(),
+            params.path,
+            params.destination_branch
+        );
+        match self
+            .session
+            .push_branch_and_create_pr(&params.path, &params.destination_branch)
+            .await
+        {
             Ok(pr_url) => format!("PR created: {pr_url}"),
             Err(e) => format!("Error: {e}"),
         }
@@ -553,7 +623,11 @@ impl AdminMcp {
 
     #[tool(description = "List tasks in a specific stage")]
     async fn list_tasks(&self, Parameters(params): Parameters<StageParam>) -> String {
-        tracing::info!("[admin] list_tasks stage={} tool={:?}", params.stage, params.tool);
+        tracing::info!(
+            "[admin] list_tasks stage={} tool={:?}",
+            params.stage,
+            params.tool
+        );
         match self
             .zbobr
             .list_tasks_by_stage(&params.stage, params.tool)
@@ -626,7 +700,11 @@ impl AdminMcp {
 
     #[tool(description = "Change the stage of a task")]
     async fn set_task_stage(&self, Parameters(params): Parameters<SetStageParam>) -> String {
-        tracing::info!("[admin] set_task_stage id={} stage={}", params.id, params.stage);
+        tracing::info!(
+            "[admin] set_task_stage id={} stage={}",
+            params.id,
+            params.stage
+        );
         match self
             .zbobr
             .set_task_stage_by_name(params.id, params.stage.milestone_name())
@@ -639,7 +717,11 @@ impl AdminMcp {
 
     #[tool(description = "Add a label to a task")]
     async fn add_task_label(&self, Parameters(params): Parameters<LabelParam>) -> String {
-        tracing::info!("[admin] add_task_label id={} label={}", params.id, params.label);
+        tracing::info!(
+            "[admin] add_task_label id={} label={}",
+            params.id,
+            params.label
+        );
         match self.zbobr.add_task_label(params.id, &params.label).await {
             Ok(()) => format!("Label '{}' added", params.label),
             Err(e) => format!("Error: {e}"),
@@ -648,7 +730,11 @@ impl AdminMcp {
 
     #[tool(description = "Remove a label from a task")]
     async fn remove_task_label(&self, Parameters(params): Parameters<LabelParam>) -> String {
-        tracing::info!("[admin] remove_task_label id={} label={}", params.id, params.label);
+        tracing::info!(
+            "[admin] remove_task_label id={} label={}",
+            params.id,
+            params.label
+        );
         match self.zbobr.remove_task_label(params.id, &params.label).await {
             Ok(()) => format!("Label '{}' removed", params.label),
             Err(e) => format!("Error: {e}"),
@@ -699,9 +785,10 @@ async fn find_available_port(base_port: u16) -> Result<u16, crate::ZbobrError> {
             Err(_) => continue,
         }
     }
-    Err(crate::ZbobrError::Other(
-        format!("Could not find available port in range {base_port}..{}", base_port + 100),
-    ))
+    Err(crate::ZbobrError::Other(format!(
+        "Could not find available port in range {base_port}..{}",
+        base_port + 100
+    )))
 }
 
 async fn serve_mcp(
@@ -711,7 +798,7 @@ async fn serve_mcp(
 ) -> Result<u16, crate::ZbobrError> {
     // Find an available port starting from base_port
     let port = find_available_port(base_port).await?;
-    
+
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
     tracing::info!("MCP server listening on http://127.0.0.1:{port}{path}");
 
@@ -772,10 +859,7 @@ pub async fn run_role_mcp_server(
 
 /// Run the admin MCP HTTP server.
 /// Returns the actual port that was assigned.
-pub async fn run_admin_mcp_server(
-    zbobr: Zbobr,
-    base_port: u16,
-) -> Result<u16, crate::ZbobrError> {
+pub async fn run_admin_mcp_server(zbobr: Zbobr, base_port: u16) -> Result<u16, crate::ZbobrError> {
     let path = "/admin";
 
     let svc = StreamableHttpService::new(

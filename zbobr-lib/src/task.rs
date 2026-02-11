@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::{Arc, Mutex}};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 use crate::{Zbobr, ZbobrError};
 
@@ -357,12 +360,21 @@ impl TaskSession {
         role: &str,
         hostname: &str,
     ) -> Result<(), ZbobrError> {
-        self.zbobr.post_task_comment(self.task_id, msg, role, hostname).await
+        self.zbobr
+            .post_task_comment(self.task_id, msg, role, hostname)
+            .await
     }
 
     /// Clone target repo and checkout specific branch (read-only, for planner).
-    pub async fn request_branch_readonly(&self, repo: &str, branch: &str) -> Result<String, ZbobrError> {
-        let path = self.zbobr.clone_readonly(repo, branch, self.task_id).await?;
+    pub async fn request_branch_readonly(
+        &self,
+        repo: &str,
+        branch: &str,
+    ) -> Result<String, ZbobrError> {
+        let path = self
+            .zbobr
+            .clone_readonly(repo, branch, self.task_id)
+            .await?;
         let path_str = path.to_string_lossy().to_string();
 
         // Track this repo and branch
@@ -380,7 +392,10 @@ impl TaskSession {
 
     /// Fork target repo, clone locally, checkout specific branch (for worker).
     pub async fn request_branch(&self, repo: &str, branch: &str) -> Result<String, ZbobrError> {
-        let path = self.zbobr.clone_and_setup(repo, branch, self.task_id).await?;
+        let path = self
+            .zbobr
+            .clone_and_setup(repo, branch, self.task_id)
+            .await?;
         let path_str = path.to_string_lossy().to_string();
 
         // Track this repo and branch for later submit_work
@@ -398,7 +413,11 @@ impl TaskSession {
 
     /// Helper: Clone repo and checkout branch from PR.
     /// PR format: "https://github.com/owner/repo/pull/123" or "owner/repo#123"
-    pub async fn request_branch_by_pr(&self, pr: &str, readonly: bool) -> Result<String, ZbobrError> {
+    pub async fn request_branch_by_pr(
+        &self,
+        pr: &str,
+        readonly: bool,
+    ) -> Result<String, ZbobrError> {
         let (repo, branch) = self.zbobr.parse_pr_to_repo_branch(pr).await?;
         if readonly {
             self.request_branch_readonly(&repo, &branch).await
@@ -484,13 +503,7 @@ impl TaskSession {
             tracked
                 .values()
                 .find(|r| r.local_path == work_dir)
-                .map(|r| {
-                    r.repo
-                        .split('/')
-                        .nth(1)
-                        .unwrap_or(&r.repo)
-                        .to_string()
-                })
+                .map(|r| r.repo.split('/').nth(1).unwrap_or(&r.repo).to_string())
                 .ok_or_else(|| {
                     ZbobrError::Other(format!(
                         "Path {} was not obtained from request_branch or request_branch_by_pr",

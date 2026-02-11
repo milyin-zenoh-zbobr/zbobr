@@ -1,8 +1,9 @@
+use std::{path::PathBuf, sync::Arc};
+
+use async_trait::async_trait;
+
 use super::Backend;
 use crate::{Model, Stage, Task, Tool, ZbobrConfig, ZbobrError};
-use async_trait::async_trait;
-use std::path::PathBuf;
-use std::sync::Arc;
 
 pub struct GitHubBackend {
     config: Arc<ZbobrConfig>,
@@ -48,10 +49,10 @@ impl GitHubBackend {
             let fork_owner = &self.config.fork_owner;
             let endpoint = format!("/repos/{}/{}/forks", parts[0], parts[1]);
             let payload = serde_json::json!({ "organization": fork_owner });
-            
+
             tracing::info!("Creating fork of {target_repo} under organization '{fork_owner}' using endpoint {endpoint}", target_repo = target_repo, endpoint = endpoint);
             tracing::debug!("Fork creation payload: {payload}", payload = payload);
-            
+
             // Create fork under fork_owner (as org)
             self.octocrab
                 .post(&endpoint, Some(&payload))
@@ -526,7 +527,8 @@ impl Backend for GitHubBackend {
         content: &str,
         commit_message: &str,
     ) -> Result<(), ZbobrError> {
-        self.create_or_update_repo_file(path, content, commit_message, None).await
+        self.create_or_update_repo_file(path, content, commit_message, None)
+            .await
     }
 
     async fn ensure_domain_repo_exists(&self) -> Result<(), ZbobrError> {
@@ -614,7 +616,9 @@ impl Backend for GitHubBackend {
                 .status()
                 .await?;
             if !fetch_status.success() {
-                tracing::warn!("Failed to fetch latest changes for {target_repo}, using existing state");
+                tracing::warn!(
+                    "Failed to fetch latest changes for {target_repo}, using existing state"
+                );
             }
         }
 
@@ -696,7 +700,12 @@ impl Backend for GitHubBackend {
         Ok(work_dir)
     }
 
-    async fn clone_readonly(&self, target_repo: &str, branch: &str, task_id: u64) -> Result<PathBuf, ZbobrError> {
+    async fn clone_readonly(
+        &self,
+        target_repo: &str,
+        branch: &str,
+        task_id: u64,
+    ) -> Result<PathBuf, ZbobrError> {
         let repo_name = target_repo
             .split('/')
             .nth(1)
@@ -733,7 +742,9 @@ impl Backend for GitHubBackend {
                 .await?;
 
             if !fetch_status.success() {
-                tracing::warn!("Failed to fetch latest changes for {target_repo}, using existing state");
+                tracing::warn!(
+                    "Failed to fetch latest changes for {target_repo}, using existing state"
+                );
             }
         }
 
@@ -828,10 +839,7 @@ impl Backend for GitHubBackend {
         Ok(pr_url)
     }
 
-    async fn parse_pr_to_repo_branch(
-        &self,
-        pr_ref: &str,
-    ) -> Result<(String, String), ZbobrError> {
+    async fn parse_pr_to_repo_branch(&self, pr_ref: &str) -> Result<(String, String), ZbobrError> {
         let (owner, repo, pr_number) = if pr_ref.starts_with("https://github.com/") {
             // Parse URL format: https://github.com/owner/repo/pull/123
             let parts: Vec<&str> = pr_ref
@@ -846,7 +854,9 @@ impl Backend for GitHubBackend {
                 })?;
                 (owner.to_string(), repo.to_string(), pr_num)
             } else {
-                return Err(ZbobrError::Other(format!("Invalid PR URL format: {pr_ref}")));
+                return Err(ZbobrError::Other(format!(
+                    "Invalid PR URL format: {pr_ref}"
+                )));
             }
         } else if pr_ref.contains('#') {
             // Parse short format: owner/repo#123
@@ -973,7 +983,11 @@ impl Backend for GitHubBackend {
     }
 
     async fn setup_repository(&self, force: bool) -> Result<(), ZbobrError> {
-        tracing::info!("Setting up GitHub repo: {} (force: {})", self.config.domain_repo, force);
+        tracing::info!(
+            "Setting up GitHub repo: {} (force: {})",
+            self.config.domain_repo,
+            force
+        );
 
         // Ensure the domain repo exists
         self.ensure_domain_repo_exists().await?;
@@ -1060,20 +1074,12 @@ impl Backend for GitHubBackend {
             let model_desc = format!("Use {} model", model);
             if !existing_labels.contains(&model_label) {
                 tracing::info!("Creating label '{model_label}'");
-                self.create_label(
-                    &model_label,
-                    MODEL_LABEL_COLOR,
-                    &model_desc,
-                )
-                .await?;
+                self.create_label(&model_label, MODEL_LABEL_COLOR, &model_desc)
+                    .await?;
             } else if force {
                 tracing::info!("Updating label '{model_label}' (force)");
-                self.update_label(
-                    &model_label,
-                    MODEL_LABEL_COLOR,
-                    &model_desc,
-                )
-                .await?;
+                self.update_label(&model_label, MODEL_LABEL_COLOR, &model_desc)
+                    .await?;
             } else {
                 tracing::info!("Label '{model_label}' already exists");
             }

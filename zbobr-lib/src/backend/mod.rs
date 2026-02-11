@@ -1,9 +1,11 @@
 pub mod github;
 pub mod stub;
 
-use crate::{Model, Stage, Task, Tool, ZbobrError};
-use async_trait::async_trait;
 use std::path::PathBuf;
+
+use async_trait::async_trait;
+
+use crate::{Model, Stage, Task, Tool, ZbobrError};
 
 #[async_trait]
 pub trait Backend: Send + Sync {
@@ -76,11 +78,20 @@ pub trait Backend: Send + Sync {
 
     /// Clone a repo into the workspace, checkout specific branch, set up fork remote.
     /// Returns the local path.
-    async fn clone_and_setup(&self, target_repo: &str, branch: &str, task_id: u64)
-        -> Result<PathBuf, ZbobrError>;
+    async fn clone_and_setup(
+        &self,
+        target_repo: &str,
+        branch: &str,
+        task_id: u64,
+    ) -> Result<PathBuf, ZbobrError>;
 
     /// Clone a repo and checkout specific branch for read-only investigation (no fork).
-    async fn clone_readonly(&self, target_repo: &str, branch: &str, task_id: u64) -> Result<PathBuf, ZbobrError>;
+    async fn clone_readonly(
+        &self,
+        target_repo: &str,
+        branch: &str,
+        task_id: u64,
+    ) -> Result<PathBuf, ZbobrError>;
 
     /// Parse PR reference (URL or owner/repo#123) to (repo, branch).
     async fn parse_pr_to_repo_branch(&self, pr_ref: &str) -> Result<(String, String), ZbobrError>;

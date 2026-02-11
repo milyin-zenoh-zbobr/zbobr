@@ -2,9 +2,9 @@ use std::time::Duration;
 
 use clap::Parser;
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use zbobr_lib::{
-    mcp::{MessageParam, PushBranchAndCreatePrParam, planner_tools, worker_tools},
+    mcp::{planner_tools, worker_tools, MessageParam, PushBranchAndCreatePrParam},
     task::Role,
 };
 

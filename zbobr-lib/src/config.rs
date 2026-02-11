@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
-use crate::ZbobrError;
-
-use crate::task::{Model, Tool};
+use crate::{
+    task::{Model, Tool},
+    ZbobrError,
+};
 
 /// Backend type to use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -429,7 +430,10 @@ worker = ["work.md"]
         assert_eq!(config.cli_tool, Some(Tool::Claude));
         let prompts = config.prompts.unwrap();
         assert_eq!(prompts.path, Some(PathBuf::from("/opt/prompts")));
-        assert_eq!(prompts.planner, Some(vec![PathBuf::from("plan.md"), PathBuf::from("shared.md")]));
+        assert_eq!(
+            prompts.planner,
+            Some(vec![PathBuf::from("plan.md"), PathBuf::from("shared.md")])
+        );
     }
 
     #[test]
@@ -515,7 +519,10 @@ worker = ["work.md"]
 
     #[test]
     fn backend_type_roundtrip() {
-        assert_eq!("github".parse::<BackendType>().unwrap(), BackendType::GitHub);
+        assert_eq!(
+            "github".parse::<BackendType>().unwrap(),
+            BackendType::GitHub
+        );
         assert_eq!("stub".parse::<BackendType>().unwrap(), BackendType::Stub);
         assert!("invalid".parse::<BackendType>().is_err());
         assert_eq!(BackendType::GitHub.to_string(), "github");

@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use anyhow::Context;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use zbobr_lib::{
-    Stage, TomlConfig, Zbobr, ZbobrConfig,
     task::{Model, Role, Tool},
+    Stage, TomlConfig, Zbobr, ZbobrConfig,
 };
 
 #[derive(Args, Clone)]
@@ -548,7 +548,8 @@ async fn run_role_session(
     let server_zbobr = zbobr.clone();
     let server_role = role;
     let server_handle = tokio::spawn(async move {
-        match zbobr_lib::mcp::run_role_mcp_server(server_zbobr, base_port, server_role, task_id).await
+        match zbobr_lib::mcp::run_role_mcp_server(server_zbobr, base_port, server_role, task_id)
+            .await
         {
             Ok(assigned_port) => {
                 let _ = port_tx.send(assigned_port);

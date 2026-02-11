@@ -1,9 +1,13 @@
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    sync::{Arc, RwLock},
+};
+
+use async_trait::async_trait;
+
 use super::Backend;
 use crate::{Model, Stage, Task, Tool, ZbobrError};
-use async_trait::async_trait;
-use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
 
 #[derive(Debug)]
 struct StubState {
@@ -282,7 +286,12 @@ impl Backend for StubBackend {
         Ok(work_dir)
     }
 
-    async fn clone_readonly(&self, target_repo: &str, branch: &str, task_id: u64) -> Result<PathBuf, ZbobrError> {
+    async fn clone_readonly(
+        &self,
+        target_repo: &str,
+        branch: &str,
+        task_id: u64,
+    ) -> Result<PathBuf, ZbobrError> {
         self.clone_and_setup(target_repo, branch, task_id).await
     }
 

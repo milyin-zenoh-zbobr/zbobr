@@ -12,12 +12,12 @@ impl Zbobr {
         let (owner, repo) = self.config.parse_repo()?;
         let milestones: Vec<MilestoneResponse> = self
             .octocrab
-            .get(
-                format!("/repos/{owner}/{repo}/milestones"),
-                None::<&()>,
-            )
+            .get(format!("/repos/{owner}/{repo}/milestones"), None::<&()>)
             .await?;
-        Ok(milestones.into_iter().map(|m| (m.number, m.title)).collect())
+        Ok(milestones
+            .into_iter()
+            .map(|m| (m.number, m.title))
+            .collect())
     }
 
     /// Create a milestone in the domain repo.
@@ -60,6 +60,9 @@ impl Zbobr {
         title: &str,
     ) -> Result<Option<u64>, ZbobrError> {
         let milestones = self.list_milestones().await?;
-        Ok(milestones.into_iter().find(|(_, t)| t == title).map(|(n, _)| n))
+        Ok(milestones
+            .into_iter()
+            .find(|(_, t)| t == title)
+            .map(|(n, _)| n))
     }
 }

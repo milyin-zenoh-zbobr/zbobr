@@ -169,9 +169,7 @@ impl Zbobr {
                 .status()
                 .await?;
             if !status.success() {
-                return Err(ZbobrError::Other(format!(
-                    "Failed to clone {target_repo}"
-                )));
+                return Err(ZbobrError::Other(format!("Failed to clone {target_repo}")));
             }
         } else {
             // Fetch latest changes from origin if repo already exists
@@ -182,7 +180,9 @@ impl Zbobr {
                 .status()
                 .await?;
             if !fetch_status.success() {
-                tracing::warn!("Failed to fetch latest changes for {target_repo}, using existing state");
+                tracing::warn!(
+                    "Failed to fetch latest changes for {target_repo}, using existing state"
+                );
             }
         }
 
@@ -255,26 +255,32 @@ impl Zbobr {
         tokio::fs::create_dir_all(&issue_dir).await?;
 
         if !work_dir.exists() {
-            tracing::info!("Cloning {target_repo} (read-only) into {}", work_dir.display());
+            tracing::info!(
+                "Cloning {target_repo} (read-only) into {}",
+                work_dir.display()
+            );
             let status = tokio::process::Command::new("gh")
                 .args(["repo", "clone", target_repo, work_dir.to_str().unwrap()])
                 .status()
                 .await?;
             if !status.success() {
-                return Err(ZbobrError::Other(format!(
-                    "Failed to clone {target_repo}"
-                )));
+                return Err(ZbobrError::Other(format!("Failed to clone {target_repo}")));
             }
         } else {
             // Fetch latest changes from origin if repo already exists
-            tracing::info!("Updating {target_repo} (read-only) in {}", work_dir.display());
+            tracing::info!(
+                "Updating {target_repo} (read-only) in {}",
+                work_dir.display()
+            );
             let fetch_status = tokio::process::Command::new("git")
                 .args(["fetch", "origin"])
                 .current_dir(&work_dir)
                 .status()
                 .await?;
             if !fetch_status.success() {
-                tracing::warn!("Failed to fetch latest changes for {target_repo}, using existing state");
+                tracing::warn!(
+                    "Failed to fetch latest changes for {target_repo}, using existing state"
+                );
             }
         }
 
@@ -342,10 +348,7 @@ impl Zbobr {
         // Create PR using gh CLI
         let task = self.get_issue(task_id).await?;
         let pr_title = format!("Fix #{task_id}: {}", task.title);
-        let pr_body = format!(
-            "Resolves #{task_id}\n\nImplementation for: {}",
-            task.title
-        );
+        let pr_body = format!("Resolves #{task_id}\n\nImplementation for: {}", task.title);
 
         let output = tokio::process::Command::new("gh")
             .args([
@@ -395,7 +398,9 @@ impl Zbobr {
                 })?;
                 (owner.to_string(), repo.to_string(), pr_num)
             } else {
-                return Err(ZbobrError::Other(format!("Invalid PR URL format: {pr_ref}")));
+                return Err(ZbobrError::Other(format!(
+                    "Invalid PR URL format: {pr_ref}"
+                )));
             }
         } else if pr_ref.contains('#') {
             // Parse short format: owner/repo#123
@@ -457,8 +462,7 @@ impl Zbobr {
 
 /// Simple base64 encoder (standard alphabet, with padding).
 fn base64_encode(input: &str) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let bytes = input.as_bytes();
     let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
     for chunk in bytes.chunks(3) {
@@ -509,9 +513,6 @@ mod tests {
 
     #[test]
     fn base64_encode_longer_text() {
-        assert_eq!(
-            base64_encode("Hello, World!"),
-            "SGVsbG8sIFdvcmxkIQ=="
-        );
+        assert_eq!(base64_encode("Hello, World!"), "SGVsbG8sIFdvcmxkIQ==");
     }
 }

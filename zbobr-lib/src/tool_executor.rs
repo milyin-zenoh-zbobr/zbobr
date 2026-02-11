@@ -1,8 +1,9 @@
-use crate::task::{Model, Role, Tool};
+use std::{path::Path, process::Stdio};
+
 use async_trait::async_trait;
-use std::path::Path;
-use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
+
+use crate::task::{Model, Role, Tool};
 
 /// Format a command with arguments as a copyable command line string.
 fn format_command_for_log(cmd_name: &str, args: &[&str], task_dir: &Path) -> String {
@@ -13,7 +14,7 @@ fn format_command_for_log(cmd_name: &str, args: &[&str], task_dir: &Path) -> Str
         args.iter()
             .map(|arg| {
                 if arg.contains(|c: char| c.is_whitespace() || c == '"' || c == '\'') {
-                    format!("\"{}\"" , arg.replace('"', "\\\""))
+                    format!("\"{}\"", arg.replace('"', "\\\""))
                 } else {
                     arg.to_string()
                 }
@@ -85,7 +86,9 @@ impl ToolExecutor for CopilotExecutor {
             .model_name_for_tool(Tool::Copilot)
             .ok_or_else(|| anyhow::anyhow!("Model {} is not supported by copilot", model))?;
 
-        tracing::info!("Starting copilot {role} session for task #{task_id} with model {model_name}");
+        tracing::info!(
+            "Starting copilot {role} session for task #{task_id} with model {model_name}"
+        );
         tracing::info!("MCP endpoint: {mcp_url}");
         tracing::debug!("MCP config JSON: {}", mcp_config_str);
 
@@ -107,7 +110,10 @@ impl ToolExecutor for CopilotExecutor {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        tracing::debug!("Command: {}", format_command_for_log("copilot", &args, task_dir));
+        tracing::debug!(
+            "Command: {}",
+            format_command_for_log("copilot", &args, task_dir)
+        );
 
         // Set GitHub tokens for copilot agent process
         tracing::info!("Setting GH_TOKEN for agent and COPILOT_GITHUB_TOKEN for copilot");
@@ -187,7 +193,9 @@ impl ToolExecutor for ClaudeExecutor {
             .model_name_for_tool(Tool::Claude)
             .ok_or_else(|| anyhow::anyhow!("Model {} is not supported by claude", model))?;
 
-        tracing::info!("Starting claude {role} session for task #{task_id} with model {model_name}");
+        tracing::info!(
+            "Starting claude {role} session for task #{task_id} with model {model_name}"
+        );
         tracing::info!("MCP endpoint: {mcp_url}");
         tracing::debug!("MCP config JSON: {}", mcp_config_str);
 
@@ -210,7 +218,10 @@ impl ToolExecutor for ClaudeExecutor {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        tracing::debug!("Command: {}", format_command_for_log("claude", &args, task_dir));
+        tracing::debug!(
+            "Command: {}",
+            format_command_for_log("claude", &args, task_dir)
+        );
 
         // Set GitHub tokens for claude agent process
         tracing::info!("Setting GH_TOKEN for agent and COPILOT_GITHUB_TOKEN for copilot");

@@ -7,17 +7,17 @@ pub mod setup;
 pub mod task;
 pub mod tool_executor;
 
+use std::{path::PathBuf, sync::Arc};
+
 pub use config::{TomlConfig, ZbobrConfig};
 pub use mcp::{planner_instructions, worker_instructions, PlannerMcp, WorkerMcp};
 pub use task::{Model, Stage, Task, TaskSession, Tool};
 pub use tool_executor::{ClaudeExecutor, CopilotExecutor, StubExecutor, ToolExecutor};
 
-use crate::backend::github::GitHubBackend;
-use crate::backend::stub::StubBackend;
-use crate::backend::Backend;
-use crate::config::BackendType;
-use std::path::PathBuf;
-use std::sync::Arc;
+use crate::{
+    backend::{github::GitHubBackend, stub::StubBackend, Backend},
+    config::BackendType,
+};
 
 /// Central struct holding configuration and backend.
 #[derive(Clone)]
@@ -107,7 +107,9 @@ impl Zbobr {
         role: &str,
         hostname: &str,
     ) -> Result<(), ZbobrError> {
-        self.backend.post_task_comment(id, body, role, hostname).await
+        self.backend
+            .post_task_comment(id, body, role, hostname)
+            .await
     }
 
     pub async fn set_task_stage_by_name(
@@ -175,7 +177,9 @@ impl Zbobr {
         branch: &str,
         task_id: u64,
     ) -> Result<PathBuf, ZbobrError> {
-        self.backend.clone_and_setup(target_repo, branch, task_id).await
+        self.backend
+            .clone_and_setup(target_repo, branch, task_id)
+            .await
     }
 
     pub async fn clone_readonly(
@@ -184,7 +188,9 @@ impl Zbobr {
         branch: &str,
         task_id: u64,
     ) -> Result<PathBuf, ZbobrError> {
-        self.backend.clone_readonly(target_repo, branch, task_id).await
+        self.backend
+            .clone_readonly(target_repo, branch, task_id)
+            .await
     }
 
     /// Parse PR reference to (repo, branch).
@@ -192,7 +198,10 @@ impl Zbobr {
     /// - "https://github.com/owner/repo/pull/123"
     /// - "owner/repo#123"
     /// Returns (repo, branch_name)
-    pub async fn parse_pr_to_repo_branch(&self, pr_ref: &str) -> Result<(String, String), ZbobrError> {
+    pub async fn parse_pr_to_repo_branch(
+        &self,
+        pr_ref: &str,
+    ) -> Result<(String, String), ZbobrError> {
         self.backend.parse_pr_to_repo_branch(pr_ref).await
     }
 
@@ -254,7 +263,10 @@ impl From<octocrab::Error> for ZbobrError {
         // Provide more detailed error information
         let error_msg = match e {
             octocrab::Error::GitHub { source, .. } => {
-                format!("GitHub API error: {} (status: {})", source.message, source.status_code)
+                format!(
+                    "GitHub API error: {} (status: {})",
+                    source.message, source.status_code
+                )
             }
             _ => format!("GitHub API error: {}", e),
         };
