@@ -221,7 +221,7 @@ Implement an approved plan by writing code and submitting it.
 ## Access Model
 
 You can access the internet and run local commands. Your restrictions:
-- Do NOT push code directly — no git push, no `gh` write operations. Use `{push_branch}` or `{push_branch_and_create_pr}` instead
+- Do NOT push code directly — no `git push`, no `gh` write operations. Use `{push_branch}` or `{push_branch_and_create_pr}` instead. Access rights are configured to prevent gh-based pushes anyway.
 - Do NOT run git clone/pull/fetch — use `{pull_branch}` or `{pull_branch_by_pr}` instead
 - Use MCP `{push_branch_and_create_pr}` to submit your work
 - Use MCP `{post_message}`, `{mark_done}` to communicate results
@@ -238,7 +238,7 @@ Work autonomously. Do not ask the user for anything.
    - `{pull_branch}` — pull any branch of any repository you need (forks automatically for write access)
    - `{pull_branch_by_pr}` — shortcut: if the task mentions a PR, pull it directly without reading the PR to find its branch
 4. `cd` into the returned path and implement the plan
-5. Create a branch using `git checkout -b <name>` where `<name>` comes from `{create_branch_name}` (e.g. with short_name="implementation")
+5. **REQUIRED**: Create a branch using `git checkout -b <name>` where `<name>` **must** come from `{create_branch_name}` (e.g. with short_name="implementation"). Do NOT use arbitrary branch names.
 6. Commit changes locally with clear messages
 7. Call `{push_branch_and_create_pr}` with the local path and destination branch — this pushes to the fork and creates a PR within the fork
    - Or call `{push_branch}` if you only need to push without creating a PR
@@ -537,7 +537,7 @@ impl WorkerMcp {
     }
 
     #[tool(
-        description = "Push the current branch to the fork remote. The branch name must have been created using create_branch_name. Takes the local path to the repository."
+        description = "Push the current branch to the fork remote. REQUIREMENT: The branch name must have been created using create_branch_name() — branches with other names are rejected. Takes the local path to the repository."
     )]
     async fn push_branch(&self, Parameters(params): Parameters<PathParam>) -> String {
         tracing::info!(
@@ -552,7 +552,7 @@ impl WorkerMcp {
     }
 
     #[tool(
-        description = "Push the current branch to the fork and create a PR within the fork. The branch name must have been created using create_branch_name. Takes the local path and destination branch for the PR base. Returns PR URL."
+        description = "Push the current branch to the fork and create a PR within the fork. REQUIREMENT: The branch name must have been created using create_branch_name() — branches with other names are rejected. Takes the local path and destination branch for the PR base. Returns PR URL."
     )]
     async fn push_branch_and_create_pr(
         &self,
