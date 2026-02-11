@@ -152,10 +152,16 @@ pub struct InsertPlanItemParam {
 pub struct UpdatePlanItemParam {
     #[schemars(description = "ID of the plan item to update")]
     pub id: String,
-    #[schemars(description = "New checkbox state")]
+    #[schemars(description = "New text for the plan item")]
+    pub text: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct CheckPlanItemParam {
+    #[schemars(description = "ID of the plan item to check/uncheck")]
+    pub id: String,
+    #[schemars(description = "New checkbox state (true = checked, false = unchecked)")]
     pub checked: bool,
-    #[schemars(description = "Optional new text (if omitted, keeps existing text)")]
-    pub text: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
@@ -243,6 +249,7 @@ mcp_tools! {
     GET_PLAN = "get_plan",
     INSERT_PLAN_ITEM = "insert_plan_item",
     UPDATE_PLAN_ITEM = "update_plan_item",
+    CHECK_PLAN_ITEM = "check_plan_item",
     DELETE_PLAN_ITEM = "delete_plan_item",
 }
 
@@ -260,6 +267,7 @@ mcp_tools! {
     GET_PLAN = "get_plan",
     INSERT_PLAN_ITEM = "insert_plan_item",
     UPDATE_PLAN_ITEM = "update_plan_item",
+    CHECK_PLAN_ITEM = "check_plan_item",
     DELETE_PLAN_ITEM = "delete_plan_item",
 }
 
@@ -582,10 +590,38 @@ impl PlannerMcp {
         }
     }
 
-    #[tool(description = "Update a plan item's status and/or text")]
+    #[tool(description = "Update a plan item's text")]
     async fn update_plan_item(&self, Parameters(params): Parameters<UpdatePlanItemParam>) -> String {
         tracing::info!(
-            "[planner#{}] update_plan_item id={} checked={}",
+            "[planner#{}] update_plan_item id={}",
+            self.session.task_id(),
+            params.id
+        );
+        
+        match self.session.get_description().await {
+            Ok(desc) => {
+                let (original, mut items) = parse_description_with_plan(&desc);
+                
+                if let Some(item) = items.iter_mut().find(|item| item.id == params.id) {
+                    item.text = params.text.clone();
+                    
+                    let new_desc = serialize_description_with_plan(&original, &items);
+                    match self.session.update_description(&new_desc).await {
+                        Ok(()) => format!("Plan item '{}' updated", params.id),
+                        Err(e) => format!("Error updating task: {e}"),
+                    }
+                } else {
+                    format!("Error: Plan item with id '{}' not found", params.id)
+                }
+            }
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    #[tool(description = "Check or uncheck a plan item")]
+    async fn check_plan_item(&self, Parameters(params): Parameters<CheckPlanItemParam>) -> String {
+        tracing::info!(
+            "[planner#{}] check_plan_item id={} checked={}",
             self.session.task_id(),
             params.id,
             params.checked
@@ -597,13 +633,10 @@ impl PlannerMcp {
                 
                 if let Some(item) = items.iter_mut().find(|item| item.id == params.id) {
                     item.checked = params.checked;
-                    if let Some(new_text) = &params.text {
-                        item.text = new_text.clone();
-                    }
                     
                     let new_desc = serialize_description_with_plan(&original, &items);
                     match self.session.update_description(&new_desc).await {
-                        Ok(()) => format!("Plan item '{}' updated", params.id),
+                        Ok(()) => format!("Plan item '{}' checked state updated to {}", params.id, params.checked),
                         Err(e) => format!("Error updating task: {e}"),
                     }
                 } else {
@@ -878,10 +911,38 @@ impl WorkerMcp {
         }
     }
 
-    #[tool(description = "Update a plan item's status and/or text")]
+    #[tool(description = "Update a plan item's text")]
     async fn update_plan_item(&self, Parameters(params): Parameters<UpdatePlanItemParam>) -> String {
         tracing::info!(
-            "[worker#{}] update_plan_item id={} checked={}",
+            "[worker#{}] update_plan_item id={}",
+            self.session.task_id(),
+            params.id
+        );
+        
+        match self.session.get_description().await {
+            Ok(desc) => {
+                let (original, mut items) = parse_description_with_plan(&desc);
+                
+                if let Some(item) = items.iter_mut().find(|item| item.id == params.id) {
+                    item.text = params.text.clone();
+                    
+                    let new_desc = serialize_description_with_plan(&original, &items);
+                    match self.session.update_description(&new_desc).await {
+                        Ok(()) => format!("Plan item '{}' updated", params.id),
+                        Err(e) => format!("Error updating task: {e}"),
+                    }
+                } else {
+                    format!("Error: Plan item with id '{}' not found", params.id)
+                }
+            }
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    #[tool(description = "Check or uncheck a plan item")]
+    async fn check_plan_item(&self, Parameters(params): Parameters<CheckPlanItemParam>) -> String {
+        tracing::info!(
+            "[worker#{}] check_plan_item id={} checked={}",
             self.session.task_id(),
             params.id,
             params.checked
@@ -893,13 +954,10 @@ impl WorkerMcp {
                 
                 if let Some(item) = items.iter_mut().find(|item| item.id == params.id) {
                     item.checked = params.checked;
-                    if let Some(new_text) = &params.text {
-                        item.text = new_text.clone();
-                    }
                     
                     let new_desc = serialize_description_with_plan(&original, &items);
                     match self.session.update_description(&new_desc).await {
-                        Ok(()) => format!("Plan item '{}' updated", params.id),
+                        Ok(()) => format!("Plan item '{}' checked state updated to {}", params.id, params.checked),
                         Err(e) => format!("Error updating task: {e}"),
                     }
                 } else {
