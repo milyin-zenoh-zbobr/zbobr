@@ -105,10 +105,12 @@ impl std::str::FromStr for Role {
 pub enum Signal {
     #[serde(rename = "stop")]
     Stop = 0,
-    #[serde(rename = "done")]
-    Done = 1,
     #[serde(rename = "go_ask")]
-    GoAsk = 2,
+    GoAsk = 1, // go ask is higher priority than done because it indicates a need for human input, 
+               // while done supposes normal completion and less urgency. So go_ask should override done
+               // if both are signalled by an agent.
+    #[serde(rename = "done")]
+    Done = 2,
     #[serde(rename = "go_work")]
     GoWork = 3,
     #[serde(rename = "go_plan")]

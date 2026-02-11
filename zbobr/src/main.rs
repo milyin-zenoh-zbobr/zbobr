@@ -585,17 +585,6 @@ async fn run_role_session(
         }
     };
 
-    // On exit, check if all checklist items are completed and set done signal if so
-    let task = zbobr.get_task(task_id).await?;
-    if !task.checklist.is_empty() && task.checklist.iter().all(|item| item.checked) {
-        // All checklist items are checked - set the done signal
-        if let Err(e) = zbobr.set_task_signal(task_id, Some(zbobr_lib::Signal::Done)).await {
-            tracing::warn!("Failed to set done signal on task #{}: {}", task_id, e);
-        } else {
-            tracing::info!("All checklist items checked - set done signal on task #{}", task_id);
-        }
-    }
-
     // Set stage based on signal (refetch task to get updated signal)
     let task = zbobr.get_task(task_id).await?;
     let final_stage = if task.signal.is_some() {
