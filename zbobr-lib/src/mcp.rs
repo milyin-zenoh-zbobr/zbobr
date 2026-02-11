@@ -373,6 +373,74 @@ fn generate_api_docs_from_router<T: Send + Sync + 'static>(
     doc
 }
 
+// -- Shared MCP tool implementations --
+
+/// Shared implementation for get_description across Planner and Worker
+async fn shared_get_description(session: &TaskSession, role_name: &str, task_id: u64) -> String {
+    tracing::info!("[{}#{}] get_description", role_name, task_id);
+    match session.get_description().await {
+        Ok(desc) => desc,
+        Err(e) => format!("Error: {e}"),
+    }
+}
+
+/// Shared implementation for get_discussion across Planner and Worker
+async fn shared_get_discussion(session: &TaskSession, role_name: &str, task_id: u64) -> String {
+    tracing::info!("[{}#{}] get_discussion", role_name, task_id);
+    match session.get_discussion().await {
+        Ok(msgs) => {
+            if msgs.is_empty() {
+                "No messages yet.".to_string()
+            } else {
+                msgs.join("\n\n---\n\n")
+            }
+        }
+        Err(e) => format!("Error: {e}"),
+    }
+}
+
+/// Shared implementation for post_message (with role-aware hostname logging)
+async fn shared_post_message(
+    session: &TaskSession,
+    params: &MessageParam,
+    role: Role,
+    role_name: &str,
+    task_id: u64,
+) -> String {
+    tracing::info!("[{}#{}] post_message", role_name, task_id);
+    let hostname = get_hostname();
+    match session
+        .post_message(&params.message, role.as_str(), &hostname)
+        .await
+    {
+        Ok(()) => "Message posted".to_string(),
+        Err(e) => format!("Error: {e}"),
+    }
+}
+
+/// Shared implementation for get_plan across Planner and Worker
+async fn shared_get_plan(session: &TaskSession, role_name: &str, task_id: u64) -> String {
+    tracing::info!("[{}#{}] get_plan", role_name, task_id);
+    match session.get_plan().await {
+        Ok(plan) => plan,
+        Err(e) => format!("Error: {e}"),
+    }
+}
+
+/// Shared implementation for get_checklist across Planner and Worker
+async fn shared_get_checklist(session: &TaskSession, role_name: &str, task_id: u64) -> String {
+    tracing::info!("[{}#{}] get_checklist", role_name, task_id);
+    match session.get_checklist().await {
+        Ok(items) => {
+            match serde_json::to_string_pretty(&items) {
+                Ok(json) => json,
+                Err(e) => format!("Error serializing checklist: {e}"),
+            }
+        }
+        Err(e) => format!("Error: {e}"),
+    }
+}
+
 // -- Planner MCP service --
 
 #[derive(Clone)]
@@ -392,49 +460,22 @@ impl PlannerMcp {
 
     #[tool(description = "Get the current description for this task (read-only)")]
     async fn get_description(&self) -> String {
-        tracing::info!("[planner#{}] get_description", self.session.task_id());
-        match self.session.get_description().await {
-            Ok(desc) => desc,
-            Err(e) => format!("Error: {e}"),
-        }
+        shared_get_description(&self.session, "planner", self.session.task_id()).await
     }
 
     #[tool(description = "Get all discussion messages on this task")]
     async fn get_discussion(&self) -> String {
-        tracing::info!("[planner#{}] get_discussion", self.session.task_id());
-        match self.session.get_discussion().await {
-            Ok(msgs) => {
-                if msgs.is_empty() {
-                    "No messages yet.".to_string()
-                } else {
-                    msgs.join("\n\n---\n\n")
-                }
-            }
-            Err(e) => format!("Error: {e}"),
-        }
+        shared_get_discussion(&self.session, "planner", self.session.task_id()).await
     }
 
     #[tool(description = "Post a message to the task discussion")]
     async fn post_message(&self, Parameters(params): Parameters<MessageParam>) -> String {
-        tracing::info!("[planner#{}] post_message", self.session.task_id());
-        let hostname = get_hostname();
-        match self
-            .session
-            .post_message(&params.message, Role::Planner.as_str(), &hostname)
-            .await
-        {
-            Ok(()) => "Message posted".to_string(),
-            Err(e) => format!("Error: {e}"),
-        }
+        shared_post_message(&self.session, &params, Role::Planner, "planner", self.session.task_id()).await
     }
 
     #[tool(description = "Get the current implementation plan for this task")]
     async fn get_plan(&self) -> String {
-        tracing::info!("[planner#{}] get_plan", self.session.task_id());
-        match self.session.get_plan().await {
-            Ok(plan) => plan,
-            Err(e) => format!("Error: {e}"),
-        }
+        shared_get_plan(&self.session, "planner", self.session.task_id()).await
     }
 
     #[tool(description = "Post or replace the implementation plan for this task")]
@@ -488,16 +529,7 @@ impl PlannerMcp {
 
     #[tool(description = "Get the task checklist as a list of checkbox items")]
     async fn get_checklist(&self) -> String {
-        tracing::info!("[planner#{}] get_checklist", self.session.task_id());
-        match self.session.get_checklist().await {
-            Ok(items) => {
-                match serde_json::to_string_pretty(&items) {
-                    Ok(json) => json,
-                    Err(e) => format!("Error serializing checklist: {e}"),
-                }
-            }
-            Err(e) => format!("Error: {e}"),
-        }
+        shared_get_checklist(&self.session, "planner", self.session.task_id()).await
     }
 
     #[tool(description = "Insert a new checklist item (always created in unchecked state)")]
@@ -661,40 +693,17 @@ impl WorkerMcp {
 
     #[tool(description = "Get the current description for this task")]
     async fn get_description(&self) -> String {
-        tracing::info!("[worker#{}] get_description", self.session.task_id());
-        match self.session.get_description().await {
-            Ok(desc) => desc,
-            Err(e) => format!("Error: {e}"),
-        }
+        shared_get_description(&self.session, "worker", self.session.task_id()).await
     }
 
     #[tool(description = "Get all discussion messages on this task")]
     async fn get_discussion(&self) -> String {
-        tracing::info!("[worker#{}] get_discussion", self.session.task_id());
-        match self.session.get_discussion().await {
-            Ok(msgs) => {
-                if msgs.is_empty() {
-                    "No messages yet.".to_string()
-                } else {
-                    msgs.join("\n\n---\n\n")
-                }
-            }
-            Err(e) => format!("Error: {e}"),
-        }
+        shared_get_discussion(&self.session, "worker", self.session.task_id()).await
     }
 
     #[tool(description = "Post a message to the task discussion")]
     async fn post_message(&self, Parameters(params): Parameters<MessageParam>) -> String {
-        tracing::info!("[worker#{}] post_message", self.session.task_id());
-        let hostname = get_hostname();
-        match self
-            .session
-            .post_message(&params.message, Role::Worker.as_str(), &hostname)
-            .await
-        {
-            Ok(()) => "Message posted".to_string(),
-            Err(e) => format!("Error: {e}"),
-        }
+        shared_post_message(&self.session, &params, Role::Worker, "worker", self.session.task_id()).await
     }
 
     #[tool(description = "Post a question to the task discussion and set the 'question' label")]
@@ -720,11 +729,7 @@ impl WorkerMcp {
 
     #[tool(description = "Get the current implementation plan for this task")]
     async fn get_plan(&self) -> String {
-        tracing::info!("[worker#{}] get_plan", self.session.task_id());
-        match self.session.get_plan().await {
-            Ok(plan) => plan,
-            Err(e) => format!("Error: {e}"),
-        }
+        shared_get_plan(&self.session, "worker", self.session.task_id()).await
     }
 
     #[tool(
@@ -814,16 +819,7 @@ impl WorkerMcp {
 
     #[tool(description = "Get the task checklist as a list of checkbox items")]
     async fn get_checklist(&self) -> String {
-        tracing::info!("[worker#{}] get_checklist", self.session.task_id());
-        match self.session.get_checklist().await {
-            Ok(items) => {
-                match serde_json::to_string_pretty(&items) {
-                    Ok(json) => json,
-                    Err(e) => format!("Error serializing checklist: {e}"),
-                }
-            }
-            Err(e) => format!("Error: {e}"),
-        }
+        shared_get_checklist(&self.session, "worker", self.session.task_id()).await
     }
 
     #[tool(description = "Check or uncheck a checklist item")]
