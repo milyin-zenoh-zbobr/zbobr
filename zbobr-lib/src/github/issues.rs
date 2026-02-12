@@ -49,6 +49,8 @@ impl Zbobr {
             Some("GO_PLANNING") => Stage::GoPlanning,
             Some("GO_WORKING") => Stage::GoWorking,
             Some("WORKING") => Stage::Working,
+            Some("GO_REVIEWING") => Stage::GoReviewing,
+            Some("REVIEWING") => Stage::Reviewing,
             _ => Stage::Planning, // default
         };
 
@@ -231,6 +233,8 @@ impl Zbobr {
                 Some("GO_PLANNING") => Stage::GoPlanning,
                 Some("GO_WORKING") => Stage::GoWorking,
                 Some("WORKING") => Stage::Working,
+                Some("GO_REVIEWING") => Stage::GoReviewing,
+                Some("REVIEWING") => Stage::Reviewing,
                 _ => Stage::Planning,
             };
             let model = issue

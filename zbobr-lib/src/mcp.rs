@@ -194,6 +194,23 @@ mcp_tools! {
 }
 
 mcp_tools! {
+    reviewer_tools,
+    GET_DESCRIPTION = "get_description",
+    GET_DISCUSSION = "get_discussion",
+    GET_PLAN = "get_plan",
+    POST_MESSAGE = "post_message",
+    PULL_WORK = "pull_work",
+    GET_CHECKLIST = "get_checklist",
+    INSERT_CHECKLIST_ITEM = "insert_checklist_item",
+    UPDATE_CHECKLIST_ITEM = "update_checklist_item",
+    CHECK_CHECKLIST_ITEM = "check_checklist_item",
+    DELETE_CHECKLIST_ITEM = "delete_checklist_item",
+    GET_PARAM_DESTINATION_BRANCH = "get_param_destination_branch",
+    GET_PARAM_WORK_BRANCH = "get_param_work_branch",
+    GET_PARAM_PR_URL = "get_param_pr_url",
+}
+
+mcp_tools! {
     admin_tools,
     LIST_TASKS = "list_tasks",
     CREATE_TASK = "create_task",
@@ -331,6 +348,79 @@ Work autonomously. Do not ask the user for anything.
         get_param_work_branch = worker_tools::GET_PARAM_WORK_BRANCH,
         ask_user = worker_tools::ASK_USER,
         ask_planner = worker_tools::ASK_PLANNER,
+    )
+}
+
+/// Generate hardcoded reviewer instructions using tool name constants.
+pub fn reviewer_instructions() -> String {
+    format!(
+        r#"# Reviewer Agent
+
+Review the implementation changes and ensure they meet coding standards and task requirements.
+
+## Checklist: Your Review Memory
+
+The checklist is your persistent memory for this review. It survives across sessions and tells you exactly where to continue if the review is interrupted.
+
+**Key principles:**
+- Start by using `{get_checklist}` to read the current checklist — it tells you what has been reviewed.
+- Each checklist item represents one review remark or concern that needs to be addressed.
+- Use `{insert_checklist_item}` to add new review remarks as you discover issues.
+- Use `{check_checklist_item}` to mark items as resolved when the worker has addressed them.
+- Use `{update_checklist_item}` to clarify or refine review remarks.
+- Use `{delete_checklist_item}` to remove items only if they become irrelevant.
+
+## Access Model
+
+You have read-only access to all task information:
+- Use `{get_description}` to understand the original task
+- Use `{get_plan}` to see the implementation plan
+- Use `{get_discussion}` for context and prior comments
+- Use `{pull_work}` to access the work repository and examine changes
+- Use `{post_message}` to communicate findings
+- You can run local git commands to examine changes, but you cannot push
+
+Work autonomously. Do not ask the user for anything.
+
+## Workflow
+
+1. Call `{get_description}` to understand the task requirements
+2. Call `{get_plan}` to see what was supposed to be implemented
+3. Call `{get_discussion}` for additional context
+4. Call `{get_checklist}` to see if there are existing review items
+5. Set up the repository using `{pull_work}` to access the implementation
+6. `cd` into the returned path
+7. Use `{get_param_work_branch}` to get the work branch name
+8. Use `{get_param_destination_branch}` to get the target branch name
+9. Compare changes using git:
+   - `git diff <destination_branch>..<work_branch>` to see all changes
+   - `git log <destination_branch>..<work_branch>` to see commits
+10. Review the changes for:
+    - Conformance to the task requirements and plan
+    - Code quality and style adherence
+    - Proper error handling
+    - Test coverage (if applicable)
+    - Documentation completeness
+    - Any potential bugs or issues
+11. For each issue found:
+    - Call `{insert_checklist_item}` to create a new review remark with clear description
+    - Include specific file names, line numbers, and what needs to be fixed
+12. When review is complete:
+    - If issues were found: Signal `go_work` by checking all items you created (they should be unchecked initially), then the worker will address them
+    - If no issues: Signal `done` by ensuring the checklist is empty or all items are checked
+13. Call `{post_message}` to summarize your review findings"#,
+        get_description = reviewer_tools::GET_DESCRIPTION,
+        get_plan = reviewer_tools::GET_PLAN,
+        get_discussion = reviewer_tools::GET_DISCUSSION,
+        get_checklist = reviewer_tools::GET_CHECKLIST,
+        insert_checklist_item = reviewer_tools::INSERT_CHECKLIST_ITEM,
+        update_checklist_item = reviewer_tools::UPDATE_CHECKLIST_ITEM,
+        check_checklist_item = reviewer_tools::CHECK_CHECKLIST_ITEM,
+        delete_checklist_item = reviewer_tools::DELETE_CHECKLIST_ITEM,
+        post_message = reviewer_tools::POST_MESSAGE,
+        pull_work = reviewer_tools::PULL_WORK,
+        get_param_destination_branch = reviewer_tools::GET_PARAM_DESTINATION_BRANCH,
+        get_param_work_branch = reviewer_tools::GET_PARAM_WORK_BRANCH,
     )
 }
 
@@ -481,12 +571,25 @@ pub trait CommonMcpImpl: Send + Sync {
                         .await
                     {
                         Ok(()) => {
-                            // Signal task completion status: if unchecked items remain, ready for work; otherwise done
+                            // Signal task completion status based on role:
+                            // - Worker: when all items checked, ready for review (go_review)
+                            // - Reviewer: when all items checked, either go back to work (go_work) or mark as done
+                            // - If unchecked items remain, ready for same role to continue
                             let has_unchecked = items.iter().any(|i| !i.checked);
                             let signal = if has_unchecked {
-                                crate::Signal::GoWork
+                                // Still have work to do, continue with current role
+                                match self.role() {
+                                    crate::task::Role::Worker => crate::Signal::GoWork,
+                                    crate::task::Role::Reviewer => crate::Signal::GoReview,
+                                    crate::task::Role::Planner => crate::Signal::GoPlan,
+                                }
                             } else {
-                                crate::Signal::Done
+                                // All items checked - transition based on role
+                                match self.role() {
+                                    crate::task::Role::Worker => crate::Signal::GoReview,  // Worker done -> review
+                                    crate::task::Role::Reviewer => crate::Signal::Done,     // Reviewer done -> complete
+                                    crate::task::Role::Planner => crate::Signal::GoWork,    // Planner done -> work
+                                }
                             };
                             
                             if let Err(e) = self.session().set_signal(signal).await {
@@ -757,6 +860,36 @@ pub trait WorkerMcpImpl: CommonMcpImpl {
     }
 }
 
+/// Reviewer-specific MCP implementations
+#[allow(async_fn_in_trait)]
+pub trait ReviewerMcpImpl: CommonMcpImpl {
+    async fn get_param_impl(&self, param: Parameter) -> String {
+        let param_name = param.name();
+        tracing::info!("[reviewer#{}] get_param_{}", self.session().task_id(), param_name);
+        match self.session().get_parameter(param_name).await {
+            Ok(Some(value)) => value,
+            Ok(None) => format!("{} is not set", param_name),
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    async fn get_param_destination_branch_impl(&self) -> String {
+        self.get_param_impl(Parameter::DestinationBranch).await
+    }
+
+    async fn get_param_work_branch_impl(&self) -> String {
+        self.get_param_impl(Parameter::WorkBranch).await
+    }
+
+    async fn pull_work_impl(&self) -> String {
+        tracing::info!("[reviewer#{}] pull_work", self.session().task_id());
+        match self.session().pull_work().await {
+            Ok(path) => path,
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+}
+
 // -- Planner MCP service --
 
 #[derive(Clone)]
@@ -1018,6 +1151,125 @@ impl WorkerMcp {
     }
 }
 
+// -- Reviewer MCP service --
+
+#[derive(Clone)]
+pub struct ReviewerMcp {
+    session: TaskSession,
+    tool_router: ToolRouter<Self>,
+}
+
+impl CommonMcpImpl for ReviewerMcp {
+    fn session(&self) -> &TaskSession {
+        &self.session
+    }
+    
+    fn role(&self) -> Role {
+        Role::Reviewer
+    }
+}
+
+impl ReviewerMcpImpl for ReviewerMcp {}
+
+#[tool_router]
+impl ReviewerMcp {
+    pub fn new(zbobr: Zbobr, task_id: u64) -> Self {
+        Self {
+            session: zbobr.task_session(task_id),
+            tool_router: Self::tool_router(),
+        }
+    }
+
+    #[tool(description = "Get the current description for this task (read-only)")]
+    async fn get_description(&self) -> String {
+        self.get_description_impl().await
+    }
+
+    #[tool(description = "Get all discussion messages on this task")]
+    async fn get_discussion(&self) -> String {
+        self.get_discussion_impl().await
+    }
+
+    #[tool(description = "Post a message to the task discussion")]
+    async fn post_message(&self, Parameters(params): Parameters<MessageParam>) -> String {
+        self.post_message_impl(&params.message).await
+    }
+
+    #[tool(description = "Get the current implementation plan for this task (read-only)")]
+    async fn get_plan(&self) -> String {
+        self.get_plan_impl().await
+    }
+
+    #[tool(
+        description = "Clone the fork of the destination_repository and return the path. Automatically sets the current branch to work_branch (created from destination_branch). Read-only access for review purposes."
+    )]
+    async fn pull_work(&self) -> String {
+        self.pull_work_impl().await
+    }
+
+    #[tool(description = "Get the task checklist as a list of checkbox items")]
+    async fn get_checklist(&self) -> String {
+        self.get_checklist_impl().await
+    }
+
+    #[tool(description = "Insert a new checklist item for review remarks (always created in unchecked state)")]
+    async fn insert_checklist_item(&self, Parameters(params): Parameters<InsertChecklistItemParam>) -> String {
+        self.insert_checklist_item_impl(&params.id, params.after_id.clone(), &params.text).await
+    }
+
+    #[tool(description = "Update a checklist item's text")]
+    async fn update_checklist_item(&self, Parameters(params): Parameters<UpdateChecklistItemParam>) -> String {
+        self.update_checklist_item_impl(&params.id, &params.text).await
+    }
+
+    #[tool(description = "Check or uncheck a checklist item")]
+    async fn check_checklist_item(&self, Parameters(params): Parameters<CheckChecklistItemParam>) -> String {
+        self.check_checklist_item_impl(&params.id, params.checked).await
+    }
+
+    #[tool(description = "Delete a checklist item")]
+    async fn delete_checklist_item(&self, Parameters(params): Parameters<DeleteChecklistItemParam>) -> String {
+        self.delete_checklist_item_impl(&params.id).await
+    }
+
+    #[tool(description = "Get the destination branch name for this task (read-only)")]
+    async fn get_param_destination_branch(&self) -> String {
+        self.get_param_destination_branch_impl().await
+    }
+
+    #[tool(description = "Get the work branch name for this task (read-only)")]
+    async fn get_param_work_branch(&self) -> String {
+        self.get_param_work_branch_impl().await
+    }
+
+    #[tool(description = "Get the PR URL created for this task (read-only), empty if not created")]
+    async fn get_param_pr_url(&self) -> String {
+        self.get_param_impl(Parameter::PrUrl).await
+    }
+}
+
+#[tool_handler]
+impl ServerHandler for ReviewerMcp {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo {
+            capabilities: ServerCapabilities::builder().enable_tools().build(),
+            instructions: Some(
+                "Reviewer tools: review implementation changes, add review remarks to checklist."
+                    .to_string(),
+            ),
+            ..Default::default()
+        }
+    }
+}
+
+impl ReviewerMcp {
+    /// Generate API documentation for reviewer tools
+    pub fn generate_api_docs() -> String {
+        let tools = Self::tool_router();
+        generate_api_docs_from_router(&tools, "Reviewer")
+    }
+}
+
 // -- Admin MCP service --
 
 #[derive(Clone)]
@@ -1239,6 +1491,18 @@ pub async fn run_role_mcp_server(
             );
             axum::Router::new().nest_service(&path, svc)
         }
+        Role::Reviewer => {
+            tracing::info!("Creating ReviewerMcp service for task {task_id} at path {path}");
+            let svc = StreamableHttpService::new(
+                move || {
+                    tracing::debug!("Creating new ReviewerMcp instance for task {task_id}");
+                    Ok(ReviewerMcp::new(zbobr.clone(), task_id))
+                },
+                Arc::new(LocalSessionManager::default()),
+                Default::default(),
+            );
+            axum::Router::new().nest_service(&path, svc)
+        }
     };
 
     serve_mcp(base_port, &path, router).await
@@ -1278,6 +1542,7 @@ mod tests {
             cli_tool: Tool::Stub,
             planner_prompts: vec![],
             worker_prompts: vec![],
+            reviewer_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
         };
@@ -1311,6 +1576,7 @@ mod tests {
             cli_tool: Tool::Stub,
             planner_prompts: vec![],
             worker_prompts: vec![],
+            reviewer_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
         };
@@ -1344,6 +1610,7 @@ mod tests {
             cli_tool: Tool::Stub,
             planner_prompts: vec![],
             worker_prompts: vec![],
+            reviewer_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
         };

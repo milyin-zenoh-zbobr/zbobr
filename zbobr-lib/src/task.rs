@@ -48,6 +48,8 @@ pub enum Stage {
     Planning,
     GoWorking,
     Working,
+    GoReviewing,
+    Reviewing,
 }
 
 impl Stage {
@@ -58,6 +60,8 @@ impl Stage {
             Stage::Planning => "PLANNING",
             Stage::GoWorking => "GO_WORKING",
             Stage::Working => "WORKING",
+            Stage::GoReviewing => "GO_REVIEWING",
+            Stage::Reviewing => "REVIEWING",
         }
     }
 
@@ -68,6 +72,8 @@ impl Stage {
             "PLANNING" => Some(Stage::Planning),
             "GO_WORKING" => Some(Stage::GoWorking),
             "WORKING" => Some(Stage::Working),
+            "GO_REVIEWING" => Some(Stage::GoReviewing),
+            "REVIEWING" => Some(Stage::Reviewing),
             _ => None,
         }
     }
@@ -79,7 +85,7 @@ impl std::fmt::Display for Stage {
     }
 }
 
-/// Role for task execution (planner or worker).
+/// Role for task execution (planner, worker, or reviewer).
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
 )]
@@ -88,6 +94,8 @@ pub enum Role {
     Planner,
     #[serde(rename = "worker")]
     Worker,
+    #[serde(rename = "reviewer")]
+    Reviewer,
 }
 
 impl Role {
@@ -96,6 +104,7 @@ impl Role {
         match self {
             Role::Planner => "planner",
             Role::Worker => "worker",
+            Role::Reviewer => "reviewer",
         }
     }
 }
@@ -112,6 +121,7 @@ impl std::str::FromStr for Role {
         match s.to_lowercase().as_str() {
             "planner" => Ok(Role::Planner),
             "worker" => Ok(Role::Worker),
+            "reviewer" => Ok(Role::Reviewer),
             _ => Err(format!("Unknown role: {}", s)),
         }
     }
@@ -131,10 +141,12 @@ pub enum Signal {
                // if both are signalled by an agent.
     #[serde(rename = "done")]
     Done = 2,
+    #[serde(rename = "go_review")]
+    GoReview = 3,
     #[serde(rename = "go_work")]
-    GoWork = 3,
+    GoWork = 4,
     #[serde(rename = "go_plan")]
-    GoPlan = 4,
+    GoPlan = 5,
 }
 
 impl Signal {
@@ -144,6 +156,7 @@ impl Signal {
             Signal::Stop => "stop",
             Signal::Done => "done",
             Signal::GoAsk => "go_ask",
+            Signal::GoReview => "go_review",
             Signal::GoWork => "go_work",
             Signal::GoPlan => "go_plan",
         }
@@ -151,13 +164,14 @@ impl Signal {
 
     /// Returns all available signals in priority order.
     pub fn all() -> &'static [Signal] {
-        &[Signal::Stop, Signal::Done, Signal::GoAsk, Signal::GoWork, Signal::GoPlan]
+        &[Signal::Stop, Signal::Done, Signal::GoAsk, Signal::GoReview, Signal::GoWork, Signal::GoPlan]
     }
 
     /// Maps signal to target stage.
     pub fn target_stage(&self) -> Stage {
         match self {
             Signal::Stop | Signal::Done | Signal::GoAsk => Stage::Pending,
+            Signal::GoReview => Stage::GoReviewing,
             Signal::GoWork => Stage::GoWorking,
             Signal::GoPlan => Stage::GoPlanning,
         }
@@ -177,6 +191,7 @@ impl std::str::FromStr for Signal {
             "stop" => Ok(Signal::Stop),
             "done" => Ok(Signal::Done),
             "goask" | "go-ask" => Ok(Signal::GoAsk),
+            "goreview" | "go-review" => Ok(Signal::GoReview),
             "gowork" | "go-work" => Ok(Signal::GoWork),
             "goplan" | "go-plan" => Ok(Signal::GoPlan),
             _ => Err(format!("Unknown signal: {}", s)),
@@ -910,12 +925,15 @@ mod tests {
         assert_eq!(Stage::Planning.milestone_name(), "PLANNING");
         assert_eq!(Stage::GoWorking.milestone_name(), "GO_WORKING");
         assert_eq!(Stage::Working.milestone_name(), "WORKING");
+        assert_eq!(Stage::GoReviewing.milestone_name(), "GO_REVIEWING");
+        assert_eq!(Stage::Reviewing.milestone_name(), "REVIEWING");
     }
 
     #[test]
     fn stage_display() {
         assert_eq!(Stage::Planning.to_string(), "PLANNING");
         assert_eq!(Stage::Working.to_string(), "WORKING");
+        assert_eq!(Stage::Reviewing.to_string(), "REVIEWING");
     }
 
     #[test]

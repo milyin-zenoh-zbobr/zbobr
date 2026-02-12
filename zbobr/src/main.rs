@@ -44,6 +44,10 @@ struct GlobalArgs {
     #[arg(long, env = "ZBOBR_WORKER_PROMPTS", value_delimiter = ';')]
     worker_prompts: Option<Vec<PathBuf>>,
 
+    /// Semicolon-separated list of prompt files for reviewer role
+    #[arg(long, env = "ZBOBR_REVIEWER_PROMPTS", value_delimiter = ';')]
+    reviewer_prompts: Option<Vec<PathBuf>>,
+
     /// Backend to use: "github" (default) or "stub"
     #[arg(long, env = "ZBOBR_BACKEND")]
     backend: Option<String>,
@@ -140,6 +144,7 @@ struct Prompts {
     base_path: Option<PathBuf>,
     planner: Vec<PathBuf>,
     worker: Vec<PathBuf>,
+    reviewer: Vec<PathBuf>,
 }
 
 /// Resolve prompt paths: CLI arg > config values.
@@ -158,6 +163,12 @@ fn resolve_prompts(cli: &Cli, config: &ZbobrConfig) -> anyhow::Result<Prompts> {
         .clone()
         .unwrap_or_else(|| config.worker_prompts.clone());
 
+    let reviewer = cli
+        .global
+        .reviewer_prompts
+        .clone()
+        .unwrap_or_else(|| config.reviewer_prompts.clone());
+
     // CLI prompts_path > config.prompts_path (which came from TOML/env)
     let base_path = cli
         .global
@@ -169,6 +180,7 @@ fn resolve_prompts(cli: &Cli, config: &ZbobrConfig) -> anyhow::Result<Prompts> {
         base_path,
         planner,
         worker,
+        reviewer,
     })
 }
 
@@ -221,11 +233,13 @@ fn build_full_prompt(user_context: &str, role: Role) -> String {
     let hardcoded = match role {
         Role::Planner => zbobr_lib::planner_instructions(),
         Role::Worker => zbobr_lib::worker_instructions(),
+        Role::Reviewer => zbobr_lib::reviewer_instructions(),
     };
 
     let api_docs = match role {
         Role::Planner => zbobr_lib::PlannerMcp::generate_api_docs(),
         Role::Worker => zbobr_lib::WorkerMcp::generate_api_docs(),
+        Role::Reviewer => zbobr_lib::ReviewerMcp::generate_api_docs(),
     };
 
     if user_context.is_empty() {
@@ -462,10 +476,10 @@ async fn run_role_session(
     let model = model.unwrap_or_else(|| zbobr.config().default_model.clone());
 
     // Set stage
-    let stage = if role == Role::Planner {
-        Stage::Planning
-    } else {
-        Stage::Working
+    let stage = match role {
+        Role::Planner => Stage::Planning,
+        Role::Worker => Stage::Working,
+        Role::Reviewer => Stage::Reviewing,
     };
     zbobr.set_task_stage(task_id, stage).await?;
 
@@ -547,8 +561,10 @@ async fn run_manager_loop(
     // Load prompts once at loop start and append API docs
     let planner_base = load_prompts(&prompts.planner, prompts.base_path.as_ref())?;
     let worker_base = load_prompts(&prompts.worker, prompts.base_path.as_ref())?;
+    let reviewer_base = load_prompts(&prompts.reviewer, prompts.base_path.as_ref())?;
     let planner_prompt = build_full_prompt(&planner_base, Role::Planner);
     let worker_prompt = build_full_prompt(&worker_base, Role::Worker);
+    let reviewer_prompt = build_full_prompt(&reviewer_base, Role::Reviewer);
 
     tracing::info!("Manager loop started for {}", zbobr.config().task_repo);
     tracing::info!("Poll interval: {interval_secs}s, Cleanup interval: {cleanup_interval_secs}s");
@@ -570,6 +586,15 @@ async fn run_manager_loop(
         "Worker prompt files: {}",
         prompts
             .worker
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join("; ")
+    );
+    tracing::info!(
+        "Reviewer prompt files: {}",
+        prompts
+            .reviewer
             .iter()
             .map(|p| p.display().to_string())
             .collect::<Vec<_>>()
@@ -711,12 +736,48 @@ async fn run_manager_loop(
             continue;
         }
 
+        // Check for GO_REVIEWING tasks
+        let reviewing_tasks = match zbobr
+            .list_tasks_by_stage(Stage::GoReviewing.milestone_name(), Some(current_tool))
+            .await
+        {
+            Ok(tasks) => tasks,
+            Err(e) => {
+                tracing::error!("Failed to check GO_REVIEWING tasks: {e}");
+                vec![]
+            }
+        };
+
+        if let Some(task) = reviewing_tasks.first() {
+            let task_model = task.model.clone().unwrap_or_else(|| model.clone());
+            tracing::info!(
+                "Found GO_REVIEWING task #{} (tool: {:?}, model: {}) - running reviewer",
+                task.id,
+                task.tool,
+                task_model
+            );
+            if let Err(e) = run_role_session(
+                zbobr,
+                task.id,
+                Role::Reviewer,
+                Some(task_model),
+                port,
+                &reviewer_prompt,
+            )
+            .await
+            {
+                tracing::error!("Reviewer session failed: {e}");
+            }
+            continue;
+        }
+
         // Log task statistics before sleeping
         tracing::info!(
-            "Task statistics for tool {:?}: GO_PLANNING={}, GO_WORKING={}",
+            "Task statistics for tool {:?}: GO_PLANNING={}, GO_WORKING={}, GO_REVIEWING={}",
             current_tool,
             planning_tasks.len(),
-            working_tasks.len()
+            working_tasks.len(),
+            reviewing_tasks.len()
         );
 
         if !planning_tasks.is_empty() {
@@ -733,6 +794,14 @@ async fn run_manager_loop(
                 .map(|t| format!("#{} (tool: {:?}, model: {:?})", t.id, t.tool, t.model))
                 .collect();
             tracing::info!("  GO_WORKING tasks: {}", summary.join(", "));
+        }
+
+        if !reviewing_tasks.is_empty() {
+            let summary: Vec<_> = reviewing_tasks
+                .iter()
+                .map(|t| format!("#{} (tool: {:?}, model: {:?})", t.id, t.tool, t.model))
+                .collect();
+            tracing::info!("  GO_REVIEWING tasks: {}", summary.join(", "));
         }
 
         tracing::info!("No processable tasks. Sleeping {interval_secs}s...");

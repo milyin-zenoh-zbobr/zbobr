@@ -1305,6 +1305,8 @@ fn stage_description(stage: Stage) -> &'static str {
         Stage::Planning => "Task is in planning, other bots ignore it",
         Stage::GoWorking => "Task must be taken by worker agent, any matching bot can take it",
         Stage::Working => "Task is in work, other bots ignore it",
+        Stage::GoReviewing => "Task must be taken by reviewer agent, any matching bot can take it",
+        Stage::Reviewing => "Task is in review, other bots ignore it",
     }
 }
 

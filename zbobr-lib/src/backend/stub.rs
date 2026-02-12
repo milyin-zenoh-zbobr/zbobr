@@ -47,6 +47,8 @@ impl Default for StubState {
         stages.insert(Stage::Planning.to_string(), 3);
         stages.insert(Stage::GoWorking.to_string(), 4);
         stages.insert(Stage::Working.to_string(), 5);
+        stages.insert(Stage::GoReviewing.to_string(), 6);
+        stages.insert(Stage::Reviewing.to_string(), 7);
 
         Self {
             tasks,
@@ -358,6 +360,8 @@ impl Backend for StubBackend {
         state.stages.insert(Stage::Planning.to_string(), 3);
         state.stages.insert(Stage::GoWorking.to_string(), 4);
         state.stages.insert(Stage::Working.to_string(), 5);
+        state.stages.insert(Stage::GoReviewing.to_string(), 6);
+        state.stages.insert(Stage::Reviewing.to_string(), 7);
 
         // Initialize labels
         state.labels.clear();

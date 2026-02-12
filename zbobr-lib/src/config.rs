@@ -44,6 +44,7 @@ pub struct TomlPrompts {
     pub path: Option<PathBuf>,
     pub planner: Option<Vec<PathBuf>>,
     pub worker: Option<Vec<PathBuf>>,
+    pub reviewer: Option<Vec<PathBuf>>,
 }
 
 /// Configuration loaded from a TOML file.
@@ -104,6 +105,8 @@ pub struct ZbobrConfig {
     pub planner_prompts: Vec<PathBuf>,
     /// Custom prompt files for worker agent.
     pub worker_prompts: Vec<PathBuf>,
+    /// Custom prompt files for reviewer agent.
+    pub reviewer_prompts: Vec<PathBuf>,
     /// Prefix for work branches (default: "zbobr_fix").
     pub work_branch_prefix: String,
     /// Base directory for resolving prompt file paths.
@@ -124,6 +127,7 @@ impl Default for ZbobrConfig {
             cli_tool: Tool::default(),
             planner_prompts: vec!["prompts/planner.md".into(), "prompts/common.md".into()],
             worker_prompts: vec!["prompts/worker.md".into(), "prompts/common.md".into()],
+            reviewer_prompts: vec!["prompts/reviewer.md".into(), "prompts/common.md".into()],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
         }
@@ -252,6 +256,10 @@ impl ZbobrConfig {
             .or_else(|| toml_prompts.and_then(|p| p.worker.clone()))
             .unwrap_or(defaults.worker_prompts);
 
+        let reviewer_prompts = env_path_list(env, "ZBOBR_REVIEWER_PROMPTS")
+            .or_else(|| toml_prompts.and_then(|p| p.reviewer.clone()))
+            .unwrap_or(defaults.reviewer_prompts);
+
         let prompts_path = env
             .var("ZBOBR_PROMPTS_PATH")
             .map(PathBuf::from)
@@ -296,6 +304,7 @@ impl ZbobrConfig {
             cli_tool,
             planner_prompts,
             worker_prompts,
+            reviewer_prompts,
             work_branch_prefix,
             prompts_path,
         })
@@ -404,6 +413,7 @@ mod tests {
             cli_tool: Tool::Copilot,
             planner_prompts: vec![],
             worker_prompts: vec![],
+            reviewer_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
         }
@@ -504,6 +514,7 @@ mod tests {
                 path: Some(PathBuf::from("/opt/prompts")),
                 planner: Some(vec![PathBuf::from("p.md")]),
                 worker: Some(vec![PathBuf::from("w.md")]),
+                reviewer: Some(vec![PathBuf::from("r.md")]),
             }),
         };
 
@@ -517,6 +528,7 @@ mod tests {
         assert_eq!(config.work_branch_prefix, "toml_fix");
         assert_eq!(config.planner_prompts, vec![PathBuf::from("p.md")]);
         assert_eq!(config.worker_prompts, vec![PathBuf::from("w.md")]);
+        assert_eq!(config.reviewer_prompts, vec![PathBuf::from("r.md")]);
         assert_eq!(config.prompts_path, Some(PathBuf::from("/opt/prompts")));
         assert_eq!(config.owner_github_token, "toml-owner-token");
         assert_eq!(config.agent_github_token, "toml-agent-token");
