@@ -72,8 +72,6 @@ pub struct CreateTaskParam {
     pub tool: Option<Tool>,
     #[schemars(description = "Task model (optional)")]
     pub model: Option<Model>,
-    #[schemars(description = "Parent task ID (optional)")]
-    pub parent_task_id: Option<u64>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
@@ -1075,7 +1073,6 @@ impl AdminMcp {
                 Stage::Planning,
                 params.tool,
                 params.model,
-                params.parent_task_id,
                 None,
                 None,
             )

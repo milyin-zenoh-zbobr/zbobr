@@ -282,11 +282,6 @@ impl Backend for GitHubBackend {
             }
         });
 
-        // Extract parent_task_id from parameters map if present
-        let parent_task_id = params_map
-            .get("parent_task_id")
-            .and_then(|s| s.parse().ok());
-
         // Build parameters HashMap<Parameter,String> from parsed parameters
         let mut parameters = HashMap::new();
         if let Some(repo) = params_map.get(Parameter::DestinationRepository.name()) {
@@ -330,7 +325,6 @@ impl Backend for GitHubBackend {
             stage,
             tool,
             model,
-            parent_task_id,
             parameters,
             done,
             checklist,
@@ -345,7 +339,6 @@ impl Backend for GitHubBackend {
         stage: Stage,
         tool: Option<Tool>,
         model: Option<Model>,
-        parent_task_id: Option<u64>,
         parameters: HashMap<Parameter, String>,
     ) -> Result<u64, ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
@@ -363,10 +356,6 @@ impl Backend for GitHubBackend {
         if let Some(v) = parameters.get(&Parameter::PrUrl) {
             params_text.insert(Parameter::PrUrl.name().to_string(), v.clone());
         }
-        if let Some(pid) = parent_task_id {
-            params_text.insert("parent_task_id".to_string(), pid.to_string());
-        }
-
         let body = crate::backend::serialize_description_full(description, &params_text, "", &[]);
 
         let stage_number = self.find_stage_number(stage.milestone_name()).await?;
@@ -578,11 +567,6 @@ impl Backend for GitHubBackend {
                 }
             });
 
-            // Extract parent_task_id from parameters map if present
-            let parent_task_id = params_map
-                .get("parent_task_id")
-                .and_then(|s| s.parse().ok());
-
             // Build parameters HashMap<Parameter,String> from parsed parameters
             let mut parameters = HashMap::new();
             if let Some(repo) = params_map.get(Parameter::DestinationRepository.name()) {
@@ -622,7 +606,6 @@ impl Backend for GitHubBackend {
                 stage,
                 tool: task_tool,
                 model,
-                parent_task_id,
                 parameters,
                 done,
                 checklist,

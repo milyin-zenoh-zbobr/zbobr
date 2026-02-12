@@ -75,7 +75,6 @@ impl Zbobr {
         stage: Stage,
         tool: Option<Tool>,
         model: Option<Model>,
-        parent_task_id: Option<u64>,
         destination_repository: Option<String>,
         destination_branch: Option<String>,
     ) -> Result<u64, ZbobrError> {
@@ -87,17 +86,7 @@ impl Zbobr {
             parameters.insert(Parameter::DestinationBranch, branch);
         }
         
-        self.backend
-            .create_task(
-                title,
-                description,
-                stage,
-                tool,
-                model,
-                parent_task_id,
-                parameters,
-            )
-            .await
+        self.backend.create_task(title, description, stage, tool, model, parameters).await
     }
 
     pub async fn close_task(&self, id: u64) -> Result<(), ZbobrError> {

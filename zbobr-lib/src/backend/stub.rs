@@ -34,7 +34,6 @@ impl Default for StubState {
                 stage: Stage::Pending,
                 tool: Some(Tool::Stub),
                 model: Some(Model::Gpt5Mini),
-                parent_task_id: None,
                 parameters: HashMap::new(),
                 done: false,
                 checklist: vec![],
@@ -92,7 +91,6 @@ impl Backend for StubBackend {
         stage: Stage,
         tool: Option<Tool>,
         model: Option<Model>,
-        parent_task_id: Option<u64>,
         parameters: HashMap<Parameter, String>,
     ) -> Result<u64, ZbobrError> {
         let mut state = self.state.write().unwrap();
@@ -107,7 +105,6 @@ impl Backend for StubBackend {
             stage,
             tool,
             model,
-            parent_task_id,
             parameters,
             done: false,
             checklist: vec![],

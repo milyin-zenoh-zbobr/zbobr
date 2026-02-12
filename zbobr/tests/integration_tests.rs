@@ -119,7 +119,6 @@ impl AdminClient {
                     description: description.to_string(),
                     tool: None,
                     model: None,
-                    parent_task_id: None,
                 },
             )
             .await?;

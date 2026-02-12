@@ -219,7 +219,6 @@ pub trait Backend: Send + Sync {
         stage: Stage,
         tool: Option<Tool>,
         model: Option<Model>,
-        parent_task_id: Option<u64>,
         parameters: std::collections::HashMap<Parameter, String>,
     ) -> Result<u64, ZbobrError>;
 
