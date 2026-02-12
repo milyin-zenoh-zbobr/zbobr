@@ -1172,6 +1172,8 @@ impl Backend for GitHubBackend {
             Stage::Planning,
             Stage::GoWorking,
             Stage::Working,
+            Stage::GoReviewing,
+            Stage::Reviewing,
         ];
         let existing = self.list_stages().await?;
         let existing_titles: Vec<&str> = existing.iter().map(|(_, t)| t.as_str()).collect();
