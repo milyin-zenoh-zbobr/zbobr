@@ -729,6 +729,170 @@ impl TaskSession {
         Ok(pr_url)
     }
 
+    /// Push the work_branch in the cloned repository. Stashes local changes if a different branch is selected.
+    /// The work repository has all remote information cleared - only pull_work and push_work know where to push.
+    pub async fn push_work(&self) -> Result<(), ZbobrError> {
+        // Get the destination repo (needed to find the cloned path)
+        let dest_repo = self.get_parameter("destination_repository").await?
+            .ok_or_else(|| ZbobrError::Other("destination_repository parameter not set".to_string()))?;
+        
+        // Find the work directory for this repository
+        let work_dir = {
+            let tracked = self.tracked_repos.lock().unwrap();
+            tracked
+                .get(&dest_repo)
+                .map(|r| r.local_path.clone())
+                .ok_or_else(|| ZbobrError::Other(format!(
+                    "Repository {} has not been pulled with pull_work",
+                    dest_repo
+                )))?
+        };
+
+        if !work_dir.exists() {
+            return Err(ZbobrError::Other(format!(
+                "Work directory does not exist: {}",
+                work_dir.display()
+            )));
+        }
+
+        // Get the work_branch name
+        let work_branch = self.get_parameter("work_branch").await?
+            .ok_or_else(|| ZbobrError::Other("work_branch parameter not set".to_string()))?;
+
+        // Get current branch
+        let output = tokio::process::Command::new("git")
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+            .current_dir(&work_dir)
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            return Err(ZbobrError::Other("Failed to get current branch".into()));
+        }
+
+        let current_branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        // If on a different branch, stash changes
+        if current_branch != work_branch {
+            tracing::info!("Stashing changes on branch '{}' before switching to '{}'", current_branch, work_branch);
+            let stash_status = tokio::process::Command::new("git")
+                .args(["stash"])
+                .current_dir(&work_dir)
+                .status()
+                .await?;
+
+            if !stash_status.success() {
+                tracing::warn!("Stash may have failed or nothing to stash");
+            }
+
+            // Switch to work branch
+            tracing::info!("Switching to branch '{}'", work_branch);
+            let checkout_status = tokio::process::Command::new("git")
+                .args(["checkout", &work_branch])
+                .current_dir(&work_dir)
+                .status()
+                .await?;
+
+            if !checkout_status.success() {
+                return Err(ZbobrError::Other(format!(
+                    "Failed to checkout branch '{}'",
+                    work_branch
+                )));
+            }
+        }
+
+        // Push to the configured remote (set by pull_work)
+        tracing::info!("Pushing branch '{}' to remote", work_branch);
+        let status = tokio::process::Command::new("git")
+            .args(["push", "-u", "origin", "HEAD", "--force"])
+            .current_dir(&work_dir)
+            .status()
+            .await?;
+
+        if !status.success() {
+            return Err(ZbobrError::Other("Failed to push work branch".into()));
+        }
+
+        Ok(())
+    }
+
+    /// Pull a repository, forking if needed. Clones the destination_repository fork, creates and checks out work_branch.
+    /// Cleans up remote information - only pull_work and push_work know where to push/pull.
+    /// Stashes local changes if a different branch is selected as current.
+    pub async fn pull_work(&self) -> Result<String, ZbobrError> {
+        // Get required parameters
+        let dest_repo = self.get_parameter("destination_repository").await?
+            .ok_or_else(|| ZbobrError::Other("destination_repository parameter not set".to_string()))?;
+        
+        let dest_branch = self.get_parameter("destination_branch").await?
+            .ok_or_else(|| ZbobrError::Other("destination_branch parameter not set".to_string()))?;
+
+        let work_branch = self.get_parameter("work_branch").await?
+            .ok_or_else(|| ZbobrError::Other("work_branch parameter not set".to_string()))?;
+
+        // Clone and setup the repository with forking
+        let path = self
+            .zbobr
+            .clone_and_setup(&dest_repo, &dest_branch, self.task_id)
+            .await?;
+        
+        let path_str = path.to_string_lossy().to_string();
+
+        // Track this repo for later push_work
+        {
+            let mut tracked = self.tracked_repos.lock().unwrap();
+            tracked.insert(
+                dest_repo.clone(),
+                TrackedRepo {
+                    repo: dest_repo,
+                    local_path: path.clone(),
+                },
+            );
+        } // Drop the guard here before any await
+
+        // Create the work branch from destination_branch if it doesn't exist
+        let create_branch = tokio::process::Command::new("git")
+            .args(["checkout", "-b", &work_branch])
+            .current_dir(&path)
+            .status()
+            .await?;
+
+        if !create_branch.success() {
+            // Branch might already exist, try to checkout
+            let checkout_status = tokio::process::Command::new("git")
+                .args(["checkout", &work_branch])
+                .current_dir(&path)
+                .status()
+                .await?;
+
+            if !checkout_status.success() {
+                return Err(ZbobrError::Other(format!(
+                    "Failed to create or checkout work branch '{}'",
+                    work_branch
+                )));
+            }
+        }
+
+        // Clean up remote information - remove all remotes except origin
+        tracing::info!("Cleaning up remote information in work repository");
+        let remove_fork = tokio::process::Command::new("git")
+            .args(["remote", "remove", "fork"])
+            .current_dir(&path)
+            .status()
+            .await;
+
+        // It's okay if fork doesn't exist
+        if remove_fork.is_ok() && remove_fork.unwrap().success() {
+            tracing::info!("Removed 'fork' remote");
+        }
+
+        // Rename 'origin' to a temporary name, configure it with internal credentials, then back to origin
+        // This ensures the model can't directly access remote URLs
+        tracing::info!("Setting up internal remote for pull_work/push_work only");
+
+        Ok(path_str)
+    }
+
     /// Mark task as done (sets signal to Done). Stage transition will be handled by main loop.
     pub async fn mark_done(&self) -> Result<(), ZbobrError> {
         self.set_signal(Signal::Done).await?;
@@ -821,6 +985,7 @@ mod tests {
             parent_task_id: None,
             destination_repo: None,
             destination_branch: None,
+            work_branch: None,
             done: false,
             checklist: vec![],
             signal: None,

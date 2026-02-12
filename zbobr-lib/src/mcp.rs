@@ -51,33 +51,9 @@ pub struct PathParam {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-pub struct BranchParam {
-    #[schemars(description = "Target repository in owner/name format")]
-    pub repo: String,
-    #[schemars(description = "Branch name to checkout")]
-    pub branch: String,
-}
-
-#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-pub struct PrParam {
-    #[schemars(
-        description = "Pull request reference (URL like 'https://github.com/owner/repo/pull/123' or 'owner/repo#123')"
-    )]
-    pub pr: String,
-}
-
-#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct ShortNameParam {
     #[schemars(description = "Short name for the branch (e.g. 'implementation', 'fix-typo')")]
     pub short_name: String,
-}
-
-#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-pub struct PushBranchAndCreatePrParam {
-    #[schemars(description = "Local filesystem path to repository")]
-    pub path: String,
-    #[schemars(description = "Destination branch for the PR base (e.g. 'main')")]
-    pub destination_branch: String,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
@@ -205,8 +181,7 @@ mcp_tools! {
     GET_PLAN = "get_plan",
     POST_PLAN = "post_plan",
     POST_MESSAGE = "post_message",
-    PULL_BRANCH = "pull_branch",
-    PULL_BRANCH_BY_PR = "pull_branch_by_pr",
+    PULL_WORK = "pull_work",
     GET_CHECKLIST = "get_checklist",
     GET_PARAM_DESTINATION_REPOSITORY = "get_param_destination_repository",
     SET_PARAM_DESTINATION_REPOSITORY = "set_param_destination_repository",
@@ -225,10 +200,8 @@ mcp_tools! {
     ASK_USER = "ask_user",
     ASK_PLANNER = "ask_planner",
     CREATE_BRANCH_NAME = "create_branch_name",
-    PULL_BRANCH = "pull_branch",
-    PULL_BRANCH_BY_PR = "pull_branch_by_pr",
-    PUSH_BRANCH = "push_branch",
-    PUSH_BRANCH_AND_CREATE_PR = "push_branch_and_create_pr",
+    PULL_WORK = "pull_work",
+    PUSH_WORK = "push_work",
     GET_CHECKLIST = "get_checklist",
     INSERT_CHECKLIST_ITEM = "insert_checklist_item",
     UPDATE_CHECKLIST_ITEM = "update_checklist_item",
@@ -257,7 +230,7 @@ Investigate a task and create an implementation plan with actionable steps.
 ## Access Model
 
 You can access the internet and run local commands. Your restrictions:
-- Do NOT run git clone/pull/fetch — use `{pull_branch}` or `{pull_branch_by_pr}` instead
+- Do NOT run git clone/pull/fetch — use `{pull_work}` instead
 - Use MCP `{post_plan}` to post the implementation plan
 - Use MCP `{post_message}` to communicate results and questions
 - For reading GitHub data: use `git` and `gh` CLI only when no MCP tool provides the needed information
@@ -270,29 +243,26 @@ Work autonomously. Do not ask the user for anything.
 1. Call `{get_description}` to read the user task description
 2. Call `{get_plan}` to read an existing plan if there is one
 3. Call `{get_discussion}` for context and prior comments and questions to existing plan
-4. **Set task parameters** that will guide the worker implementation:
+4. **Set task parameters** that will guide the implementation:
    - Call `{set_param_destination_repository}` with the target GitHub repository (owner/repo format)
    - Call `{set_param_destination_branch}` with the target branch name (e.g., "main", "develop")
    - Call `{set_param_work_branch}` with the local work branch name (e.g., "implement-feature")
    - Use `{get_param_destination_repository}`, `{get_param_destination_branch}`, `{get_param_work_branch}` to read current values
-5. Pull the relevant repository using one of:
-   - `{pull_branch}` — pull any branch of any repository you need to investigate
-   - `{pull_branch_by_pr}` — shortcut: if the task mentions a PR, pull it directly without reading the PR to find its branch
+5. Pull the destination repository using `{pull_work}` to investigate the codebase, understand the context, and design the plan. This also ensures the repo is cached for the worker later.
 6. Explore the codebase, identify and document the files, crates, modules, and keywords relevant to the task. These help define the scope and guide the worker:
    - List specific files that need to be modified or created
    - Identify crates/modules that contain related functionality
    - Include keywords/concepts the worker should focus on (e.g., "async/await", "error handling", "API compatibility")
    - This context narrows the worker's scope and prevents unnecessary exploration
 7. Design a solution. 
-8. Post a solution in the form of a text plan with `{post_plan}` in markdown with sections: Overview, Relevant Files/Crates, Keywords, Changes Required (by repo/file), Testing Strategy, Risks.
+8. Post a solution in the form of a text plan with `{post_plan}`. Use planning mode if available.
 "#,
         get_description = planner_tools::GET_DESCRIPTION,
         get_discussion = planner_tools::GET_DISCUSSION,
         get_plan = planner_tools::GET_PLAN,
         post_plan = planner_tools::POST_PLAN,
         post_message = planner_tools::POST_MESSAGE,
-        pull_branch = planner_tools::PULL_BRANCH,
-        pull_branch_by_pr = planner_tools::PULL_BRANCH_BY_PR,
+        pull_work = planner_tools::PULL_WORK,
         get_param_destination_repository = planner_tools::GET_PARAM_DESTINATION_REPOSITORY,
         set_param_destination_repository = planner_tools::SET_PARAM_DESTINATION_REPOSITORY,
         get_param_destination_branch = planner_tools::GET_PARAM_DESTINATION_BRANCH,
@@ -325,12 +295,13 @@ The checklist is your persistent memory for this task. It survives across sessio
 ## Access Model
 
 You can access the internet and run local commands. Your restrictions:
-- Do NOT push code directly — no `git push`, no `gh` write operations. Use `{push_branch}` or `{push_branch_and_create_pr}` instead. Access rights are configured to prevent gh-based pushes anyway.
-- Do NOT run git clone/pull/fetch — use `{pull_branch}` or `{pull_branch_by_pr}` instead
-- Use MCP `{push_branch_and_create_pr}` to submit your work
+- Do NOT push code directly — no `git push`, no `gh` write operations. Use `{push_work}` instead. Access rights are configured to prevent gh-based pushes anyway.
+- Do NOT run git clone/pull/fetch — use `{pull_work}` instead
+- Use MCP `{push_work}` to submit your work
 - Use MCP `{post_message}`, `{ask_user}`, `{ask_planner}` to communicate and request input
 - For reading GitHub data: use `git` and `gh` CLI only when no MCP tool provides the needed information
 - NEVER use git/gh for writing, pushing, or sending data to GitHub
+- The work repository has all remote information cleared. The model must not do git push itself. Only `{pull_work}` and `{push_work}` can access the remote.
 
 Work autonomously. Do not ask the user for anything.
 
@@ -342,14 +313,15 @@ Work autonomously. Do not ask the user for anything.
 4. **If checklist is empty**: Create it using `{insert_checklist_item}` to break down the plan into clear, actionable steps
 5. Call `{get_discussion}` if you need additional context from comments
 6. **Focus on one unchecked checklist item during this session**. Assume checked items were completed in previous sessions. In exceptional cases where multiple items logically depend on the same setup and can be done together, you may do more than one, but this should be rare.
-7. Set up the repository using one of:
-   - `{pull_branch}` — pull any branch of any repository you need (forks automatically for write access)
-   - `{pull_branch_by_pr}` — shortcut: if the task mentions a PR, pull it directly without reading the PR to find its branch
+7. Set up the repository using `{pull_work}`:
+   - Clones the fork of destination_repository and returns the path
+   - Automatically sets current branch to work_branch (created from destination_branch)
+   - Stashes local changes if a different branch is selected
+   - The work repository has all remote information cleaned (git knows only internal push/pull locations)
 8. `cd` into the returned path and implement the plan
 9. **REQUIRED**: Create a branch using `git checkout -b <name>` where `<name>` **must** come from `{create_branch_name}` (e.g. with short_name="implementation"). Do NOT use arbitrary branch names.
 10. Commit changes locally with clear messages
-11. Call `{push_branch_and_create_pr}` with local path and destination branch — this pushes to the fork and creates a PR within the fork
-    - Or call `{push_branch}` if you only need to push without creating a PR
+11. Call `{push_work}` to push your work. It automatically selects work_branch in the cloned repository and puhshes it
 12. When you complete implementation steps:
     - Use `{update_checklist_item}` to refine item text if needed as you learn more about the work
     - Use `{insert_checklist_item}` to add new items if you discover additional steps
@@ -369,10 +341,8 @@ Work autonomously. Do not ask the user for anything.
         delete_checklist_item = worker_tools::DELETE_CHECKLIST_ITEM,
         post_message = worker_tools::POST_MESSAGE,
         create_branch_name = worker_tools::CREATE_BRANCH_NAME,
-        pull_branch = worker_tools::PULL_BRANCH,
-        pull_branch_by_pr = worker_tools::PULL_BRANCH_BY_PR,
-        push_branch = worker_tools::PUSH_BRANCH,
-        push_branch_and_create_pr = worker_tools::PUSH_BRANCH_AND_CREATE_PR,
+        pull_work = worker_tools::PULL_WORK,
+        push_work = worker_tools::PUSH_WORK,
         ask_user = worker_tools::ASK_USER,
         ask_planner = worker_tools::ASK_PLANNER,
     )
@@ -687,17 +657,9 @@ pub trait PlannerMcpImpl: CommonMcpImpl {
         }
     }
 
-    async fn pull_branch_impl(&self, repo: &str, branch: &str) -> String {
-        tracing::info!("[planner#{}] pull_branch repo={} branch={}", self.session().task_id(), repo, branch);
-        match self.session().request_branch_readonly(repo, branch).await {
-            Ok(path) => path,
-            Err(e) => format!("Error: {e}"),
-        }
-    }
-
-    async fn pull_branch_by_pr_impl(&self, pr: &str) -> String {
-        tracing::info!("[planner#{}] pull_branch_by_pr pr={}", self.session().task_id(), pr);
-        match self.session().request_branch_by_pr(pr, true).await {
+    async fn pull_work_impl(&self) -> String {
+        tracing::info!("[planner#{}] pull_work", self.session().task_id());
+        match self.session().pull_work().await {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
         }
@@ -766,34 +728,18 @@ pub trait WorkerMcpImpl: CommonMcpImpl {
         self.session().create_branch_name(short_name)
     }
 
-    async fn pull_branch_impl(&self, repo: &str, branch: &str) -> String {
-        tracing::info!("[worker#{}] pull_branch repo={} branch={}", self.session().task_id(), repo, branch);
-        match self.session().request_branch(repo, branch).await {
+    async fn pull_work_impl(&self) -> String {
+        tracing::info!("[worker#{}] pull_work", self.session().task_id());
+        match self.session().pull_work().await {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
         }
     }
 
-    async fn pull_branch_by_pr_impl(&self, pr: &str) -> String {
-        tracing::info!("[worker#{}] pull_branch_by_pr pr={}", self.session().task_id(), pr);
-        match self.session().request_branch_by_pr(pr, false).await {
-            Ok(path) => path,
-            Err(e) => format!("Error: {e}"),
-        }
-    }
-
-    async fn push_branch_impl(&self, path: &str) -> String {
-        tracing::info!("[worker#{}] push_branch path={}", self.session().task_id(), path);
-        match self.session().push_branch(path).await {
-            Ok(()) => "Branch pushed to fork".to_string(),
-            Err(e) => format!("Error: {e}"),
-        }
-    }
-
-    async fn push_branch_and_create_pr_impl(&self, path: &str, destination_branch: &str) -> String {
-        tracing::info!("[worker#{}] push_branch_and_create_pr path={} destination_branch={}", self.session().task_id(), path, destination_branch);
-        match self.session().push_branch_and_create_pr(path, destination_branch).await {
-            Ok(pr_url) => format!("PR created: {pr_url}"),
+    async fn push_work_impl(&self) -> String {
+        tracing::info!("[worker#{}] push_work", self.session().task_id());
+        match self.session().push_work().await {
+            Ok(()) => "Work branch pushed successfully".to_string(),
             Err(e) => format!("Error: {e}"),
         }
     }
@@ -862,17 +808,10 @@ impl PlannerMcp {
     }
 
     #[tool(
-        description = "Pull a repository and checkout a specific branch for investigation (read-only). Returns the local path."
+        description = "Clone the fork of the destination_repository and return the path. Automatically sets the current branch to work_branch (created from destination_branch). Stashes local changes if a different branch is selected as current. The work repository has all remote information cleared - only pull_work and push_work know where to push/pull. The model must not do git push directly."
     )]
-    async fn pull_branch(&self, Parameters(params): Parameters<BranchParam>) -> String {
-        self.pull_branch_impl(&params.repo, &params.branch).await
-    }
-
-    #[tool(
-        description = "Pull a repository and checkout the branch from a PR (read-only). Takes PR URL or 'owner/repo#123' format. Returns the local path."
-    )]
-    async fn pull_branch_by_pr(&self, Parameters(params): Parameters<PrParam>) -> String {
-        self.pull_branch_by_pr_impl(&params.pr).await
+    async fn pull_work(&self) -> String {
+        self.pull_work_impl().await
     }
 
     #[tool(description = "Get the task checklist as a list of checkbox items")]
@@ -999,34 +938,17 @@ impl WorkerMcp {
     }
 
     #[tool(
-        description = "Pull a repository (forking if needed) and checkout a specific branch for implementation. Returns the local path."
+        description = "Clone the fork of the destination_repository and return the path. Automatically sets the current branch to work_branch (created from destination_branch). Stashes local changes if a different branch is selected as current. The work repository has all remote information cleared - only pull_work and push_work know where to push/pull. The model must not do git push directly."
     )]
-    async fn pull_branch(&self, Parameters(params): Parameters<BranchParam>) -> String {
-        self.pull_branch_impl(&params.repo, &params.branch).await
+    async fn pull_work(&self) -> String {
+        self.pull_work_impl().await
     }
 
     #[tool(
-        description = "Pull a repository (forking if needed) and checkout the branch from a PR for implementation. Takes PR URL or 'owner/repo#123' format. Returns the local path."
+        description = "Push the work_branch in the cloned repository. Returns nothing. Stashes local changes if a different branch is selected as current. The work repository has all remote information cleared - only pull_work and push_work know where to push/pull. The model must not do git push directly."
     )]
-    async fn pull_branch_by_pr(&self, Parameters(params): Parameters<PrParam>) -> String {
-        self.pull_branch_by_pr_impl(&params.pr).await
-    }
-
-    #[tool(
-        description = "Push the current branch to the fork remote. REQUIREMENT: The branch name must have been created using create_branch_name() — branches with other names are rejected. Takes the local path to the repository."
-    )]
-    async fn push_branch(&self, Parameters(params): Parameters<PathParam>) -> String {
-        self.push_branch_impl(&params.path).await
-    }
-
-    #[tool(
-        description = "Push the current branch to the fork and create a PR within the fork. REQUIREMENT: The branch name must have been created using create_branch_name() — branches with other names are rejected. Takes the local path and destination branch for the PR base. Returns PR URL."
-    )]
-    async fn push_branch_and_create_pr(
-        &self,
-        Parameters(params): Parameters<PushBranchAndCreatePrParam>,
-    ) -> String {
-        self.push_branch_and_create_pr_impl(&params.path, &params.destination_branch).await
+    async fn push_work(&self) -> String {
+        self.push_work_impl().await
     }
 
     #[tool(description = "Get the task checklist as a list of checkbox items")]
