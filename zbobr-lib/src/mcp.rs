@@ -1363,6 +1363,13 @@ mod tests {
         assert_eq!(items[1].id, "item2");
         assert!(items[1].checked);
 
+        // Test parsing with CRLF line endings
+        let full_text_crlf = "Task description\r\n---PLAN---\r\nImplementation plan here\r\n---CHECKLIST---\r\n- [ ] item1: First item\r\n- [x] item2: Done item\r\n";
+        let (original_crlf, plan_crlf, items_crlf) = parse_description_with_plan_and_checklist(full_text_crlf);
+        assert_eq!(original_crlf, "Task description");
+        assert_eq!(plan_crlf, "Implementation plan here");
+        assert_eq!(items_crlf.len(), 2);
+
         // Test extract_plan function
         let extracted_plan = extract_plan(full_text);
         assert_eq!(extracted_plan, "Implementation plan here");

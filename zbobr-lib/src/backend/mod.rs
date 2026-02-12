@@ -16,8 +16,15 @@ const CHECKLIST_SEPARATOR: &str = "\n---CHECKLIST---\n";
 /// Parse a task description into (description, plan, checklist).
 /// Format: description | ---PLAN--- | plan text | ---CHECKLIST--- | checklist
 pub fn parse_description_with_plan_and_checklist(full_text: &str) -> (String, String, Vec<ChecklistItem>) {
+    // Normalize line endings so separators match regardless of \r\n vs \n.
+    let normalized = if full_text.contains("\r\n") {
+        full_text.replace("\r\n", "\n")
+    } else {
+        full_text.to_string()
+    };
+
     // First split by checklist
-    let parts: Vec<&str> = full_text.split(CHECKLIST_SEPARATOR).collect();
+    let parts: Vec<&str> = normalized.split(CHECKLIST_SEPARATOR).collect();
     
     let (desc_and_plan, checklist_text) = match parts.len() {
         1 => (parts[0], ""),
