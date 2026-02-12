@@ -10,12 +10,40 @@ use crate::task::ChecklistItem;
 
 // -- Plan and Checklist parsing and serialization helpers --
 
+const PARAMETERS_SEPARATOR: &str = "\n---PARAMETERS---\n";
 const PLAN_SEPARATOR: &str = "\n---PLAN---\n";
 const CHECKLIST_SEPARATOR: &str = "\n---CHECKLIST---\n";
 
-/// Parse a task description into (description, plan, checklist).
-/// Format: description | ---PLAN--- | plan text | ---CHECKLIST--- | checklist
-pub fn parse_description_with_plan_and_checklist(full_text: &str) -> (String, String, Vec<ChecklistItem>) {
+/// Parse parameters from the PARAMETERS section.
+/// Returns a map of parameter names to values.
+pub fn parse_parameters(params_text: &str) -> std::collections::HashMap<String, String> {
+    let mut params = std::collections::HashMap::new();
+    for line in params_text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(colon_pos) = line.find(':') {
+            let key = line[..colon_pos].trim().to_string();
+            let value = line[colon_pos + 1..].trim().to_string();
+            params.insert(key, value);
+        }
+    }
+    params
+}
+
+/// Serialize parameters into the PARAMETERS section format.
+pub fn serialize_parameters(params: &std::collections::HashMap<String, String>) -> String {
+    let mut result = String::new();
+    for (key, value) in params {
+        result.push_str(&format!("{}: {}\n", key, value));
+    }
+    result
+}
+
+/// Parse a task description into (description, parameters, plan, checklist).
+/// Format: description | ---PARAMETERS--- | params | ---PLAN--- | plan text | ---CHECKLIST--- | checklist
+pub fn parse_description_full(full_text: &str) -> (String, std::collections::HashMap<String, String>, String, Vec<ChecklistItem>) {
     // Normalize line endings so separators match regardless of \r\n vs \n.
     let normalized = if full_text.contains("\r\n") {
         full_text.replace("\r\n", "\n")
@@ -26,17 +54,27 @@ pub fn parse_description_with_plan_and_checklist(full_text: &str) -> (String, St
     // First split by checklist
     let parts: Vec<&str> = normalized.split(CHECKLIST_SEPARATOR).collect();
     
-    let (desc_and_plan, checklist_text) = match parts.len() {
+    let (before_checklist, checklist_text) = match parts.len() {
         1 => (parts[0], ""),
         _ => (parts[0], parts[1]),
     };
     
-    // Now split desc_and_plan by plan separator
-    let plan_parts: Vec<&str> = desc_and_plan.split(PLAN_SEPARATOR).collect();
-    let (description, plan) = match plan_parts.len() {
-        1 => (plan_parts[0].to_string(), String::new()),
-        _ => (plan_parts[0].to_string(), plan_parts[1].trim().to_string()),
+    // Now split by plan separator
+    let plan_parts: Vec<&str> = before_checklist.split(PLAN_SEPARATOR).collect();
+    let (before_plan, plan) = match plan_parts.len() {
+        1 => (plan_parts[0], ""),
+        _ => (plan_parts[0], plan_parts[1].trim()),
     };
+    
+    // Now split by parameters separator
+    let param_parts: Vec<&str> = before_plan.split(PARAMETERS_SEPARATOR).collect();
+    let (description, params_text) = match param_parts.len() {
+        1 => (param_parts[0].to_string(), ""),
+        _ => (param_parts[0].to_string(), param_parts[1].trim()),
+    };
+    
+    // Parse parameters
+    let parameters = parse_parameters(params_text);
     
     // Parse checklist items
     let mut items = Vec::new();
@@ -63,6 +101,13 @@ pub fn parse_description_with_plan_and_checklist(full_text: &str) -> (String, St
         }
     }
     
+    (description, parameters, plan.to_string(), items)
+}
+
+/// Parse a task description into (description, plan, checklist) - backward compatibility.
+/// Format: description | ---PLAN--- | plan text | ---CHECKLIST--- | checklist
+pub fn parse_description_with_plan_and_checklist(full_text: &str) -> (String, String, Vec<ChecklistItem>) {
+    let (description, _parameters, plan, items) = parse_description_full(full_text);
     (description, plan, items)
 }
 
@@ -91,21 +136,34 @@ pub fn strip_checklist_from_description(description: &str) -> String {
 /// Extract the plan from a full description text.
 /// Returns an empty string if no plan section exists.
 pub fn extract_plan(full_text: &str) -> String {
-    let (_, plan, _) = parse_description_with_plan_and_checklist(full_text);
+    let (_, _, plan, _) = parse_description_full(full_text);
     plan
 }
 
-/// Serialize description, plan and checklist items back into the full format.
-/// Format: description | ---PLAN--- | plan | ---CHECKLIST--- | checklist
-pub fn serialize_description_with_plan_and_checklist(
+/// Extract parameters from a full description text.
+pub fn extract_parameters(full_text: &str) -> std::collections::HashMap<String, String> {
+    let (_, params, _, _) = parse_description_full(full_text);
+    params
+}
+
+/// Serialize description, parameters, plan and checklist items back into the full format.
+/// Format: description | ---PARAMETERS--- | params | ---PLAN--- | plan | ---CHECKLIST--- | checklist
+pub fn serialize_description_full(
     original_description: &str,
+    parameters: &std::collections::HashMap<String, String>,
     plan: &str,
     items: &[ChecklistItem],
 ) -> String {
-    // Strip both plan and checklist from the description first
-    let clean_description = strip_plan_and_checklist_from_description(original_description);
+    // Strip everything from the description first
+    let (clean_description, _, _, _) = parse_description_full(original_description);
     
     let mut result = clean_description;
+    
+    // Add parameters if present
+    if !parameters.is_empty() {
+        result.push_str(PARAMETERS_SEPARATOR);
+        result.push_str(&serialize_parameters(parameters));
+    }
     
     // Add plan if present
     if !plan.is_empty() {
@@ -123,6 +181,19 @@ pub fn serialize_description_with_plan_and_checklist(
     }
     
     result
+}
+
+/// Serialize description, plan and checklist items back into the full format.
+/// Format: description | ---PARAMETERS--- | params | ---PLAN--- | plan | ---CHECKLIST--- | checklist
+/// Preserves any existing parameters.
+pub fn serialize_description_with_plan_and_checklist(
+    original_description: &str,
+    plan: &str,
+    items: &[ChecklistItem],
+) -> String {
+    // Preserve existing parameters
+    let parameters = extract_parameters(original_description);
+    serialize_description_full(original_description, &parameters, plan, items)
 }
 
 /// Serialize checklist items back into the full description format.

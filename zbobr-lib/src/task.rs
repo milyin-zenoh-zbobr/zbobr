@@ -937,49 +937,46 @@ impl TaskSession {
         Ok(())
     }
 
-    /// Get a task parameter value. Parameters are stored as hidden fields in the task description.
+    /// Get a task parameter value. Parameters are stored in the visible PARAMETERS section.
     pub async fn get_parameter(&self, param_name: &str) -> Result<Option<String>, ZbobrError> {
         let task = self.zbobr.get_task(self.task_id).await?;
         
-        // Map parameter names to task fields
-        Ok(match param_name.to_lowercase().as_str() {
+        // First check task fields
+        let from_task_fields = match param_name.to_lowercase().as_str() {
             "destination_repository" => task.destination_repository,
             "destination_branch" => task.destination_branch,
             "work_branch" => task.work_branch,
             "pr_url" => task.pr_url,
             _ => None,
-        })
+        };
+        
+        if from_task_fields.is_some() {
+            return Ok(from_task_fields);
+        }
+        
+        // If not in task fields, extract from PARAMETERS section
+        use crate::backend::extract_parameters;
+        let parameters = extract_parameters(&task.description);
+        Ok(parameters.get(param_name).cloned())
     }
 
-    /// Set a task parameter value. Parameters are stored as hidden fields in the task description.
+    /// Set a task parameter value. Parameters are stored in the visible PARAMETERS section.
     pub async fn set_parameter(&self, param_name: &str, value: Option<String>) -> Result<(), ZbobrError> {
-        use crate::backend::parse_description_with_plan_and_checklist;
+        use crate::backend::{parse_description_full, serialize_description_full};
         
         let task = self.zbobr.get_task(self.task_id).await?;
-        let (description, plan, checklist) = parse_description_with_plan_and_checklist(&task.description);
+        let (description, mut parameters, plan, checklist) = parse_description_full(&task.description);
         
-        // Create updated task description with the new parameter value
-        use crate::backend::serialize_description_with_plan_and_checklist;
-        let mut body = serialize_description_with_plan_and_checklist(&description, &plan, &checklist);
-        
-        // Update the hidden field in the body
+        // Update the parameter value
         let param_key = param_name.to_lowercase();
-        
-        let start_tag = format!("<!-- {}: ", param_key);
-        let end_tag = " -->";
-        
-        // Remove any existing value for this parameter
-        if let Some(start_idx) = body.find(&start_tag)
-            && let Some(end_idx) = body[start_idx..].find(end_tag)
-        {
-            let end_pos = start_idx + end_idx + end_tag.len();
-            body.drain(start_idx..end_pos);
-        }
-        
-        // Add the new value if provided
         if let Some(v) = value {
-            body.push_str(&format!("\n<!-- {}: {} -->", param_key, v));
+            parameters.insert(param_key, v);
+        } else {
+            parameters.remove(&param_key);
         }
+        
+        // Serialize back with updated parameters
+        let body = serialize_description_full(&description, &parameters, &plan, &checklist);
         
         self.zbobr.update_task_description(self.task_id, &body).await
     }
