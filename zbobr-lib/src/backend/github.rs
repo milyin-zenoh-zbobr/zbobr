@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 
@@ -13,6 +13,43 @@ pub struct GitHubBackend {
 impl GitHubBackend {
     pub fn new(config: Arc<ZbobrConfig>, octocrab: octocrab::Octocrab) -> Self {
         Self { config, octocrab }
+    }
+
+    fn is_transient_error_message(message: &str) -> bool {
+        let message = message.to_ascii_lowercase();
+        message.contains("sendrequest")
+            || message.contains("timed out")
+            || message.contains("timeout")
+            || message.contains("connection reset")
+            || message.contains("connection refused")
+            || message.contains("broken pipe")
+            || message.contains("dns")
+            || message.contains("tls")
+    }
+
+    async fn retry_octocrab<T, F, Fut>(&self, op_name: &str, mut f: F) -> Result<T, ZbobrError>
+    where
+        F: FnMut() -> Fut,
+        Fut: std::future::Future<Output = Result<T, octocrab::Error>>,
+    {
+        let mut attempt = 0u64;
+        loop {
+            attempt += 1;
+            match f().await {
+                Ok(value) => return Ok(value),
+                Err(e) => {
+                    let message = e.to_string();
+                    if attempt < 3 && Self::is_transient_error_message(&message) {
+                        tracing::warn!(
+                            "Transient GitHub error during {op_name} (attempt {attempt}/3): {message}"
+                        );
+                        tokio::time::sleep(Duration::from_millis(250 * attempt)).await;
+                        continue;
+                    }
+                    return Err(e.into());
+                }
+            }
+        }
     }
 
     fn parse_repo(&self) -> Result<(&str, &str), ZbobrError> {
@@ -34,8 +71,10 @@ impl GitHubBackend {
 
         // Check if fork already exists
         let exists = self
-            .octocrab
-            .get::<RepoResponse, _, _>(format!("/repos/{fork_repo}"), None::<&()>)
+            .retry_octocrab("check fork exists", || {
+                self.octocrab
+                    .get::<RepoResponse, _, _>(format!("/repos/{fork_repo}"), None::<&()>)
+            })
             .await
             .is_ok();
 
@@ -54,10 +93,11 @@ impl GitHubBackend {
             tracing::debug!("Fork creation payload: {payload}", payload = payload);
 
             // Create fork under fork_owner (as org)
-            self.octocrab
-                .post(&endpoint, Some(&payload))
-                .await
-                .map_err(|e| {
+            self.retry_octocrab("create fork", || {
+                self.octocrab.post(&endpoint, Some(&payload))
+            })
+            .await
+            .map_err(|e| {
                     let error_details = format!("{:?}", e);
                     tracing::error!(
                         "Failed to create fork: target_repo={}, fork_owner={}, endpoint={}, error={:?}",
@@ -155,6 +195,8 @@ impl GitHubBackend {
         let (owner, repo) = self.parse_repo()?;
         let encoded = base64_encode(content);
 
+        let url = format!("/repos/{owner}/{repo}/contents/{path}");
+
         let mut body = serde_json::json!({
             "message": commit_message,
             "content": encoded,
@@ -164,13 +206,11 @@ impl GitHubBackend {
             body["sha"] = serde_json::Value::String(sha);
         }
 
-        self.octocrab
-            .put(
-                format!("/repos/{owner}/{repo}/contents/{path}"),
-                Some(&body),
-            )
-            .await
-            .map(|_: serde_json::Value| ())?;
+        self.retry_octocrab("create or update repo file", || {
+            self.octocrab.put(url.clone(), Some(&body))
+        })
+        .await
+        .map(|_: serde_json::Value| ())?;
         Ok(())
     }
 
@@ -182,16 +222,16 @@ impl GitHubBackend {
         description: &str,
     ) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
-        self.octocrab
-            .patch(
-                format!("/repos/{owner}/{repo}/labels/{name}"),
-                Some(&serde_json::json!({
-                    "color": color,
-                    "description": description,
-                })),
-            )
-            .await
-            .map(|_: serde_json::Value| ())?;
+        let url = format!("/repos/{owner}/{repo}/labels/{name}");
+        let body = serde_json::json!({
+            "color": color,
+            "description": description,
+        });
+        self.retry_octocrab("update label", || {
+            self.octocrab.patch(url.clone(), Some(&body))
+        })
+        .await
+        .map(|_: serde_json::Value| ())?;
         Ok(())
     }
 }
@@ -201,8 +241,10 @@ impl Backend for GitHubBackend {
     async fn get_task(&self, id: u64) -> Result<Task, ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         let issue: IssueResponse = self
-            .octocrab
-            .get(format!("/repos/{owner}/{repo}/issues/{id}"), None::<&()>)
+            .retry_octocrab("get issue", || {
+                self.octocrab
+                    .get(format!("/repos/{owner}/{repo}/issues/{id}"), None::<&()>)
+            })
             .await?;
 
         let stage = match issue.milestone.as_ref().map(|m| m.title.as_str()) {
@@ -308,41 +350,46 @@ impl Backend for GitHubBackend {
             labels.push(format!("model:{}", m));
         }
 
-        let issues = self.octocrab.issues(owner, repo);
-        let mut builder = issues.create(title).body(body);
+        let issue = self
+            .retry_octocrab("create issue", || {
+                let issues = self.octocrab.issues(owner, repo);
+                let mut builder = issues.create(title).body(body.clone());
 
-        if let Some(n) = stage_number {
-            builder = builder.milestone(n);
-        }
+                if let Some(n) = stage_number {
+                    builder = builder.milestone(n);
+                }
 
-        if !labels.is_empty() {
-            builder = builder.labels(labels);
-        }
+                if !labels.is_empty() {
+                    builder = builder.labels(labels.clone());
+                }
 
-        let issue = builder.send().await?;
+                builder.send()
+            })
+            .await?;
         Ok(issue.number)
     }
 
     async fn close_task(&self, id: u64) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
-        self.octocrab
-            .patch(
-                format!("/repos/{owner}/{repo}/issues/{id}"),
-                Some(&serde_json::json!({ "state": "closed" })),
-            )
-            .await
-            .map(|_: serde_json::Value| ())?;
+        let url = format!("/repos/{owner}/{repo}/issues/{id}");
+        let body = serde_json::json!({ "state": "closed" });
+        self.retry_octocrab("close issue", || {
+            self.octocrab.patch(url.clone(), Some(&body))
+        })
+        .await
+        .map(|_: serde_json::Value| ())?;
         Ok(())
     }
 
     async fn get_task_comments(&self, id: u64) -> Result<Vec<String>, ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         let comments: Vec<CommentResponse> = self
-            .octocrab
-            .get(
-                format!("/repos/{owner}/{repo}/issues/{id}/comments"),
-                None::<&()>,
-            )
+            .retry_octocrab("list issue comments", || {
+                self.octocrab.get(
+                    format!("/repos/{owner}/{repo}/issues/{id}/comments"),
+                    None::<&()>,
+                )
+            })
             .await?;
 
         Ok(comments
@@ -364,10 +411,12 @@ impl Backend for GitHubBackend {
     ) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         let formatted_body = format!("**[{role}@{hostname}]**\n\n{body}");
-        self.octocrab
-            .issues(owner, repo)
-            .create_comment(id, &formatted_body)
-            .await?;
+        self.retry_octocrab("create issue comment", || {
+            self.octocrab
+                .issues(owner, repo)
+                .create_comment(id, &formatted_body)
+        })
+        .await?;
         Ok(())
     }
 
@@ -378,13 +427,13 @@ impl Backend for GitHubBackend {
             .ok_or_else(|| ZbobrError::GitHub(format!("Milestone '{stage_name}' not found")))?;
 
         let (owner, repo) = self.parse_repo()?;
-        self.octocrab
-            .patch(
-                format!("/repos/{owner}/{repo}/issues/{id}"),
-                Some(&serde_json::json!({ "milestone": stage_number })),
-            )
-            .await
-            .map(|_: serde_json::Value| ())?;
+        let url = format!("/repos/{owner}/{repo}/issues/{id}");
+        let body = serde_json::json!({ "milestone": stage_number });
+        self.retry_octocrab("set issue milestone", || {
+            self.octocrab.patch(url.clone(), Some(&body))
+        })
+        .await
+        .map(|_: serde_json::Value| ())?;
         Ok(())
     }
 
@@ -394,19 +443,21 @@ impl Backend for GitHubBackend {
         // Remove all existing signal labels
         for sig in Signal::all() {
             let _ = self
-                .octocrab
-                .issues(owner, repo)
-                .remove_label(id, sig.as_str())
+                .retry_octocrab("remove signal label", || {
+                    self.octocrab
+                        .issues(owner, repo)
+                        .remove_label(id, sig.as_str())
+                })
                 .await;
         }
         
         // Add new signal label if provided
         if let Some(sig) = signal {
             let labels: Vec<String> = vec![sig.as_str().to_string()];
-            self.octocrab
-                .issues(owner, repo)
-                .add_labels(id, &labels)
-                .await?;
+            self.retry_octocrab("add signal label", || {
+                self.octocrab.issues(owner, repo).add_labels(id, &labels)
+            })
+            .await?;
         }
         
         Ok(())
@@ -415,13 +466,13 @@ impl Backend for GitHubBackend {
     async fn update_task_description(&self, id: u64, description: &str) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         // Just store the description as-is, it should be pre-formatted by the caller
-        self.octocrab
-            .patch(
-                format!("/repos/{owner}/{repo}/issues/{id}"),
-                Some(&serde_json::json!({ "body": description })),
-            )
-            .await
-            .map(|_: serde_json::Value| ())?;
+        let url = format!("/repos/{owner}/{repo}/issues/{id}");
+        let body = serde_json::json!({ "body": description });
+        self.retry_octocrab("update issue body", || {
+            self.octocrab.patch(url.clone(), Some(&body))
+        })
+        .await
+        .map(|_: serde_json::Value| ())?;
         Ok(())
     }
 
@@ -443,8 +494,10 @@ impl Backend for GitHubBackend {
 
         // Fetch all issues for this milestone, don't filter by tool label at API level
         let issues: Vec<IssueResponse> = self
-            .octocrab
-            .get(format!("/repos/{owner}/{repo}/issues"), Some(&params))
+            .retry_octocrab("list issues", || {
+                self.octocrab
+                    .get(format!("/repos/{owner}/{repo}/issues"), Some(&params))
+            })
             .await?;
 
         let mut tasks = Vec::new();
@@ -532,8 +585,10 @@ impl Backend for GitHubBackend {
     async fn is_task_closed(&self, id: u64) -> Result<bool, ZbobrError> {
         let (owner, repo) = self.config.parse_repo()?;
         let issue: IssueResponse = self
-            .octocrab
-            .get(format!("/repos/{owner}/{repo}/issues/{id}"), None::<&()>)
+            .retry_octocrab("get issue state", || {
+                self.octocrab
+                    .get(format!("/repos/{owner}/{repo}/issues/{id}"), None::<&()>)
+            })
             .await?;
         Ok(issue.state == "closed")
     }
@@ -541,11 +596,12 @@ impl Backend for GitHubBackend {
     async fn repo_file_exists(&self, path: &str) -> Result<bool, ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         let result = self
-            .octocrab
-            .get::<ContentsResponse, _, _>(
-                format!("/repos/{owner}/{repo}/contents/{path}"),
-                None::<&()>,
-            )
+            .retry_octocrab("check repo file exists", || {
+                self.octocrab.get::<ContentsResponse, _, _>(
+                    format!("/repos/{owner}/{repo}/contents/{path}"),
+                    None::<&()>,
+                )
+            })
             .await;
         Ok(result.is_ok())
     }
@@ -563,8 +619,10 @@ impl Backend for GitHubBackend {
     async fn ensure_domain_repo_exists(&self) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         let exists = self
-            .octocrab
-            .get::<RepoResponse, _, _>(format!("/repos/{owner}/{repo}"), None::<&()>)
+            .retry_octocrab("check domain repo exists", || {
+                self.octocrab
+                    .get::<RepoResponse, _, _>(format!("/repos/{owner}/{repo}"), None::<&()>)
+            })
             .await
             .is_ok();
 
@@ -572,15 +630,16 @@ impl Backend for GitHubBackend {
             tracing::info!("Domain repo {owner}/{repo} does not exist, creating...");
             // Try creating as org repo first, fall back to user repo
             let result = self
-                .octocrab
-                .post(
-                    format!("/orgs/{owner}/repos"),
-                    Some(&serde_json::json!({
-                        "name": repo,
-                        "private": true,
-                        "auto_init": false,
-                    })),
-                )
+                .retry_octocrab("create org repo", || {
+                    self.octocrab.post(
+                        format!("/orgs/{owner}/repos"),
+                        Some(&serde_json::json!({
+                            "name": repo,
+                            "private": true,
+                            "auto_init": false,
+                        })),
+                    )
+                })
                 .await;
 
             match result {
@@ -590,8 +649,8 @@ impl Backend for GitHubBackend {
                 }
                 Err(_) => {
                     // Fall back to user repo
-                    self.octocrab
-                        .post(
+                    self.retry_octocrab("create user repo", || {
+                        self.octocrab.post(
                             "/user/repos".to_string(),
                             Some(&serde_json::json!({
                                 "name": repo,
@@ -599,8 +658,9 @@ impl Backend for GitHubBackend {
                                 "auto_init": false,
                             })),
                         )
-                        .await
-                        .map(|_: serde_json::Value| ())?;
+                    })
+                    .await
+                    .map(|_: serde_json::Value| ())?;
                     tracing::info!("Created private user repo {owner}/{repo}");
                 }
             }
@@ -947,8 +1007,10 @@ impl Backend for GitHubBackend {
     async fn list_stages(&self) -> Result<Vec<(u64, String)>, ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         let milestones: Vec<MilestoneResponse> = self
-            .octocrab
-            .get(format!("/repos/{owner}/{repo}/milestones"), None::<&()>)
+            .retry_octocrab("list milestones", || {
+                self.octocrab
+                    .get(format!("/repos/{owner}/{repo}/milestones"), None::<&()>)
+            })
             .await?;
         Ok(milestones
             .into_iter()
@@ -958,28 +1020,27 @@ impl Backend for GitHubBackend {
 
     async fn create_stage(&self, title: &str, description: &str) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
-        self.octocrab
-            .post(
-                format!("/repos/{owner}/{repo}/milestones"),
-                Some(&serde_json::json!({
-                    "title": title,
-                    "description": description,
-                    "state": "open"
-                })),
-            )
-            .await
-            .map(|_: serde_json::Value| ())?;
+        let url = format!("/repos/{owner}/{repo}/milestones");
+        let body = serde_json::json!({
+            "title": title,
+            "description": description,
+            "state": "open"
+        });
+        self.retry_octocrab("create milestone", || {
+            self.octocrab.post(url.clone(), Some(&body))
+        })
+        .await
+        .map(|_: serde_json::Value| ())?;
         Ok(())
     }
 
     async fn delete_stage(&self, number: u64) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
+        let url = format!("/repos/{owner}/{repo}/milestones/{number}");
         let _response = self
-            .octocrab
-            ._delete(
-                format!("/repos/{owner}/{repo}/milestones/{number}"),
-                None::<&()>,
-            )
+            .retry_octocrab("delete milestone", || {
+                self.octocrab._delete(url.clone(), None::<&()>)
+            })
             .await?;
         Ok(())
     }
@@ -987,11 +1048,13 @@ impl Backend for GitHubBackend {
     async fn list_labels(&self) -> Result<Vec<String>, ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         let labels: Vec<octocrab::models::Label> = self
-            .octocrab
-            .issues(owner, repo)
-            .list_labels_for_repo()
-            .per_page(100)
-            .send()
+            .retry_octocrab("list labels", || {
+                self.octocrab
+                    .issues(owner, repo)
+                    .list_labels_for_repo()
+                    .per_page(100)
+                    .send()
+            })
             .await?
             .items;
         Ok(labels.into_iter().map(|l| l.name).collect())
@@ -1004,10 +1067,12 @@ impl Backend for GitHubBackend {
         description: &str,
     ) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
-        self.octocrab
-            .issues(owner, repo)
-            .create_label(name, color, description)
-            .await?;
+        self.retry_octocrab("create label", || {
+            self.octocrab
+                .issues(owner, repo)
+                .create_label(name, color, description)
+        })
+        .await?;
         Ok(())
     }
 
@@ -1116,8 +1181,10 @@ impl Backend for GitHubBackend {
     async fn validate_connectivity(&self) -> Result<(), ZbobrError> {
         let fork_owner = &self.config.fork_owner;
         let fork_owner_exists = self
-            .octocrab
-            .get::<serde_json::Value, _, _>(format!("/users/{fork_owner}"), None::<&()>)
+            .retry_octocrab("check fork owner", || {
+                self.octocrab
+                    .get::<serde_json::Value, _, _>(format!("/users/{fork_owner}"), None::<&()>)
+            })
             .await
             .is_ok();
         if !fork_owner_exists {
@@ -1129,8 +1196,10 @@ impl Backend for GitHubBackend {
 
         let (owner, repo) = self.parse_repo()?;
         let domain_repo_exists = self
-            .octocrab
-            .get::<RepoResponse, _, _>(format!("/repos/{owner}/{repo}"), None::<&()>)
+            .retry_octocrab("check domain repo", || {
+                self.octocrab
+                    .get::<RepoResponse, _, _>(format!("/repos/{owner}/{repo}"), None::<&()>)
+            })
             .await
             .is_ok();
         if !domain_repo_exists {
