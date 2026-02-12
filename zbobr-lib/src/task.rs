@@ -649,14 +649,6 @@ impl TaskSession {
 
         let fork_repo = format!("{fork_owner}/{repo_name}");
 
-        // Create PR within the fork
-        let task = self.zbobr.get_task(self.task_id).await?;
-        let pr_title = format!("Fix #{}: {}", self.task_id, task.title);
-        let pr_body = format!(
-            "Resolves #{}\n\nImplementation for: {}",
-            self.task_id, task.title
-        );
-
         // Create PR using the GitHub API via Zbobr backend (octocrab)
         let pr_url = self
             .zbobr
