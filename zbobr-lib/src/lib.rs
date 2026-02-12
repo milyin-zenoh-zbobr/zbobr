@@ -134,6 +134,31 @@ impl Zbobr {
         self.backend.update_task_description(id, description).await
     }
 
+    /// Update task with plan and checklist (higher-level, handles serialization internally).
+    pub async fn update_task_plan(
+        &self,
+        id: u64,
+        description: &str,
+        plan: &str,
+        checklist: &[ChecklistItem],
+    ) -> Result<(), ZbobrError> {
+        use crate::backend::serialize_description_with_plan_and_checklist;
+        let full_description = serialize_description_with_plan_and_checklist(description, plan, checklist);
+        self.backend.update_task_description(id, &full_description).await
+    }
+
+    /// Update task with checklist (preserves existing plan if any).
+    pub async fn update_task_checklist(
+        &self,
+        id: u64,
+        description: &str,
+        checklist: &[ChecklistItem],
+    ) -> Result<(), ZbobrError> {
+        use crate::backend::serialize_description_with_checklist;
+        let full_description = serialize_description_with_checklist(description, checklist);
+        self.backend.update_task_description(id, &full_description).await
+    }
+
     pub async fn list_tasks_by_stage(
         &self,
         stage_name: &str,

@@ -375,7 +375,7 @@ impl Backend for StubBackend {
 
         // Add signal labels
         for signal in crate::Signal::all() {
-            state.labels.insert(signal.as_str().to_string());
+            state.labels.insert(format!("signal:{}", signal.name()));
         }
 
         // Add tool labels

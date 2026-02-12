@@ -118,18 +118,7 @@ pub enum Signal {
 }
 
 impl Signal {
-    /// Returns the signal name as a string (prefixed for GitHub labels).
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Signal::Stop => "signal:stop",
-            Signal::Done => "signal:done",
-            Signal::GoAsk => "signal:go_ask",
-            Signal::GoWork => "signal:go_work",
-            Signal::GoPlan => "signal:go_plan",
-        }
-    }
-
-    /// Returns the plain signal name without prefix.
+    /// Returns the plain signal name.
     pub fn name(&self) -> &'static str {
         match self {
             Signal::Stop => "stop",
@@ -164,8 +153,7 @@ impl std::fmt::Display for Signal {
 impl std::str::FromStr for Signal {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let name = s.strip_prefix("signal:").unwrap_or(s);
-        match name.to_lowercase().replace('_', "").as_str() {
+        match s.to_lowercase().replace('_', "").as_str() {
             "stop" => Ok(Signal::Stop),
             "done" => Ok(Signal::Done),
             "goask" | "go-ask" => Ok(Signal::GoAsk),
@@ -453,20 +441,16 @@ impl TaskSession {
 
     /// Update the task plan.
     pub async fn update_plan(&self, description: &str, plan: &str, checklist: &[ChecklistItem]) -> Result<(), ZbobrError> {
-        use crate::backend::serialize_description_with_plan_and_checklist;
-        let description_with_plan_and_checklist = serialize_description_with_plan_and_checklist(description, plan, checklist);
         self.zbobr
-            .update_task_description(self.task_id, &description_with_plan_and_checklist)
+            .update_task_plan(self.task_id, description, plan, checklist)
             .await
     }
 
     /// Update the task description and checklist separately.
     /// The checklist will be serialized into the description for storage via the backend.
     pub async fn update_checklist(&self, description: &str, checklist: &[ChecklistItem]) -> Result<(), ZbobrError> {
-        use crate::backend::serialize_description_with_checklist;
-        let description_with_checklist = serialize_description_with_checklist(description, checklist);
         self.zbobr
-            .update_task_description(self.task_id, &description_with_checklist)
+            .update_task_checklist(self.task_id, description, checklist)
             .await
     }
 
@@ -477,11 +461,8 @@ impl TaskSession {
         plan: &str,
         checklist: &[ChecklistItem],
     ) -> Result<(), ZbobrError> {
-        use crate::backend::serialize_description_with_plan_and_checklist;
-        let description_with_plan_and_checklist =
-            serialize_description_with_plan_and_checklist(description, plan, checklist);
         self.zbobr
-            .update_task_description(self.task_id, &description_with_plan_and_checklist)
+            .update_task_plan(self.task_id, description, plan, checklist)
             .await
     }
 

@@ -58,13 +58,17 @@ impl Zbobr {
             .find_map(|l| l.name.strip_prefix("copilot:").map(String::from));
 
         // Check if 'done' signal is present
-        let done = issue.labels.iter().any(|l| l.name == Signal::Done.as_str());
+        let done_label = format!("signal:{}", Signal::Done.name());
+        let done = issue.labels.iter().any(|l| l.name == done_label);
 
         // Extract signal from labels (highest priority wins)
         let signal = issue
             .labels
             .iter()
-            .filter_map(|l| l.name.parse::<Signal>().ok())
+            .filter_map(|l| {
+                l.name.strip_prefix("signal:")
+                    .and_then(|name| name.parse::<Signal>().ok())
+            })
             .min(); // min() because lower enum value = higher priority
 
         // Extract plan and checklist from description
@@ -239,13 +243,17 @@ impl Zbobr {
                 .find_map(|l| l.name.strip_prefix("copilot:").map(String::from));
             
             // Check if 'done' signal is present
-            let done = issue.labels.iter().any(|l| l.name == Signal::Done.as_str());
+            let done_label = format!("signal:{}", Signal::Done.name());
+            let done = issue.labels.iter().any(|l| l.name == done_label);
 
             // Extract signal from labels (highest priority wins)
             let signal = issue
                 .labels
                 .iter()
-                .filter_map(|l| l.name.parse::<Signal>().ok())
+                .filter_map(|l| {
+                    l.name.strip_prefix("signal:")
+                        .and_then(|name| name.parse::<Signal>().ok())
+                })
                 .min(); // min() because lower enum value = higher priority
 
             // Extract checklist from description

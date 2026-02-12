@@ -15,6 +15,17 @@ impl GitHubBackend {
         Self { config, octocrab }
     }
 
+    /// Convert a Signal to its GitHub label representation.
+    fn signal_to_label(signal: Signal) -> String {
+        format!("signal:{}", signal.name())
+    }
+
+    /// Parse a GitHub label string back to a Signal.
+    fn label_to_signal(label: &str) -> Option<Signal> {
+        label.strip_prefix("signal:")
+            .and_then(|name| name.parse().ok())
+    }
+
     fn is_transient_octocrab_error(error: &octocrab::Error) -> bool {
         match error {
             octocrab::Error::GitHub { source, .. } => source.status_code.is_server_error(),
@@ -279,13 +290,13 @@ impl Backend for GitHubBackend {
         let done = issue
             .labels
             .iter()
-            .any(|l| l.name == Signal::Done.as_str());
+            .any(|l| Self::label_to_signal(&l.name) == Some(Signal::Done));
 
         // Extract signal from labels (highest priority wins)
         let signal = issue
             .labels
             .iter()
-            .filter_map(|l| l.name.parse::<Signal>().ok())
+            .filter_map(|l| Self::label_to_signal(&l.name))
             .min(); // min() because lower enum value = higher priority
 
         // Extract plan and checklist from description
@@ -443,11 +454,12 @@ impl Backend for GitHubBackend {
         
         // Remove all existing signal labels
         for sig in Signal::all() {
+            let label = Self::signal_to_label(*sig);
             let _ = self
                 .retry_octocrab("remove signal label", || async {
                     self.octocrab
                         .issues(owner, repo)
-                        .remove_label(id, sig.as_str())
+                        .remove_label(id, &label)
                         .await
                 })
                 .await;
@@ -455,7 +467,8 @@ impl Backend for GitHubBackend {
         
         // Add new signal label if provided
         if let Some(sig) = signal {
-            let labels: Vec<String> = vec![sig.as_str().to_string()];
+            let label = Self::signal_to_label(sig);
+            let labels: Vec<String> = vec![label];
             self.retry_octocrab("add signal label", || async {
                 self.octocrab
                     .issues(owner, repo)
@@ -556,13 +569,13 @@ impl Backend for GitHubBackend {
             let done = issue
                 .labels
                 .iter()
-                .any(|l| l.name == Signal::Done.as_str());
+                .any(|l| Self::label_to_signal(&l.name) == Some(Signal::Done));
 
             // Extract signal from labels (highest priority wins)
             let signal = issue
                 .labels
                 .iter()
-                .filter_map(|l| l.name.parse::<Signal>().ok())
+                .filter_map(|l| Self::label_to_signal(&l.name))
                 .min(); // min() because lower enum value = higher priority
 
             // Extract plan and checklist from description
@@ -1185,15 +1198,15 @@ impl Backend for GitHubBackend {
 
         // Create signal labels for all available signals
         for signal in Signal::all() {
-            let signal_label = signal.as_str();
+            let signal_label = Self::signal_to_label(*signal);
             let signal_desc = format!("Signal: {}", signal.name());
-            if !existing_labels.contains(&signal_label.to_string()) {
+            if !existing_labels.contains(&signal_label) {
                 tracing::info!("Creating label '{signal_label}'");
-                self.create_label(signal_label, SIGNAL_LABEL_COLOR, &signal_desc)
+                self.create_label(&signal_label, SIGNAL_LABEL_COLOR, &signal_desc)
                     .await?;
             } else if force {
                 tracing::info!("Updating label '{signal_label}' (force)");
-                self.update_label(signal_label, SIGNAL_LABEL_COLOR, &signal_desc)
+                self.update_label(&signal_label, SIGNAL_LABEL_COLOR, &signal_desc)
                     .await?;
             } else {
                 tracing::info!("Label '{signal_label}' already exists");
