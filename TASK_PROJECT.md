@@ -1,3 +1,4 @@
+````markdown
 # Task Project
 
 This repository is managed by [**zbobr**](https://github.com/milyin/zbobr) -- an AI-powered issue orchestrator that uses Claude Code agents to automate software development workflows.
@@ -136,7 +137,7 @@ worker = ["worker.md", "common.md"]
 - Architecture patterns (microservices, monolith, etc.)
 - Technology stack (frameworks, databases, tools)
 - Coding conventions and style guides
-- Domain concepts and terminology
+- Task concepts and terminology
 - List of target repositories and repository-specific notes
 - Build and test commands
 - Deployment information
@@ -177,3 +178,5 @@ Human approval is required at:
 - **After Implementation**: Review the actual code changes in the pull request
 
 This ensures AI assistance remains under human control and oversight.
+
+````

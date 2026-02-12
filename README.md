@@ -138,7 +138,7 @@ zbobr/ (repo root)
 ├── .github/agents/         # Agent instruction files (manager.md, worker.md)
 ├── .github/scripts/        # Legacy shell scripts
 ├── zbobr.toml.sample       # Sample configuration
-├── DOMAIN_PROJECT.md       # Task project guide
+├── TASK_PROJECT.md       # Task project guide
 ├── AGENTS.md               # Agent registry
 └── README.md               # This file
 
@@ -292,7 +292,7 @@ Zbobr manages **three distinct GitHub tokens** with different access levels and 
 
 ## Documentation
 
-- [Domain Project Guide](DOMAIN_PROJECT.md) — How task projects work (stages, labels, prompts, configuration)
+- [Task Project Guide](TASK_PROJECT.md) — How task projects work (stages, labels, prompts, configuration)
 - [Sample Configuration](zbobr.toml.sample) — Example `zbobr.toml` with all options
 - [Manager Agent Instructions](.github/agents/manager.md) — Manager workflow
 - [Worker Agent Instructions](.github/agents/worker.md) — Worker workflow
