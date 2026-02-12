@@ -258,6 +258,9 @@ impl Backend for GitHubBackend {
         };
 
         let body = issue.body.unwrap_or_default();
+        // Parse full description including PARAMETERS, PLAN and CHECKLIST
+        let (description, params_map, plan, checklist) = super::parse_description_full(&body);
+
         let tool = issue.labels.iter().find_map(|l| {
             if let Some(name) = l.name.strip_prefix("tool:") {
                 match name {
@@ -279,26 +282,24 @@ impl Backend for GitHubBackend {
             }
         });
 
-        let parent_task_id =
-            extract_hidden_field(&body, "parent_task_id").and_then(|s| s.parse().ok());
-        let destination_repository = extract_hidden_field(&body, Parameter::DestinationRepository.name());
-        let destination_branch = extract_hidden_field(&body, Parameter::DestinationBranch.name());
-        let work_branch = extract_hidden_field(&body, Parameter::WorkBranch.name());
-        let pr_url = extract_hidden_field(&body, Parameter::PrUrl.name());
+        // Extract parent_task_id from parameters map if present
+        let parent_task_id = params_map
+            .get("parent_task_id")
+            .and_then(|s| s.parse().ok());
 
-        // Build parameters HashMap
+        // Build parameters HashMap<Parameter,String> from parsed parameters
         let mut parameters = HashMap::new();
-        if let Some(repo) = destination_repository {
-            parameters.insert(Parameter::DestinationRepository, repo);
+        if let Some(repo) = params_map.get(Parameter::DestinationRepository.name()) {
+            parameters.insert(Parameter::DestinationRepository, repo.clone());
         }
-        if let Some(branch) = destination_branch {
-            parameters.insert(Parameter::DestinationBranch, branch);
+        if let Some(branch) = params_map.get(Parameter::DestinationBranch.name()) {
+            parameters.insert(Parameter::DestinationBranch, branch.clone());
         }
-        if let Some(branch) = work_branch {
-            parameters.insert(Parameter::WorkBranch, branch);
+        if let Some(branch) = params_map.get(Parameter::WorkBranch.name()) {
+            parameters.insert(Parameter::WorkBranch, branch.clone());
         }
-        if let Some(url) = pr_url {
-            parameters.insert(Parameter::PrUrl, url);
+        if let Some(url) = params_map.get(Parameter::PrUrl.name()) {
+            parameters.insert(Parameter::PrUrl, url.clone());
         }
 
         // Check if 'done' signal is present
@@ -314,8 +315,7 @@ impl Backend for GitHubBackend {
             .filter_map(|l| Self::label_to_signal(&l.name))
             .min(); // min() because lower enum value = higher priority
 
-        // Extract plan and checklist from description
-        let (description, plan, checklist) = super::parse_description_with_plan_and_checklist(&body);
+        // description, plan and checklist were already extracted above
 
         // Discussion is not fetched by default for performance in listings,
         // but for a single get_task we could.
@@ -349,17 +349,25 @@ impl Backend for GitHubBackend {
         parameters: HashMap<Parameter, String>,
     ) -> Result<u64, ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
-        let mut body = description.to_string();
+        // Serialize parameters into the PARAMETERS section inside the issue body
+        let mut params_text: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        if let Some(v) = parameters.get(&Parameter::DestinationRepository) {
+            params_text.insert(Parameter::DestinationRepository.name().to_string(), v.clone());
+        }
+        if let Some(v) = parameters.get(&Parameter::DestinationBranch) {
+            params_text.insert(Parameter::DestinationBranch.name().to_string(), v.clone());
+        }
+        if let Some(v) = parameters.get(&Parameter::WorkBranch) {
+            params_text.insert(Parameter::WorkBranch.name().to_string(), v.clone());
+        }
+        if let Some(v) = parameters.get(&Parameter::PrUrl) {
+            params_text.insert(Parameter::PrUrl.name().to_string(), v.clone());
+        }
+        if let Some(pid) = parent_task_id {
+            params_text.insert("parent_task_id".to_string(), pid.to_string());
+        }
 
-        append_hidden_fields(
-            &mut body,
-            &[
-                ("parent_task_id", parent_task_id.map(|id| id.to_string())),
-                (Parameter::DestinationRepository.name(), parameters.get(&Parameter::DestinationRepository).cloned()),
-                (Parameter::DestinationBranch.name(), parameters.get(&Parameter::DestinationBranch).cloned()),
-                (Parameter::WorkBranch.name(), parameters.get(&Parameter::WorkBranch).cloned()),
-            ],
-        );
+        let body = crate::backend::serialize_description_full(description, &params_text, "", &[]);
 
         let stage_number = self.find_stage_number(stage.milestone_name()).await?;
 
@@ -536,6 +544,8 @@ impl Backend for GitHubBackend {
             };
 
             let body = issue.body.unwrap_or_default();
+            // Parse full description including PARAMETERS, PLAN and CHECKLIST
+            let (description, params_map, plan, checklist) = super::parse_description_full(&body);
             let task_tool = issue.labels.iter().find_map(|l| {
                 if let Some(name) = l.name.strip_prefix("tool:") {
                     match name {
@@ -568,28 +578,26 @@ impl Backend for GitHubBackend {
                 }
             });
 
-            let parent_task_id =
-                extract_hidden_field(&body, "parent_task_id").and_then(|s| s.parse().ok());
-            let destination_repository = extract_hidden_field(&body, Parameter::DestinationRepository.name());
-            let destination_branch = extract_hidden_field(&body, Parameter::DestinationBranch.name());
-            let work_branch = extract_hidden_field(&body, Parameter::WorkBranch.name());
-            let pr_url = extract_hidden_field(&body, Parameter::PrUrl.name());
-            
-            // Build parameters HashMap
+            // Extract parent_task_id from parameters map if present
+            let parent_task_id = params_map
+                .get("parent_task_id")
+                .and_then(|s| s.parse().ok());
+
+            // Build parameters HashMap<Parameter,String> from parsed parameters
             let mut parameters = HashMap::new();
-            if let Some(repo) = destination_repository {
-                parameters.insert(Parameter::DestinationRepository, repo);
+            if let Some(repo) = params_map.get(Parameter::DestinationRepository.name()) {
+                parameters.insert(Parameter::DestinationRepository, repo.clone());
             }
-            if let Some(branch) = destination_branch {
-                parameters.insert(Parameter::DestinationBranch, branch);
+            if let Some(branch) = params_map.get(Parameter::DestinationBranch.name()) {
+                parameters.insert(Parameter::DestinationBranch, branch.clone());
             }
-            if let Some(branch) = work_branch {
-                parameters.insert(Parameter::WorkBranch, branch);
+            if let Some(branch) = params_map.get(Parameter::WorkBranch.name()) {
+                parameters.insert(Parameter::WorkBranch, branch.clone());
             }
-            if let Some(url) = pr_url {
-                parameters.insert(Parameter::PrUrl, url);
+            if let Some(url) = params_map.get(Parameter::PrUrl.name()) {
+                parameters.insert(Parameter::PrUrl, url.clone());
             }
-            
+
             // Check if 'done' signal is present
             let done = issue
                 .labels
@@ -603,8 +611,7 @@ impl Backend for GitHubBackend {
                 .filter_map(|l| Self::label_to_signal(&l.name))
                 .min(); // min() because lower enum value = higher priority
 
-            // Extract plan and checklist from description
-            let (description, plan, checklist) = super::parse_description_with_plan_and_checklist(&body);
+            // description, plan and checklist were already extracted above
 
             tasks.push(Task {
                 id: issue.number,
@@ -1321,26 +1328,6 @@ fn stage_description(stage: Stage) -> &'static str {
         Stage::Planning => "Task is in planning, other bots ignore it",
         Stage::GoWorking => "Task must be taken by worker agent, any matching bot can take it",
         Stage::Working => "Task is in work, other bots ignore it",
-    }
-}
-
-fn extract_hidden_field(body: &str, key: &str) -> Option<String> {
-    let start_tag = format!("<!-- {}: ", key);
-    let end_tag = " -->";
-    if let Some(start_idx) = body.find(&start_tag) {
-        let start_val = start_idx + start_tag.len();
-        if let Some(end_idx) = body[start_val..].find(end_tag) {
-            return Some(body[start_val..start_val + end_idx].to_string());
-        }
-    }
-    None
-}
-
-fn append_hidden_fields(body: &mut String, fields: &[(&str, Option<String>)]) {
-    for (key, value) in fields {
-        if let Some(v) = value {
-            body.push_str(&format!("\n<!-- {}: {} -->", key, v));
-        }
     }
 }
 
