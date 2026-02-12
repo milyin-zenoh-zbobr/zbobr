@@ -345,7 +345,7 @@ impl Backend for GitHubBackend {
         }
 
         let issue = self
-            .retry_octocrab("create issue", || {
+            .retry_octocrab("create issue", || async {
                 let issues = self.octocrab.issues(owner, repo);
                 let mut builder = issues.create(title).body(body.clone());
 
@@ -357,7 +357,7 @@ impl Backend for GitHubBackend {
                     builder = builder.labels(labels.clone());
                 }
 
-                builder.send()
+                builder.send().await
             })
             .await?;
         Ok(issue.number)
@@ -405,10 +405,11 @@ impl Backend for GitHubBackend {
     ) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         let formatted_body = format!("**[{role}@{hostname}]**\n\n{body}");
-        self.retry_octocrab("create issue comment", || {
+        self.retry_octocrab("create issue comment", || async {
             self.octocrab
                 .issues(owner, repo)
                 .create_comment(id, &formatted_body)
+                .await
         })
         .await?;
         Ok(())
@@ -437,10 +438,11 @@ impl Backend for GitHubBackend {
         // Remove all existing signal labels
         for sig in Signal::all() {
             let _ = self
-                .retry_octocrab("remove signal label", || {
+                .retry_octocrab("remove signal label", || async {
                     self.octocrab
                         .issues(owner, repo)
                         .remove_label(id, sig.as_str())
+                        .await
                 })
                 .await;
         }
@@ -448,8 +450,11 @@ impl Backend for GitHubBackend {
         // Add new signal label if provided
         if let Some(sig) = signal {
             let labels: Vec<String> = vec![sig.as_str().to_string()];
-            self.retry_octocrab("add signal label", || {
-                self.octocrab.issues(owner, repo).add_labels(id, &labels)
+            self.retry_octocrab("add signal label", || async {
+                self.octocrab
+                    .issues(owner, repo)
+                    .add_labels(id, &labels)
+                    .await
             })
             .await?;
         }
@@ -623,16 +628,15 @@ impl Backend for GitHubBackend {
         if !exists {
             tracing::info!("Domain repo {owner}/{repo} does not exist, creating...");
             // Try creating as org repo first, fall back to user repo
+            let org_url = format!("/orgs/{owner}/repos");
+            let org_body = serde_json::json!({
+                "name": repo,
+                "private": true,
+                "auto_init": false,
+            });
             let result = self
-                .retry_octocrab("create org repo", || {
-                    self.octocrab.post(
-                        format!("/orgs/{owner}/repos"),
-                        Some(&serde_json::json!({
-                            "name": repo,
-                            "private": true,
-                            "auto_init": false,
-                        })),
-                    )
+                .retry_octocrab("create org repo", || async {
+                    self.octocrab.post(org_url.clone(), Some(&org_body)).await
                 })
                 .await;
 
@@ -643,15 +647,14 @@ impl Backend for GitHubBackend {
                 }
                 Err(_) => {
                     // Fall back to user repo
-                    self.retry_octocrab("create user repo", || {
-                        self.octocrab.post(
-                            "/user/repos".to_string(),
-                            Some(&serde_json::json!({
-                                "name": repo,
-                                "private": true,
-                                "auto_init": false,
-                            })),
-                        )
+                    let user_url = "/user/repos".to_string();
+                    let user_body = serde_json::json!({
+                        "name": repo,
+                        "private": true,
+                        "auto_init": false,
+                    });
+                    self.retry_octocrab("create user repo", || async {
+                        self.octocrab.post(user_url.clone(), Some(&user_body)).await
                     })
                     .await
                     .map(|_: serde_json::Value| ())?;
@@ -1042,12 +1045,13 @@ impl Backend for GitHubBackend {
     async fn list_labels(&self) -> Result<Vec<String>, ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         let labels: Vec<octocrab::models::Label> = self
-            .retry_octocrab("list labels", || {
+            .retry_octocrab("list labels", || async {
                 self.octocrab
                     .issues(owner, repo)
                     .list_labels_for_repo()
                     .per_page(100)
                     .send()
+                    .await
             })
             .await?
             .items;
@@ -1061,10 +1065,11 @@ impl Backend for GitHubBackend {
         description: &str,
     ) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
-        self.retry_octocrab("create label", || {
+        self.retry_octocrab("create label", || async {
             self.octocrab
                 .issues(owner, repo)
                 .create_label(name, color, description)
+                .await
         })
         .await?;
         Ok(())
