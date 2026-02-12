@@ -928,35 +928,30 @@ impl Backend for GitHubBackend {
             return Err(ZbobrError::Other("Failed to push to fork".into()));
         }
 
-        // Create PR using gh CLI
+        // Create PR using octocrab API, targeting the destination repository with head from the fork
         let task = self.get_task(task_id).await?;
         let pr_title = format!("Fix #{task_id}: {}", task.title);
         let pr_body = format!("Resolves #{task_id}\n\nImplementation for: {}", task.title);
 
-        let output = tokio::process::Command::new("gh")
-            .args([
-                "pr",
-                "create",
-                "--repo",
-                target_repo,
-                "--head",
-                &format!("{}:{branch_name}", self.config.fork_owner),
-                "--title",
-                &pr_title,
-                "--body",
-                &pr_body,
-            ])
-            .current_dir(&work_dir)
-            .output()
-            .await?;
+        let pr_payload = serde_json::json!({
+            "title": pr_title,
+            "head": format!("{}:{branch_name}", self.config.fork_owner),
+            "body": pr_body,
+        });
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(ZbobrError::Other(format!("Failed to create PR: {stderr}")));
+        #[derive(serde::Deserialize)]
+        struct PrResponse {
+            html_url: String,
         }
 
-        let pr_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        Ok(pr_url)
+        let pr_endpoint = format!("/repos/{target_repo}/pulls");
+        let response: PrResponse = self
+            .octocrab
+            .post(pr_endpoint, Some(&pr_payload))
+            .await
+            .map_err(|e| ZbobrError::GitHub(e.to_string()))?;
+
+        Ok(response.html_url)
     }
 
     async fn create_pr_in_fork(
@@ -1058,30 +1053,25 @@ impl Backend for GitHubBackend {
             )));
         };
 
-        // Use gh CLI to get PR details (specifically the head branch)
-        let output = tokio::process::Command::new("gh")
-            .args([
-                "pr",
-                "view",
-                &pr_number.to_string(),
-                "--repo",
-                &format!("{owner}/{repo}"),
-                "--json",
-                "headRefName",
-                "--jq",
-                ".headRefName",
-            ])
-            .output()
-            .await?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(ZbobrError::Other(format!(
-                "Failed to get PR branch for {owner}/{repo}#{pr_number}: {stderr}"
-            )));
+        // Use octocrab API to get PR details (head ref)
+        #[derive(serde::Deserialize)]
+        struct PrHead {
+            #[serde(rename = "ref")]
+            ref_name: String,
+        }
+        #[derive(serde::Deserialize)]
+        struct PrView {
+            head: PrHead,
         }
 
-        let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let pr_endpoint = format!("/repos/{owner}/{repo}/pulls/{pr_number}");
+        let pr: PrView = self
+            .octocrab
+            .get(pr_endpoint, None::<&()>)
+            .await
+            .map_err(|e| ZbobrError::GitHub(e.to_string()))?;
+
+        let branch = pr.head.ref_name;
         let repo_full = format!("{owner}/{repo}");
 
         Ok((repo_full, branch))

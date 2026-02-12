@@ -657,31 +657,11 @@ impl TaskSession {
             self.task_id, task.title
         );
 
-        let output = tokio::process::Command::new("gh")
-            .args([
-                "pr",
-                "create",
-                "--repo",
-                &fork_repo,
-                "--head",
-                &current_branch,
-                "--base",
-                destination_branch,
-                "--title",
-                &pr_title,
-                "--body",
-                &pr_body,
-            ])
-            .current_dir(&work_dir)
-            .output()
+        // Create PR using the GitHub API via Zbobr backend (octocrab)
+        let pr_url = self
+            .zbobr
+            .create_pr_in_fork(&fork_repo, &current_branch, destination_branch, self.task_id)
             .await?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(ZbobrError::Other(format!("Failed to create PR: {stderr}")));
-        }
-
-        let pr_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
         Ok(pr_url)
     }
 
