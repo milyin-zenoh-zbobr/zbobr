@@ -15,16 +15,11 @@ impl GitHubBackend {
         Self { config, octocrab }
     }
 
-    fn is_transient_error_message(message: &str) -> bool {
-        let message = message.to_ascii_lowercase();
-        message.contains("sendrequest")
-            || message.contains("timed out")
-            || message.contains("timeout")
-            || message.contains("connection reset")
-            || message.contains("connection refused")
-            || message.contains("broken pipe")
-            || message.contains("dns")
-            || message.contains("tls")
+    fn is_transient_octocrab_error(error: &octocrab::Error) -> bool {
+        match error {
+            octocrab::Error::GitHub { source, .. } => source.status_code.is_server_error(),
+            _ => true,
+        }
     }
 
     async fn retry_octocrab<T, F, Fut>(&self, op_name: &str, mut f: F) -> Result<T, ZbobrError>
@@ -38,10 +33,9 @@ impl GitHubBackend {
             match f().await {
                 Ok(value) => return Ok(value),
                 Err(e) => {
-                    let message = e.to_string();
-                    if attempt < 3 && Self::is_transient_error_message(&message) {
+                    if attempt < 3 && Self::is_transient_octocrab_error(&e) {
                         tracing::warn!(
-                            "Transient GitHub error during {op_name} (attempt {attempt}/3): {message}"
+                            "Transient GitHub error during {op_name} (attempt {attempt}/3): {e}"
                         );
                         tokio::time::sleep(Duration::from_millis(250 * attempt)).await;
                         continue;
