@@ -527,14 +527,13 @@ impl Backend for GitHubBackend {
             // Filter client-side: if tool filter is provided, only include tasks that:
             // - have no tool label (can be taken by anyone), OR
             // - have a matching tool label
-            if let Some(filter_tool) = tool {
-                if let Some(t) = task_tool {
-                    if t != filter_tool {
-                        continue; // Skip tasks with different tool label
-                    }
-                }
-                // If task_tool is None, include it (no label = any bot can take it)
+            if let Some(filter_tool) = tool
+                && let Some(t) = task_tool
+                && t != filter_tool
+            {
+                continue; // Skip tasks with different tool label
             }
+            // If task_tool is None, include it (no label = any bot can take it)
 
             let model = issue.labels.iter().find_map(|l| {
                 if let Some(name) = l.name.strip_prefix("model:") {

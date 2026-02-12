@@ -47,18 +47,18 @@ pub fn parse_description_with_plan_and_checklist(full_text: &str) -> (String, St
         }
         
         // Parse checkbox format: - [ ] id: text or - [x] id: text
-        if let Some(rest) = line.strip_prefix("- [") {
-            if let Some(pos) = rest.find(']') {
-                let checkbox = &rest[..pos];
-                let checked = checkbox.trim() == "x" || checkbox.trim() == "X";
-                
-                let after_checkbox = rest[pos + 1..].trim();
-                if let Some(colon_pos) = after_checkbox.find(':') {
-                    let id = after_checkbox[..colon_pos].trim().to_string();
-                    let text = after_checkbox[colon_pos + 1..].trim().to_string();
-                    
-                    items.push(ChecklistItem { id, checked, text });
-                }
+        if let Some(rest) = line.strip_prefix("- [")
+            && let Some(pos) = rest.find(']')
+        {
+            let checkbox = &rest[..pos];
+            let checked = checkbox.trim() == "x" || checkbox.trim() == "X";
+
+            let after_checkbox = rest[pos + 1..].trim();
+            if let Some(colon_pos) = after_checkbox.find(':') {
+                let id = after_checkbox[..colon_pos].trim().to_string();
+                let text = after_checkbox[colon_pos + 1..].trim().to_string();
+
+                items.push(ChecklistItem { id, checked, text });
             }
         }
     }

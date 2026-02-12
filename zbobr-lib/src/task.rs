@@ -519,11 +519,11 @@ impl TaskSession {
         let current = self.get_signal().await?;
         
         // Only set if new signal has higher or equal priority (lower enum value)
-        if let Some(current_signal) = current {
-            if new_signal > current_signal {
-                // new_signal has lower priority, don't overwrite
-                return Ok(());
-            }
+        if let Some(current_signal) = current
+            && new_signal > current_signal
+        {
+            // new_signal has lower priority, don't overwrite
+            return Ok(());
         }
         
         self.zbobr.set_task_signal(self.task_id, Some(new_signal)).await
@@ -929,11 +929,11 @@ impl TaskSession {
         let end_tag = " -->";
         
         // Remove any existing value for this parameter
-        if let Some(start_idx) = body.find(&start_tag) {
-            if let Some(end_idx) = body[start_idx..].find(end_tag) {
-                let end_pos = start_idx + end_idx + end_tag.len();
-                body.drain(start_idx..end_pos);
-            }
+        if let Some(start_idx) = body.find(&start_tag)
+            && let Some(end_idx) = body[start_idx..].find(end_tag)
+        {
+            let end_pos = start_idx + end_idx + end_tag.len();
+            body.drain(start_idx..end_pos);
         }
         
         // Add the new value if provided
