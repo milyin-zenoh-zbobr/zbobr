@@ -35,7 +35,7 @@ impl Default for StubState {
                 tool: Some(Tool::Stub),
                 model: Some(Model::Gpt5Mini),
                 parent_task_id: None,
-                destination_repo: None,
+                destination_repository: None,
                 destination_branch: None,
                 work_branch: None,
                 pr_url: None,
@@ -96,7 +96,7 @@ impl Backend for StubBackend {
         tool: Option<Tool>,
         model: Option<Model>,
         parent_task_id: Option<u64>,
-        destination_repo: Option<String>,
+        destination_repository: Option<String>,
         destination_branch: Option<String>,
         work_branch: Option<String>,
     ) -> Result<u64, ZbobrError> {
@@ -113,7 +113,7 @@ impl Backend for StubBackend {
             tool,
             model,
             parent_task_id,
-            destination_repo,
+            destination_repository,
             destination_branch,
             work_branch,
             pr_url: None,
@@ -317,7 +317,7 @@ impl Backend for StubBackend {
 
     async fn create_pr_in_fork(
         &self,
-        _destination_repo: &str,
+        _destination_repository: &str,
         _work_branch: &str,
         _destination_branch: &str,
         task_id: u64,

@@ -76,7 +76,7 @@ impl Zbobr {
         tool: Option<Tool>,
         model: Option<Model>,
         parent_task_id: Option<u64>,
-        destination_repo: Option<String>,
+        destination_repository: Option<String>,
         destination_branch: Option<String>,
     ) -> Result<u64, ZbobrError> {
         self.backend
@@ -87,7 +87,7 @@ impl Zbobr {
                 tool,
                 model,
                 parent_task_id,
-                destination_repo,
+                destination_repository,
                 destination_branch,
                 None,
             )
@@ -213,13 +213,13 @@ impl Zbobr {
 
     pub async fn create_pr_in_fork(
         &self,
-        destination_repo: &str,
+        destination_repository: &str,
         work_branch: &str,
         destination_branch: &str,
         task_id: u64,
     ) -> Result<String, ZbobrError> {
         self.backend
-            .create_pr_in_fork(destination_repo, work_branch, destination_branch, task_id)
+            .create_pr_in_fork(destination_repository, work_branch, destination_branch, task_id)
             .await
     }
 

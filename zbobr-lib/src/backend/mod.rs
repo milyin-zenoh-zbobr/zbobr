@@ -149,7 +149,7 @@ pub trait Backend: Send + Sync {
         tool: Option<Tool>,
         model: Option<Model>,
         parent_task_id: Option<u64>,
-        destination_repo: Option<String>,
+        destination_repository: Option<String>,
         destination_branch: Option<String>,
         work_branch: Option<String>,
     ) -> Result<u64, ZbobrError>;
@@ -233,7 +233,7 @@ pub trait Backend: Send + Sync {
     /// Returns the PR URL on success, or empty string on stub backend.
     async fn create_pr_in_fork(
         &self,
-        destination_repo: &str,
+        destination_repository: &str,
         work_branch: &str,
         destination_branch: &str,
         task_id: u64,

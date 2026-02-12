@@ -270,7 +270,7 @@ impl Backend for GitHubBackend {
 
         let parent_task_id =
             extract_hidden_field(&body, "parent_task_id").and_then(|s| s.parse().ok());
-        let destination_repo = extract_hidden_field(&body, "destination_repo");
+        let destination_repository = extract_hidden_field(&body, "destination_repository");
         let destination_branch = extract_hidden_field(&body, "destination_branch");
         let work_branch = extract_hidden_field(&body, "work_branch");
         let pr_url = extract_hidden_field(&body, "pr_url");
@@ -305,7 +305,7 @@ impl Backend for GitHubBackend {
             tool,
             model,
             parent_task_id,
-            destination_repo,
+            destination_repository,
             destination_branch,
             work_branch,
             pr_url,
@@ -323,7 +323,7 @@ impl Backend for GitHubBackend {
         tool: Option<Tool>,
         model: Option<Model>,
         parent_task_id: Option<u64>,
-        destination_repo: Option<String>,
+        destination_repository: Option<String>,
         destination_branch: Option<String>,
         work_branch: Option<String>,
     ) -> Result<u64, ZbobrError> {
@@ -334,7 +334,7 @@ impl Backend for GitHubBackend {
             &mut body,
             &[
                 ("parent_task_id", parent_task_id.map(|id| id.to_string())),
-                ("destination_repo", destination_repo),
+                ("destination_repository", destination_repository),
                 ("destination_branch", destination_branch),
                 ("work_branch", work_branch),
             ],
@@ -547,7 +547,7 @@ impl Backend for GitHubBackend {
 
             let parent_task_id =
                 extract_hidden_field(&body, "parent_task_id").and_then(|s| s.parse().ok());
-            let destination_repo = extract_hidden_field(&body, "destination_repo");
+            let destination_repository = extract_hidden_field(&body, "destination_repository");
             let destination_branch = extract_hidden_field(&body, "destination_branch");
             let work_branch = extract_hidden_field(&body, "work_branch");
             let pr_url = extract_hidden_field(&body, "pr_url");
@@ -578,7 +578,7 @@ impl Backend for GitHubBackend {
                 tool: task_tool,
                 model,
                 parent_task_id,
-                destination_repo,
+                destination_repository,
                 destination_branch,
                 work_branch,
                 pr_url,
@@ -936,15 +936,15 @@ impl Backend for GitHubBackend {
 
     async fn create_pr_in_fork(
         &self,
-        destination_repo: &str,
+        destination_repository: &str,
         work_branch: &str,
         destination_branch: &str,
         task_id: u64,
     ) -> Result<String, ZbobrError> {
-        let repo_name = destination_repo
+        let repo_name = destination_repository
             .split('/')
             .nth(1)
-            .ok_or_else(|| ZbobrError::Other("Invalid destination_repo format".to_string()))?;
+            .ok_or_else(|| ZbobrError::Other("Invalid destination_repository format".to_string()))?;
 
         let fork_repo = format!("{}/{}", self.config.fork_owner, repo_name);
 

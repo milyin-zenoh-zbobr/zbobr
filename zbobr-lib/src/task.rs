@@ -376,7 +376,7 @@ pub struct Task {
     pub tool: Option<Tool>,
     pub model: Option<Model>,
     pub parent_task_id: Option<u64>,
-    pub destination_repo: Option<String>,
+    pub destination_repository: Option<String>,
     pub destination_branch: Option<String>,
     pub work_branch: Option<String>,
     pub pr_url: Option<String>,
@@ -909,7 +909,7 @@ impl TaskSession {
     /// Create a PR from work_branch to destination_branch in the fork repo.
     async fn create_pr_for_work_branch(
         &self,
-        destination_repo: &str,
+        destination_repository: &str,
         work_branch: &str,
         destination_branch: &str,
     ) -> Result<(), ZbobrError> {
@@ -921,7 +921,7 @@ impl TaskSession {
 
         let pr_url = self
             .zbobr
-            .create_pr_in_fork(destination_repo, work_branch, destination_branch, self.task_id)
+            .create_pr_in_fork(destination_repository, work_branch, destination_branch, self.task_id)
             .await?;
 
         // Store the PR URL in the task
@@ -943,7 +943,7 @@ impl TaskSession {
         
         // Map parameter names to task fields
         Ok(match param_name.to_lowercase().as_str() {
-            "destination_repository" => task.destination_repo,
+            "destination_repository" => task.destination_repository,
             "destination_branch" => task.destination_branch,
             "work_branch" => task.work_branch,
             "pr_url" => task.pr_url,
@@ -964,6 +964,7 @@ impl TaskSession {
         
         // Update the hidden field in the body
         let param_key = param_name.to_lowercase();
+        
         let start_tag = format!("<!-- {}: ", param_key);
         let end_tag = " -->";
         
@@ -1022,7 +1023,7 @@ mod tests {
             tool: Some(Tool::Claude),
             model: Some(Model::Claude3Opus),
             parent_task_id: None,
-            destination_repo: None,
+            destination_repository: None,
             destination_branch: None,
             work_branch: None,
             pr_url: None,
