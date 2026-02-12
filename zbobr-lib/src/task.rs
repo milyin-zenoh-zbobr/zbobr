@@ -468,6 +468,21 @@ impl TaskSession {
             .await
     }
 
+    /// Update the task checklist while preserving an explicit plan.
+    pub async fn update_checklist_with_plan(
+        &self,
+        description: &str,
+        plan: &str,
+        checklist: &[ChecklistItem],
+    ) -> Result<(), ZbobrError> {
+        use crate::backend::serialize_description_with_plan_and_checklist;
+        let description_with_plan_and_checklist =
+            serialize_description_with_plan_and_checklist(description, plan, checklist);
+        self.zbobr
+            .update_task_description(self.task_id, &description_with_plan_and_checklist)
+            .await
+    }
+
     /// Update the task description.
     pub async fn update_description(&self, description: &str) -> Result<(), ZbobrError> {
         self.zbobr

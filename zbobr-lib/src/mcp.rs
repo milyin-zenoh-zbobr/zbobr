@@ -457,12 +457,20 @@ pub trait CommonMcpImpl: Send + Sync {
 
     async fn check_checklist_item_impl(&self, id: &str, checked: bool) -> String {
         tracing::info!("[{}#{}] check_checklist_item id={} checked={}", self.role_name(), self.session().task_id(), id, checked);
-        match (self.session().get_description().await, self.session().get_checklist().await) {
-            (Ok(desc), Ok(mut items)) => {
+        match (
+            self.session().get_description().await,
+            self.session().get_plan().await,
+            self.session().get_checklist().await,
+        ) {
+            (Ok(desc), Ok(plan), Ok(mut items)) => {
                 if let Some(item) = items.iter_mut().find(|item| item.id == id) {
                     item.checked = checked;
                     
-                    match self.session().update_checklist(&desc, &items).await {
+                    match self
+                        .session()
+                        .update_checklist_with_plan(&desc, &plan, &items)
+                        .await
+                    {
                         Ok(()) => {
                             // Signal task completion status: if unchecked items remain, ready for work; otherwise done
                             let has_unchecked = items.iter().any(|i| !i.checked);
@@ -484,7 +492,7 @@ pub trait CommonMcpImpl: Send + Sync {
                     format!("Error: Checklist item with id '{}' not found", id)
                 }
             }
-            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
+            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => format!("Error: {e}"),
         }
     }
 }
@@ -529,8 +537,12 @@ pub trait PlannerMcpImpl: CommonMcpImpl {
 
     async fn insert_checklist_item_impl(&self, id: &str, after_id: Option<String>, text: &str) -> String {
         tracing::info!("[planner#{}] insert_checklist_item id={} after_id={:?}", self.session().task_id(), id, after_id);
-        match (self.session().get_description().await, self.session().get_checklist().await) {
-            (Ok(desc), Ok(mut items)) => {
+        match (
+            self.session().get_description().await,
+            self.session().get_plan().await,
+            self.session().get_checklist().await,
+        ) {
+            (Ok(desc), Ok(plan), Ok(mut items)) => {
                 if items.iter().any(|item| item.id == id) {
                     return format!("Error: Checklist item with id '{}' already exists", id);
                 }
@@ -551,23 +563,35 @@ pub trait PlannerMcpImpl: CommonMcpImpl {
                     items.push(new_item);
                 }
                 
-                match self.session().update_checklist(&desc, &items).await {
+                match self
+                    .session()
+                    .update_checklist_with_plan(&desc, &plan, &items)
+                    .await
+                {
                     Ok(()) => format!("Checklist item '{}' inserted", id),
                     Err(e) => format!("Error updating task: {e}"),
                 }
             }
-            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
+            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => format!("Error: {e}"),
         }
     }
 
     async fn update_checklist_item_impl(&self, id: &str, text: &str) -> String {
         tracing::info!("[planner#{}] update_checklist_item id={}", self.session().task_id(), id);
-        match (self.session().get_description().await, self.session().get_checklist().await) {
-            (Ok(desc), Ok(mut items)) => {
+        match (
+            self.session().get_description().await,
+            self.session().get_plan().await,
+            self.session().get_checklist().await,
+        ) {
+            (Ok(desc), Ok(plan), Ok(mut items)) => {
                 if let Some(item) = items.iter_mut().find(|item| item.id == id) {
                     item.text = text.to_string();
                     
-                    match self.session().update_checklist(&desc, &items).await {
+                    match self
+                        .session()
+                        .update_checklist_with_plan(&desc, &plan, &items)
+                        .await
+                    {
                         Ok(()) => format!("Checklist item '{}' updated", id),
                         Err(e) => format!("Error updating task: {e}"),
                     }
@@ -575,14 +599,18 @@ pub trait PlannerMcpImpl: CommonMcpImpl {
                     format!("Error: Checklist item with id '{}' not found", id)
                 }
             }
-            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
+            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => format!("Error: {e}"),
         }
     }
 
     async fn delete_checklist_item_impl(&self, id: &str) -> String {
         tracing::info!("[planner#{}] delete_checklist_item id={}", self.session().task_id(), id);
-        match (self.session().get_description().await, self.session().get_checklist().await) {
-            (Ok(desc), Ok(mut items)) => {
+        match (
+            self.session().get_description().await,
+            self.session().get_plan().await,
+            self.session().get_checklist().await,
+        ) {
+            (Ok(desc), Ok(plan), Ok(mut items)) => {
                 let original_len = items.len();
                 items.retain(|item| item.id != id);
                 
@@ -590,12 +618,16 @@ pub trait PlannerMcpImpl: CommonMcpImpl {
                     return format!("Error: Checklist item with id '{}' not found", id);
                 }
                 
-                match self.session().update_checklist(&desc, &items).await {
+                match self
+                    .session()
+                    .update_checklist_with_plan(&desc, &plan, &items)
+                    .await
+                {
                     Ok(()) => format!("Checklist item '{}' deleted", id),
                     Err(e) => format!("Error updating task: {e}"),
                 }
             }
-            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
+            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => format!("Error: {e}"),
         }
     }
 }
