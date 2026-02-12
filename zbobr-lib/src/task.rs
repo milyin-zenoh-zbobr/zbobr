@@ -379,6 +379,7 @@ pub struct Task {
     pub destination_repo: Option<String>,
     pub destination_branch: Option<String>,
     pub work_branch: Option<String>,
+    pub pr_url: Option<String>,
     pub done: bool,
     pub checklist: Vec<ChecklistItem>,
     pub signal: Option<Signal>,
@@ -819,6 +820,7 @@ impl TaskSession {
     /// Pull a repository, forking if needed. Clones the destination_repository fork, creates and checks out work_branch.
     /// Cleans up remote information - only pull_work and push_work know where to push/pull.
     /// Stashes local changes if a different branch is selected as current.
+    /// Also creates a PR from work_branch to destination_branch in the fork repo if all parameters are set.
     pub async fn pull_work(&self) -> Result<String, ZbobrError> {
         // Get required parameters
         let dest_repo = self.get_parameter("destination_repository").await?
@@ -844,7 +846,7 @@ impl TaskSession {
             tracked.insert(
                 dest_repo.clone(),
                 TrackedRepo {
-                    repo: dest_repo,
+                    repo: dest_repo.clone(),
                     local_path: path.clone(),
                 },
             );
@@ -886,12 +888,48 @@ impl TaskSession {
             tracing::info!("Removed 'fork' remote");
         }
 
+        // Create PR from work_branch to destination_branch in the fork repo
+        if let Err(e) = self.create_pr_for_work_branch(&dest_repo, &work_branch, &dest_branch).await {
+            // Log the error but don't fail the pull_work, let the worker know
+            let hostname = hostname::get()
+                .ok()
+                .and_then(|h| h.into_string().ok())
+                .unwrap_or_else(|| "unknown".to_string());
+            let msg = format!("⚠️  Failed to create PR: {}. You can create it manually or continue working.", e);
+            let _ = self.post_message(&msg, "worker", &hostname).await;
+        }
+
         // Rename 'origin' to a temporary name, configure it with internal credentials, then back to origin
         // This ensures the model can't directly access remote URLs
         tracing::info!("Setting up internal remote for pull_work/push_work only");
 
         Ok(path_str)
     }
+
+    /// Create a PR from work_branch to destination_branch in the fork repo.
+    async fn create_pr_for_work_branch(
+        &self,
+        destination_repo: &str,
+        work_branch: &str,
+        destination_branch: &str,
+    ) -> Result<(), ZbobrError> {
+        tracing::info!(
+            "Creating PR from {} to {} in fork",
+            work_branch,
+            destination_branch
+        );
+
+        let pr_url = self
+            .zbobr
+            .create_pr_in_fork(destination_repo, work_branch, destination_branch, self.task_id)
+            .await?;
+
+        // Store the PR URL in the task
+        self.set_parameter("pr_url", Some(pr_url)).await?;
+        
+        Ok(())
+    }
+
 
     /// Mark task as done (sets signal to Done). Stage transition will be handled by main loop.
     pub async fn mark_done(&self) -> Result<(), ZbobrError> {
@@ -908,6 +946,7 @@ impl TaskSession {
             "destination_repository" => task.destination_repo,
             "destination_branch" => task.destination_branch,
             "work_branch" => task.work_branch,
+            "pr_url" => task.pr_url,
             _ => None,
         })
     }
@@ -986,6 +1025,7 @@ mod tests {
             destination_repo: None,
             destination_branch: None,
             work_branch: None,
+            pr_url: None,
             done: false,
             checklist: vec![],
             signal: None,

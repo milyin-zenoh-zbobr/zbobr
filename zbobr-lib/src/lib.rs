@@ -211,6 +211,18 @@ impl Zbobr {
         self.backend.push_and_create_pr(target_repo, task_id).await
     }
 
+    pub async fn create_pr_in_fork(
+        &self,
+        destination_repo: &str,
+        work_branch: &str,
+        destination_branch: &str,
+        task_id: u64,
+    ) -> Result<String, ZbobrError> {
+        self.backend
+            .create_pr_in_fork(destination_repo, work_branch, destination_branch, task_id)
+            .await
+    }
+
     pub async fn list_stages(&self) -> Result<Vec<(u64, String)>, ZbobrError> {
         self.backend.list_stages().await
     }

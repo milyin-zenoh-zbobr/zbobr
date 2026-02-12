@@ -38,6 +38,7 @@ impl Default for StubState {
                 destination_repo: None,
                 destination_branch: None,
                 work_branch: None,
+                pr_url: None,
                 done: false,
                 checklist: vec![],
                 signal: None,
@@ -115,6 +116,7 @@ impl Backend for StubBackend {
             destination_repo,
             destination_branch,
             work_branch,
+            pr_url: None,
             done: false,
             checklist: vec![],
             signal: None,
@@ -311,6 +313,16 @@ impl Backend for StubBackend {
         task_id: u64,
     ) -> Result<String, ZbobrError> {
         Ok(format!("https://github.com/stub/repo/pull/{task_id}"))
+    }
+
+    async fn create_pr_in_fork(
+        &self,
+        _destination_repo: &str,
+        _work_branch: &str,
+        _destination_branch: &str,
+        task_id: u64,
+    ) -> Result<String, ZbobrError> {
+        Ok(format!("https://github.com/stub/fork/pull/{task_id}"))
     }
 
     async fn list_stages(&self) -> Result<Vec<(u64, String)>, ZbobrError> {

@@ -67,6 +67,7 @@ pub enum Parameter {
     DestinationRepository,
     DestinationBranch,
     WorkBranch,
+    PrUrl,
 }
 
 impl Parameter {
@@ -75,6 +76,7 @@ impl Parameter {
             Parameter::DestinationRepository => "destination_repository",
             Parameter::DestinationBranch => "destination_branch",
             Parameter::WorkBranch => "work_branch",
+            Parameter::PrUrl => "pr_url",
         }
     }
 }
@@ -209,6 +211,7 @@ mcp_tools! {
     DELETE_CHECKLIST_ITEM = "delete_checklist_item",
     GET_PARAM_DESTINATION_BRANCH = "get_param_destination_branch",
     GET_PARAM_WORK_BRANCH = "get_param_work_branch",
+    GET_PARAM_PR_URL = "get_param_pr_url",
 }
 
 mcp_tools! {
@@ -1006,6 +1009,11 @@ impl WorkerMcp {
     #[tool(description = "Get the work branch name for this task (read-only)")]
     async fn get_param_work_branch(&self) -> String {
         self.get_param_work_branch_impl().await
+    }
+
+    #[tool(description = "Get the PR URL created for this task (read-only), empty if not created")]
+    async fn get_param_pr_url(&self) -> String {
+        self.get_param_impl(Parameter::PrUrl).await
     }
 }
 

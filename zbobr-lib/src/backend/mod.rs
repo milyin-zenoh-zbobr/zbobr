@@ -229,6 +229,16 @@ pub trait Backend: Send + Sync {
         task_id: u64,
     ) -> Result<String, ZbobrError>;
 
+    /// Create a PR from work_branch to destination_branch in the fork repo.
+    /// Returns the PR URL on success, or empty string on stub backend.
+    async fn create_pr_in_fork(
+        &self,
+        destination_repo: &str,
+        work_branch: &str,
+        destination_branch: &str,
+        task_id: u64,
+    ) -> Result<String, ZbobrError>;
+
     // -- Setup methods --
 
     /// List all stages (milestones) in the domain repo.

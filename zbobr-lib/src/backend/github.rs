@@ -273,6 +273,7 @@ impl Backend for GitHubBackend {
         let destination_repo = extract_hidden_field(&body, "destination_repo");
         let destination_branch = extract_hidden_field(&body, "destination_branch");
         let work_branch = extract_hidden_field(&body, "work_branch");
+        let pr_url = extract_hidden_field(&body, "pr_url");
 
         // Check if 'done' signal is present
         let done = issue
@@ -307,6 +308,7 @@ impl Backend for GitHubBackend {
             destination_repo,
             destination_branch,
             work_branch,
+            pr_url,
             done,
             checklist,
             signal,
@@ -548,6 +550,7 @@ impl Backend for GitHubBackend {
             let destination_repo = extract_hidden_field(&body, "destination_repo");
             let destination_branch = extract_hidden_field(&body, "destination_branch");
             let work_branch = extract_hidden_field(&body, "work_branch");
+            let pr_url = extract_hidden_field(&body, "pr_url");
             
             // Check if 'done' signal is present
             let done = issue
@@ -578,6 +581,7 @@ impl Backend for GitHubBackend {
                 destination_repo,
                 destination_branch,
                 work_branch,
+                pr_url,
                 done,
                 checklist,
                 signal,
@@ -928,6 +932,58 @@ impl Backend for GitHubBackend {
 
         let pr_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
         Ok(pr_url)
+    }
+
+    async fn create_pr_in_fork(
+        &self,
+        destination_repo: &str,
+        work_branch: &str,
+        destination_branch: &str,
+        task_id: u64,
+    ) -> Result<String, ZbobrError> {
+        let repo_name = destination_repo
+            .split('/')
+            .nth(1)
+            .ok_or_else(|| ZbobrError::Other("Invalid destination_repo format".to_string()))?;
+
+        let fork_repo = format!("{}/{}", self.config.fork_owner, repo_name);
+
+        // Create PR within the fork using octocrab GitHub API
+        let task = self.get_task(task_id).await?;
+        let pr_title = format!("Fix #{}: {}", task_id, task.title);
+        let pr_body = format!(
+            "Resolves #{}\n\nImplementation for: {}",
+            task_id, task.title
+        );
+
+        tracing::info!(
+            "Creating PR in {} from {} to {} using octocrab",
+            fork_repo,
+            work_branch,
+            destination_branch
+        );
+
+        let pr_payload = serde_json::json!({
+            "title": pr_title,
+            "head": work_branch,
+            "base": destination_branch,
+            "body": pr_body,
+        });
+
+        let pr_endpoint = format!("/repos/{fork_repo}/pulls");
+
+        #[derive(serde::Deserialize)]
+        struct PrResponse {
+            html_url: String,
+        }
+
+        let response: PrResponse = self
+            .retry_octocrab("create PR", || {
+                self.octocrab.post(pr_endpoint.clone(), Some(&pr_payload))
+            })
+            .await?;
+
+        Ok(response.html_url)
     }
 
     async fn parse_pr_to_repo_branch(&self, pr_ref: &str) -> Result<(String, String), ZbobrError> {
