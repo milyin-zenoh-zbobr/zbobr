@@ -208,10 +208,6 @@ mcp_tools! {
     PULL_BRANCH = "pull_branch",
     PULL_BRANCH_BY_PR = "pull_branch_by_pr",
     GET_CHECKLIST = "get_checklist",
-    INSERT_CHECKLIST_ITEM = "insert_checklist_item",
-    UPDATE_CHECKLIST_ITEM = "update_checklist_item",
-    CHECK_CHECKLIST_ITEM = "check_checklist_item",
-    DELETE_CHECKLIST_ITEM = "delete_checklist_item",
     GET_PARAM_DESTINATION_REPOSITORY = "get_param_destination_repository",
     SET_PARAM_DESTINATION_REPOSITORY = "set_param_destination_repository",
     GET_PARAM_DESTINATION_BRANCH = "get_param_destination_branch",
@@ -234,7 +230,10 @@ mcp_tools! {
     PUSH_BRANCH = "push_branch",
     PUSH_BRANCH_AND_CREATE_PR = "push_branch_and_create_pr",
     GET_CHECKLIST = "get_checklist",
+    INSERT_CHECKLIST_ITEM = "insert_checklist_item",
+    UPDATE_CHECKLIST_ITEM = "update_checklist_item",
     CHECK_CHECKLIST_ITEM = "check_checklist_item",
+    DELETE_CHECKLIST_ITEM = "delete_checklist_item",
 }
 
 mcp_tools! {
@@ -270,34 +269,24 @@ Work autonomously. Do not ask the user for anything.
 
 1. Call `{get_description}` to read the user task description
 2. Call `{get_plan}` to read an existing plan if there is one
-3. Call `{get_checklist}` to read existing checklist items if there are any
-4. Call `{get_discussion}` for context and prior comments and questions to existing plan
-5. **Set task parameters** that will guide the worker implementation:
+3. Call `{get_discussion}` for context and prior comments and questions to existing plan
+4. **Set task parameters** that will guide the worker implementation:
    - Call `{set_param_destination_repository}` with the target GitHub repository (owner/repo format)
    - Call `{set_param_destination_branch}` with the target branch name (e.g., "main", "develop")
    - Call `{set_param_work_branch}` with the local work branch name (e.g., "implement-feature")
    - Use `{get_param_destination_repository}`, `{get_param_destination_branch}`, `{get_param_work_branch}` to read current values
-6. Pull the relevant repository using one of:
+5. Pull the relevant repository using one of:
    - `{pull_branch}` — pull any branch of any repository you need to investigate
    - `{pull_branch_by_pr}` — shortcut: if the task mentions a PR, pull it directly without reading the PR to find its branch
-7. Explore the codebase, identify and document the files, crates, modules, and keywords relevant to the task. These help define the scope and guide the worker:
+6. Explore the codebase, identify and document the files, crates, modules, and keywords relevant to the task. These help define the scope and guide the worker:
    - List specific files that need to be modified or created
    - Identify crates/modules that contain related functionality
    - Include keywords/concepts the worker should focus on (e.g., "async/await", "error handling", "API compatibility")
    - This context narrows the worker's scope and prevents unnecessary exploration
-8. Design a solution. 
-9. Post a solution in the form of a text plan with `{post_plan}`
-10. Post or edit steps to implement the solution in the form of checklist items with `{insert_checklist_item}`, `{update_checklist_item}`, `{delete_checklist_item}`, `{check_checklist_item}`. 
+7. Design a solution. 
+8. Post a solution in the form of a text plan with `{post_plan}` in markdown with sections: Overview, Relevant Files/Crates, Keywords, Changes Required (by repo/file), Testing Strategy, Risks.
 
-## Plan Format
-
-Post markdown with sections: Overview, Relevant Files/Crates, Keywords, Changes Required (by repo/file), Testing Strategy, Risks.
-
-## Checklist Guidelines
-
-- Each item is a clear, actionable step. Notice that usually the separate agent session is started for each checklist item. So make the steps big enough to justify the separate request to implement it, but concise enough to not overload the model context doing the step.
-- Avoid deleting done items, keep the history. 
-- Use {check_checklist_item} to mark or unmark steps if necessary (e.g. if analysis revealed that some steps are already done or not needed, or if some steps need to be redone after failed implementation attempt).
+Note: The worker will create the implementation checklist based on your plan. Your job is to provide a clear, detailed plan.
 "#,
         get_description = planner_tools::GET_DESCRIPTION,
         get_discussion = planner_tools::GET_DISCUSSION,
@@ -306,11 +295,6 @@ Post markdown with sections: Overview, Relevant Files/Crates, Keywords, Changes 
         post_message = planner_tools::POST_MESSAGE,
         pull_branch = planner_tools::PULL_BRANCH,
         pull_branch_by_pr = planner_tools::PULL_BRANCH_BY_PR,
-        get_checklist = planner_tools::GET_CHECKLIST,
-        insert_checklist_item = planner_tools::INSERT_CHECKLIST_ITEM,
-        update_checklist_item = planner_tools::UPDATE_CHECKLIST_ITEM,
-        check_checklist_item = planner_tools::CHECK_CHECKLIST_ITEM,
-        delete_checklist_item = planner_tools::DELETE_CHECKLIST_ITEM,
         get_param_destination_repository = planner_tools::GET_PARAM_DESTINATION_REPOSITORY,
         set_param_destination_repository = planner_tools::SET_PARAM_DESTINATION_REPOSITORY,
         get_param_destination_branch = planner_tools::GET_PARAM_DESTINATION_BRANCH,
@@ -326,6 +310,19 @@ pub fn worker_instructions() -> String {
         r#"# Worker Agent
 
 Implement an approved plan by writing code and submitting it.
+
+## Checklist: Your Work Memory
+
+The checklist is your persistent memory for this task. It survives across sessions and tells you exactly where to continue if the work is interrupted.
+
+**Key principles:**
+- If the checklist is empty when you start, **create it** based on the plan. Break the plan into clear, actionable steps.
+- Each checklist item is one logical unit of work. Usually a new session starts for each unchecked item.
+- Mark items as checked (`✓`) when you complete them to record progress.
+- Add new items during work if you discover additional steps needed.
+- Edit item text to refine understanding as you work.
+- Delete items only if they become unnecessary (keep most items for history).
+- This checklist persists: if you restart at any point, check it first to see exactly where to continue.
 
 ## Access Model
 
@@ -343,28 +340,33 @@ Work autonomously. Do not ask the user for anything.
 
 1. Call `{get_description}` to read the task
 2. Call `{get_plan}` to retrieve the approved implementation plan (posted by the planner)
-3. Call `{get_checklist}` to read the implementation steps you need to do
-4. Call `{get_discussion}` if you need additional context from comments
-5. **Focus on one unchecked checklist item during this session**. Assume checked items were completed in previous sessions. In exceptional cases where multiple items logically depend on the same setup and can be done together, you may do more than one, but this should be rare.
-6. Set up the repository using one of:
+3. Call `{get_checklist}` to read the implementation steps
+4. **If checklist is empty**: Create it using `{insert_checklist_item}` to break down the plan into clear, actionable steps
+5. Call `{get_discussion}` if you need additional context from comments
+6. **Focus on one unchecked checklist item during this session**. Assume checked items were completed in previous sessions. In exceptional cases where multiple items logically depend on the same setup and can be done together, you may do more than one, but this should be rare.
+7. Set up the repository using one of:
    - `{pull_branch}` — pull any branch of any repository you need (forks automatically for write access)
    - `{pull_branch_by_pr}` — shortcut: if the task mentions a PR, pull it directly without reading the PR to find its branch
-7. `cd` into the returned path and implement the plan
-8. **REQUIRED**: Create a branch using `git checkout -b <name>` where `<name>` **must** come from `{create_branch_name}` (e.g. with short_name="implementation"). Do NOT use arbitrary branch names.
-9. Commit changes locally with clear messages
-10. Call `{push_branch_and_create_pr}` with local path and destination branch — this pushes to the fork and creates a PR within the fork
+8. `cd` into the returned path and implement the plan
+9. **REQUIRED**: Create a branch using `git checkout -b <name>` where `<name>` **must** come from `{create_branch_name}` (e.g. with short_name="implementation"). Do NOT use arbitrary branch names.
+10. Commit changes locally with clear messages
+11. Call `{push_branch_and_create_pr}` with local path and destination branch — this pushes to the fork and creates a PR within the fork
     - Or call `{push_branch}` if you only need to push without creating a PR
-11. When you complete implementation steps:
+12. When you complete implementation steps:
+    - Use `{update_checklist_item}` to refine item text if needed as you learn more about the work
+    - Use `{insert_checklist_item}` to add new items if you discover additional steps
     - Call `{check_checklist_item}` to mark the completed checklist item(s) as done
     - Call `{post_message}` to summarize what was accomplished
-12. If there are issues requiring user intervention:
+13. If there are issues requiring user intervention:
     - Call `{ask_user}` to describe the problem and ask the user for input
-13. If there are issues requiring planner intervention:
+14. If there are issues requiring planner intervention:
     - Call `{ask_planner}` to describe the problem and ask the planner for clarification or re-planning"#,
         get_description = worker_tools::GET_DESCRIPTION,
         get_discussion = worker_tools::GET_DISCUSSION,
         get_plan = worker_tools::GET_PLAN,
         get_checklist = worker_tools::GET_CHECKLIST,
+        insert_checklist_item = worker_tools::INSERT_CHECKLIST_ITEM,
+        update_checklist_item = worker_tools::UPDATE_CHECKLIST_ITEM,
         post_message = worker_tools::POST_MESSAGE,
         create_branch_name = worker_tools::CREATE_BRANCH_NAME,
         pull_branch = worker_tools::PULL_BRANCH,
@@ -547,6 +549,102 @@ pub trait CommonMcpImpl: Send + Sync {
             (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => format!("Error: {e}"),
         }
     }
+
+    async fn insert_checklist_item_impl(&self, id: &str, after_id: Option<String>, text: &str) -> String {
+        tracing::info!("[{}#{}] insert_checklist_item id={} after_id={:?}", self.role_name(), self.session().task_id(), id, after_id);
+        match (
+            self.session().get_description().await,
+            self.session().get_plan().await,
+            self.session().get_checklist().await,
+        ) {
+            (Ok(desc), Ok(plan), Ok(mut items)) => {
+                if items.iter().any(|item| item.id == id) {
+                    return format!("Error: Checklist item with id '{}' already exists", id);
+                }
+                
+                let new_item = ChecklistItem {
+                    id: id.to_string(),
+                    checked: false,
+                    text: text.to_string(),
+                };
+                
+                if let Some(after_id) = after_id {
+                    if let Some(pos) = items.iter().position(|item| item.id == after_id) {
+                        items.insert(pos + 1, new_item);
+                    } else {
+                        return format!("Error: Checklist item with id '{}' not found", after_id);
+                    }
+                } else {
+                    items.push(new_item);
+                }
+                
+                match self
+                    .session()
+                    .update_checklist_with_plan(&desc, &plan, &items)
+                    .await
+                {
+                    Ok(()) => format!("Checklist item '{}' inserted", id),
+                    Err(e) => format!("Error updating task: {e}"),
+                }
+            }
+            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => format!("Error: {e}"),
+        }
+    }
+
+    async fn update_checklist_item_impl(&self, id: &str, text: &str) -> String {
+        tracing::info!("[{}#{}] update_checklist_item id={}", self.role_name(), self.session().task_id(), id);
+        match (
+            self.session().get_description().await,
+            self.session().get_plan().await,
+            self.session().get_checklist().await,
+        ) {
+            (Ok(desc), Ok(plan), Ok(mut items)) => {
+                if let Some(item) = items.iter_mut().find(|item| item.id == id) {
+                    item.text = text.to_string();
+                    
+                    match self
+                        .session()
+                        .update_checklist_with_plan(&desc, &plan, &items)
+                        .await
+                    {
+                        Ok(()) => format!("Checklist item '{}' updated", id),
+                        Err(e) => format!("Error updating task: {e}"),
+                    }
+                } else {
+                    format!("Error: Checklist item with id '{}' not found", id)
+                }
+            }
+            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => format!("Error: {e}"),
+        }
+    }
+
+    async fn delete_checklist_item_impl(&self, id: &str) -> String {
+        tracing::info!("[{}#{}] delete_checklist_item id={}", self.role_name(), self.session().task_id(), id);
+        match (
+            self.session().get_description().await,
+            self.session().get_plan().await,
+            self.session().get_checklist().await,
+        ) {
+            (Ok(desc), Ok(plan), Ok(mut items)) => {
+                let original_len = items.len();
+                items.retain(|item| item.id != id);
+                
+                if items.len() == original_len {
+                    return format!("Error: Checklist item with id '{}' not found", id);
+                }
+                
+                match self
+                    .session()
+                    .update_checklist_with_plan(&desc, &plan, &items)
+                    .await
+                {
+                    Ok(()) => format!("Checklist item '{}' deleted", id),
+                    Err(e) => format!("Error updating task: {e}"),
+                }
+            }
+            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => format!("Error: {e}"),
+        }
+    }
 }
 
 /// Planner-specific MCP implementations
@@ -603,102 +701,6 @@ pub trait PlannerMcpImpl: CommonMcpImpl {
         match self.session().request_branch_by_pr(pr, true).await {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
-        }
-    }
-
-    async fn insert_checklist_item_impl(&self, id: &str, after_id: Option<String>, text: &str) -> String {
-        tracing::info!("[planner#{}] insert_checklist_item id={} after_id={:?}", self.session().task_id(), id, after_id);
-        match (
-            self.session().get_description().await,
-            self.session().get_plan().await,
-            self.session().get_checklist().await,
-        ) {
-            (Ok(desc), Ok(plan), Ok(mut items)) => {
-                if items.iter().any(|item| item.id == id) {
-                    return format!("Error: Checklist item with id '{}' already exists", id);
-                }
-                
-                let new_item = ChecklistItem {
-                    id: id.to_string(),
-                    checked: false,
-                    text: text.to_string(),
-                };
-                
-                if let Some(after_id) = after_id {
-                    if let Some(pos) = items.iter().position(|item| item.id == after_id) {
-                        items.insert(pos + 1, new_item);
-                    } else {
-                        return format!("Error: Checklist item with id '{}' not found", after_id);
-                    }
-                } else {
-                    items.push(new_item);
-                }
-                
-                match self
-                    .session()
-                    .update_checklist_with_plan(&desc, &plan, &items)
-                    .await
-                {
-                    Ok(()) => format!("Checklist item '{}' inserted", id),
-                    Err(e) => format!("Error updating task: {e}"),
-                }
-            }
-            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => format!("Error: {e}"),
-        }
-    }
-
-    async fn update_checklist_item_impl(&self, id: &str, text: &str) -> String {
-        tracing::info!("[planner#{}] update_checklist_item id={}", self.session().task_id(), id);
-        match (
-            self.session().get_description().await,
-            self.session().get_plan().await,
-            self.session().get_checklist().await,
-        ) {
-            (Ok(desc), Ok(plan), Ok(mut items)) => {
-                if let Some(item) = items.iter_mut().find(|item| item.id == id) {
-                    item.text = text.to_string();
-                    
-                    match self
-                        .session()
-                        .update_checklist_with_plan(&desc, &plan, &items)
-                        .await
-                    {
-                        Ok(()) => format!("Checklist item '{}' updated", id),
-                        Err(e) => format!("Error updating task: {e}"),
-                    }
-                } else {
-                    format!("Error: Checklist item with id '{}' not found", id)
-                }
-            }
-            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => format!("Error: {e}"),
-        }
-    }
-
-    async fn delete_checklist_item_impl(&self, id: &str) -> String {
-        tracing::info!("[planner#{}] delete_checklist_item id={}", self.session().task_id(), id);
-        match (
-            self.session().get_description().await,
-            self.session().get_plan().await,
-            self.session().get_checklist().await,
-        ) {
-            (Ok(desc), Ok(plan), Ok(mut items)) => {
-                let original_len = items.len();
-                items.retain(|item| item.id != id);
-                
-                if items.len() == original_len {
-                    return format!("Error: Checklist item with id '{}' not found", id);
-                }
-                
-                match self
-                    .session()
-                    .update_checklist_with_plan(&desc, &plan, &items)
-                    .await
-                {
-                    Ok(()) => format!("Checklist item '{}' deleted", id),
-                    Err(e) => format!("Error updating task: {e}"),
-                }
-            }
-            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => format!("Error: {e}"),
         }
     }
 
@@ -879,26 +881,6 @@ impl PlannerMcp {
         self.get_checklist_impl().await
     }
 
-    #[tool(description = "Insert a new checklist item (always created in unchecked state)")]
-    async fn insert_checklist_item(&self, Parameters(params): Parameters<InsertChecklistItemParam>) -> String {
-        self.insert_checklist_item_impl(&params.id, params.after_id.clone(), &params.text).await
-    }
-
-    #[tool(description = "Update a checklist item's text")]
-    async fn update_checklist_item(&self, Parameters(params): Parameters<UpdateChecklistItemParam>) -> String {
-        self.update_checklist_item_impl(&params.id, &params.text).await
-    }
-
-    #[tool(description = "Check or uncheck a checklist item")]
-    async fn check_checklist_item(&self, Parameters(params): Parameters<CheckChecklistItemParam>) -> String {
-        self.check_checklist_item_impl(&params.id, params.checked).await
-    }
-
-    #[tool(description = "Delete a checklist item")]
-    async fn delete_checklist_item(&self, Parameters(params): Parameters<DeleteChecklistItemParam>) -> String {
-        self.delete_checklist_item_impl(&params.id).await
-    }
-
     #[tool(description = "Get the destination repository URL for this task (read-only)")]
     async fn get_param_destination_repository(&self) -> String {
         self.get_param_destination_repository_impl().await
@@ -1053,9 +1035,24 @@ impl WorkerMcp {
         self.get_checklist_impl().await
     }
 
+    #[tool(description = "Insert a new checklist item (always created in unchecked state)")]
+    async fn insert_checklist_item(&self, Parameters(params): Parameters<InsertChecklistItemParam>) -> String {
+        self.insert_checklist_item_impl(&params.id, params.after_id.clone(), &params.text).await
+    }
+
+    #[tool(description = "Update a checklist item's text")]
+    async fn update_checklist_item(&self, Parameters(params): Parameters<UpdateChecklistItemParam>) -> String {
+        self.update_checklist_item_impl(&params.id, &params.text).await
+    }
+
     #[tool(description = "Check or uncheck a checklist item")]
     async fn check_checklist_item(&self, Parameters(params): Parameters<CheckChecklistItemParam>) -> String {
         self.check_checklist_item_impl(&params.id, params.checked).await
+    }
+
+    #[tool(description = "Delete a checklist item")]
+    async fn delete_checklist_item(&self, Parameters(params): Parameters<DeleteChecklistItemParam>) -> String {
+        self.delete_checklist_item_impl(&params.id).await
     }
 }
 
