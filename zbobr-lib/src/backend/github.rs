@@ -188,7 +188,7 @@ struct MilestoneResponse {
 
 // Helper methods for GitHubBackend
 impl GitHubBackend {
-    /// Create or update a file in the domain repo via the Contents API.
+    /// Create or update a file in the task repo via the Contents API.
     /// If sha is provided, updates the existing file; otherwise creates a new one.
     async fn create_or_update_repo_file(
         &self,
@@ -649,10 +649,10 @@ impl Backend for GitHubBackend {
             .await
     }
 
-    async fn ensure_domain_repo_exists(&self) -> Result<(), ZbobrError> {
+    async fn ensure_task_repo_exists(&self) -> Result<(), ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         let exists = self
-            .retry_octocrab("check domain repo exists", || {
+            .retry_octocrab("check task repo exists", || {
                 self.octocrab
                     .get::<RepoResponse, _, _>(format!("/repos/{owner}/{repo}"), None::<&()>)
             })
@@ -660,7 +660,7 @@ impl Backend for GitHubBackend {
             .is_ok();
 
         if !exists {
-            tracing::info!("Domain repo {owner}/{repo} does not exist, creating...");
+            tracing::info!("Task repo {owner}/{repo} does not exist, creating...");
             // Try creating as org repo first, fall back to user repo
             let org_url = format!("/orgs/{owner}/repos");
             let org_body = serde_json::json!({
@@ -1154,12 +1154,12 @@ impl Backend for GitHubBackend {
     async fn setup_repository(&self, force: bool) -> Result<(), ZbobrError> {
         tracing::info!(
             "Setting up GitHub repo: {} (force: {})",
-            self.config.domain_repo,
+            self.config.task_repo,
             force
         );
 
-        // Ensure the domain repo exists
-        self.ensure_domain_repo_exists().await?;
+        // Ensure the task repo exists
+        self.ensure_task_repo_exists().await?;
 
         // Create stages
         let desired_stages = [
@@ -1249,7 +1249,7 @@ impl Backend for GitHubBackend {
             }
         }
 
-        tracing::info!("GitHub setup complete for {}", self.config.domain_repo);
+        tracing::info!("GitHub setup complete for {}", self.config.task_repo);
         Ok(())
     }
 
@@ -1270,17 +1270,17 @@ impl Backend for GitHubBackend {
         }
 
         let (owner, repo) = self.parse_repo()?;
-        let domain_repo_exists = self
-            .retry_octocrab("check domain repo", || {
+        let task_repo_exists = self
+            .retry_octocrab("check task repo", || {
                 self.octocrab
                     .get::<RepoResponse, _, _>(format!("/repos/{owner}/{repo}"), None::<&()>)
             })
             .await
             .is_ok();
-        if !domain_repo_exists {
+        if !task_repo_exists {
             return Err(ZbobrError::Config(format!(
-                "domain_repo '{owner}/{repo}' is not accessible on GitHub.\n  \
-                 Check your domain_repo setting and ensure the repository exists \
+                "task_repo '{owner}/{repo}' is not accessible on GitHub.\n  \
+                 Check your task_repo setting and ensure the repository exists \
                  and your token has access to it."
             )));
         }

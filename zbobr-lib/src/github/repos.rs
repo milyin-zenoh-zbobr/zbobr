@@ -15,7 +15,7 @@ struct ContentsResponse {
 }
 
 impl Zbobr {
-    /// Check if a file exists in the domain repo.
+    /// Check if a file exists in the task repo.
     pub(crate) async fn repo_file_exists(&self, path: &str) -> Result<bool, ZbobrError> {
         let (owner, repo) = self.config.parse_repo()?;
         let result = self
@@ -28,7 +28,7 @@ impl Zbobr {
         Ok(result.is_ok())
     }
 
-    /// Create or update a file in the domain repo via the Contents API.
+    /// Create or update a file in the task repo via the Contents API.
     /// Content is provided as a plain string (will be base64-encoded).
     /// Skips if the file already exists (no overwrite).
     pub(crate) async fn create_repo_file(
@@ -52,8 +52,8 @@ impl Zbobr {
         Ok(())
     }
 
-    /// Ensure the domain repo exists; create it if not.
-    pub(crate) async fn ensure_domain_repo_exists(&self) -> Result<(), ZbobrError> {
+    /// Ensure the task repo exists; create it if not.
+    pub(crate) async fn ensure_task_repo_exists(&self) -> Result<(), ZbobrError> {
         let (owner, repo) = self.config.parse_repo()?;
         let exists = self
             .octocrab
@@ -62,7 +62,7 @@ impl Zbobr {
             .is_ok();
 
         if !exists {
-            tracing::info!("Domain repo {owner}/{repo} does not exist, creating...");
+            tracing::info!("Task repo {owner}/{repo} does not exist, creating...");
             // Try creating as org repo first, fall back to user repo
             let result = self
                 .octocrab

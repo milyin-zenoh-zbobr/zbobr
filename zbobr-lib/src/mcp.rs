@@ -1267,7 +1267,7 @@ mod tests {
     #[tokio::test]
     async fn test_admin_tools_consistency() {
         let config = crate::config::ZbobrConfig {
-            domain_repo: "test/repo".to_string(),
+            task_repo: "test/repo".to_string(),
             fork_owner: "test-owner".to_string(),
             default_model: Model::Gpt4o,
             workspace: std::path::PathBuf::from("/tmp"),
@@ -1300,7 +1300,7 @@ mod tests {
     #[tokio::test]
     async fn test_planner_tools_consistency() {
         let config = crate::config::ZbobrConfig {
-            domain_repo: "test/repo".to_string(),
+            task_repo: "test/repo".to_string(),
             fork_owner: "test-owner".to_string(),
             default_model: Model::Gpt4o,
             workspace: std::path::PathBuf::from("/tmp"),
@@ -1333,7 +1333,7 @@ mod tests {
     #[tokio::test]
     async fn test_worker_tools_consistency() {
         let config = crate::config::ZbobrConfig {
-            domain_repo: "test/repo".to_string(),
+            task_repo: "test/repo".to_string(),
             fork_owner: "test-owner".to_string(),
             default_model: Model::Gpt4o,
             workspace: std::path::PathBuf::from("/tmp"),

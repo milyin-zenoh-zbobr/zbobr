@@ -1,4 +1,4 @@
-# Domain Project
+# Task Project
 
 This repository is managed by [**zbobr**](https://github.com/milyin/zbobr) -- an AI-powered issue orchestrator that uses Claude Code agents to automate software development workflows.
 
@@ -58,11 +58,11 @@ If no `tool:` or `model:` labels are set, the defaults from configuration are us
 
 ### zbobr.toml
 
-The `zbobr.toml` file is the primary configuration for this domain project:
+The `zbobr.toml` file is the primary configuration for this task project:
 
 ```toml
-# Domain project repository ("owner/repo")
-domain_repo = "your-org/domain-project"
+# Task project repository ("owner/repo")
+task_repo = "your-org/task-project"
 
 # GitHub user or org where target repos are forked
 fork_owner = "your-username"
@@ -154,7 +154,7 @@ worker = ["worker.md", "common.md"]
 
 ### How Issues Progress
 
-1. **Create Issue**: Developer creates a GitHub issue in this domain repository
+1. **Create Issue**: Developer creates a GitHub issue in this task repository
 2. **Set GO_PLANNING Milestone**: Makes the issue available for planner agents
 3. **Planner Investigates**: Agent picks up the task, reads code, analyzes requirements, drafts plan
 4. **Move to PENDING**: Planner completes plan and waits for human review

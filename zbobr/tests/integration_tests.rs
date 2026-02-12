@@ -200,7 +200,7 @@ async fn test_blackbox_process_flow() -> anyhow::Result<()> {
             "stub",
             "--workspace",
             workspace.to_str().unwrap(),
-            "--domain-repo",
+            "--task-repo",
             "test/domain",
             "--fork-owner",
             "test-forks",

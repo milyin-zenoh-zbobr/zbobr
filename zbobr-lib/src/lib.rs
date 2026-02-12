@@ -56,7 +56,7 @@ impl Zbobr {
         TaskSession::new(self.clone(), task_id)
     }
 
-    /// Validate that the backend can reach required resources (fork owner, domain repo, etc.).
+    /// Validate that the backend can reach required resources (fork owner, task repo, etc.).
     pub async fn validate_connectivity(&self) -> Result<(), ZbobrError> {
         self.backend.validate_connectivity().await
     }
@@ -185,8 +185,8 @@ impl Zbobr {
         self.backend.setup_repository(force).await
     }
 
-    pub async fn ensure_domain_repo_exists(&self) -> Result<(), ZbobrError> {
-        self.backend.ensure_domain_repo_exists().await
+    pub async fn ensure_task_repo_exists(&self) -> Result<(), ZbobrError> {
+        self.backend.ensure_task_repo_exists().await
     }
 
     pub async fn clone_and_setup(

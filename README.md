@@ -9,7 +9,7 @@ This repository contains **zbobr** — a reusable automation system that:
 - **Manager Agent**: Processes issues through stages (PENDING → GO_PLANNING → PLANNING → GO_WORKING → WORKING), creates implementation plans, and spawns Worker agents
 - **Worker Agent**: Implements individual issues by forking repos, creating PRs, and executing the work
 
-The orchestrator is domain-agnostic and can manage any set of repositories through **Domain Projects**.
+The orchestrator is domain-agnostic and can manage any set of repositories through **Task Projects**.
 
 ### Concepts
 
@@ -17,17 +17,17 @@ The orchestrator is domain-agnostic and can manage any set of repositories throu
    - Universal automation system that processes issues through stages
    - Contains planner/worker agents and the `zbobr` CLI binary
 
-2. **Domain Project** (`--domain-repo`)
+2. **Task Project** (`--task-repo`)
    - A GitHub repository whose issues the orchestrator manages
    - Example: `YoroolGui/copilot-zenoh`
    - Contains: target repository list, project-specific guidance, and `zbobr.toml` config
-   - Created via `zbobr setup --domain-repo owner/repo --fork-owner owner`
+   - Created via `zbobr setup --task-repo owner/repo --fork-owner owner`
 
 3. **Fork Owner** (`--fork-owner`)
    - The GitHub user or organization where target repos are forked for implementation
    - Worker agents fork repos under this account, create feature branches, and open PRs back to the original
    - Can be a personal account (e.g., `milyin`) or an organization (e.g., `YoroolGui`)
-   - Configured in domain project's `zbobr.toml` file or via `--fork-owner` CLI flag
+   - Configured in task project's `zbobr.toml` file or via `--fork-owner` CLI flag
 
 ## Installation
 
@@ -59,34 +59,34 @@ export PATH="$HOME/.cargo/bin:$PATH"
 **Prerequisites:**
 - GitHub Copilot CLI (`copilot`)
 - GitHub CLI (`gh`) authenticated
-- Permission to create repos (for domain projects)
+- Permission to create repos (for task projects)
 - Rust and Cargo (for installation)
 
-**Setup a domain project:**
+**Setup a task project:**
 ```bash
 # Ensure your GitHub token is available
 export GH_TOKEN=$(gh auth token)
 
-# Example: Set up Zenoh domain project
-zbobr setup --domain-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
+# Example: Set up Zenoh task project
+zbobr setup --task-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
 ```
 
 This will:
-- Create the domain project repo on GitHub (if needed)
+ - Create the task project repo on GitHub (if needed)
 - Set up milestones (stages) and labels (`tool:*`, `model:*`, `done`)
 
 **Launch the orchestrator:**
 ```bash
 # Run the manager loop (polls every 60 seconds)
-zbobr loop --domain-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
+zbobr loop --task-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
 ```
 
-**Using zbobr.toml (from domain project):**
+**Using zbobr.toml (from task project):**
 
-After setting up a domain project, you can clone it and run `zbobr` directly — it automatically reads `zbobr.toml` from the current directory:
+After setting up a task project, you can clone it and run `zbobr` directly — it automatically reads `zbobr.toml` from the current directory:
 
 ```bash
-# Clone the domain project
+# Clone the task project
 git clone https://github.com/YoroolGui/copilot-zenoh.git
 cd copilot-zenoh
 
@@ -96,13 +96,13 @@ zbobr plan 42            # Run planner on issue #42
 zbobr work 42            # Run worker on issue #42
 ```
 
-This is the recommended approach for domain-specific workflows, as it eliminates the need to manually specify `--domain-repo` and `--fork-owner` flags.
+This is the recommended approach for task-project workflows, as it eliminates the need to manually specify `--task-repo` and `--fork-owner` flags.
 
 ## How It Works
 
 ### Workflow
 
-1. **Create issue** in domain project with milestone `GO_PLANNING` and reference a target repo
+1. **Create issue** in task project with milestone `GO_PLANNING` and reference a target repo
 2. **Manager researches** the issue (transitioning to `PLANNING` lock state) and creates an implementation plan → sets `PENDING`
 3. **Human reviews** and sets milestone to `GO_WORKING` (optionally add `tool:<name>` and `model:<name>` labels)
 4. **Manager spawns Worker** (transitioning to `WORKING` lock state)  
@@ -115,7 +115,7 @@ This is the recommended approach for domain-specific workflows, as it eliminates
 
 ### Labels & Milestones
 
-These are orchestrator-owned and universal—same across all domain projects:
+These are orchestrator-owned and universal—same across all task projects:
 
 **Labels:**
 - `tool:<name>` — Specifies which AI tool to use (e.g., `tool:copilot`, `tool:claude`, `tool:stub`)
@@ -138,11 +138,11 @@ zbobr/ (repo root)
 ├── .github/agents/         # Agent instruction files (manager.md, worker.md)
 ├── .github/scripts/        # Legacy shell scripts
 ├── zbobr.toml.sample       # Sample configuration
-├── DOMAIN_PROJECT.md       # Domain project guide
+├── DOMAIN_PROJECT.md       # Task project guide
 ├── AGENTS.md               # Agent registry
 └── README.md               # This file
 
-YoroolGui/copilot-zenoh/ (Domain Project - created by zbobr setup)
+YoroolGui/copilot-zenoh/ (Task Project - created by zbobr setup)
 ├── zbobr.toml              # zbobr configuration (fork owner, default model)
 ├── prompts/
 │   ├── common.md           # Shared context and domain knowledge
@@ -153,21 +153,21 @@ YoroolGui/copilot-zenoh/ (Domain Project - created by zbobr setup)
 
 ## Usage Examples
 
-### Set up a new domain project
+### Set up a new task project
 
 ```bash
-# Create domain project for Apache Kafka ecosystem
-zbobr setup --domain-repo myorg/copilot-kafka --fork-owner myorg
+# Create task project for Apache Kafka ecosystem
+zbobr setup --task-repo myorg/copilot-kafka --fork-owner myorg
 
 # Force-update existing labels
-zbobr setup --domain-repo myorg/copilot-kafka --fork-owner myorg --force
+zbobr setup --task-repo myorg/copilot-kafka --fork-owner myorg --force
 ```
 
 ### Run the manager loop
 
 ```bash
 # Poll for issues every 30 seconds, clean up every 10 minutes
-zbobr loop --domain-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui \
+zbobr loop --task-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui \
   --interval 30 --cleanup-interval 600
 ```
 
@@ -175,10 +175,10 @@ zbobr loop --domain-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui \
 
 ```bash
 # Run planner on issue #42 (creates implementation plan)
-zbobr plan 42 --domain-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
+zbobr plan 42 --task-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
 
 # Run worker on issue #42 (implements the plan, creates PR)
-zbobr work 42 --domain-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
+zbobr work 42 --task-repo YoroolGui/copilot-zenoh --fork-owner YoroolGui
 ```
 
 ## Configuration
@@ -187,7 +187,7 @@ All settings can be provided via CLI flags, environment variables, or `zbobr.tom
 
 | CLI Flag | Env Variable | Description |
 |----------|-------------|-------------|
-| `--domain-repo` | `ZBOBR_DOMAIN_REPO` | GitHub repo whose issues the orchestrator processes (`owner/repo`) |
+| `--task-repo` | `ZBOBR_TASK_REPO` | GitHub repo whose issues the orchestrator processes (`owner/repo`) |
 | `--fork-owner` | `ZBOBR_FORK_OWNER` | GitHub user or org where target repos are forked for implementation |
 | `--workspace` | `ZBOBR_WORKSPACE` | Directory for agent workspaces (default: `./workspace`) |
 | `--config` | `ZBOBR_CONFIG` | Path to TOML configuration file (default: `zbobr.toml` in cwd) |
@@ -284,15 +284,15 @@ Zbobr manages **three distinct GitHub tokens** with different access levels and 
 
 ## Important Notes
 
-- **All issue/PR management** happens in the domain project repository
+- **All issue/PR management** happens in the task project repository
 - **Agents never modify** target repositories directly—they only create forks and PRs
 - **Labels and milestones** are orchestrator-managed and universal
-- **Domain projects are configurable** — each domain defines its own target repositories
+- **Task projects are configurable** — each task project defines its own target repositories
 - **Fork owners can be users or organizations** — no GitHub org creation required
 
 ## Documentation
 
-- [Domain Project Guide](DOMAIN_PROJECT.md) — How domain projects work (stages, labels, prompts, configuration)
+- [Domain Project Guide](DOMAIN_PROJECT.md) — How task projects work (stages, labels, prompts, configuration)
 - [Sample Configuration](zbobr.toml.sample) — Example `zbobr.toml` with all options
 - [Manager Agent Instructions](.github/agents/manager.md) — Manager workflow
 - [Worker Agent Instructions](.github/agents/worker.md) — Worker workflow

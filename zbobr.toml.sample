@@ -1,8 +1,8 @@
 # zbobr configuration
 # Priority: CLI args > env vars > this file > defaults
 
-# Domain project repository ("owner/repo")
-domain_repo = "{{DOMAIN_REPO}}"
+# Task project repository ("owner/repo")
+task_repo = "{{TASK_REPO}}"
 
 # GitHub user or org where target repos are forked
 fork_owner = "{{FORK_OWNER}}"

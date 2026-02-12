@@ -1,7 +1,7 @@
 use crate::{Zbobr, ZbobrError};
 
 impl Zbobr {
-    /// List all labels in the domain repo.
+    /// List all labels in the task repo.
     pub(crate) async fn list_labels(&self) -> Result<Vec<String>, ZbobrError> {
         let (owner, repo) = self.config.parse_repo()?;
         let labels: Vec<octocrab::models::Label> = self
@@ -15,7 +15,7 @@ impl Zbobr {
         Ok(labels.into_iter().map(|l| l.name).collect())
     }
 
-    /// Create a label in the domain repo.
+    /// Create a label in the task repo.
     pub(crate) async fn create_label(
         &self,
         name: &str,
@@ -30,7 +30,7 @@ impl Zbobr {
         Ok(())
     }
 
-    /// Delete a label from the domain repo.
+    /// Delete a label from the task repo.
     #[allow(dead_code)]
     pub(crate) async fn delete_label(&self, name: &str) -> Result<(), ZbobrError> {
         let (owner, repo) = self.config.parse_repo()?;

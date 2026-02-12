@@ -224,7 +224,7 @@ impl Backend for StubBackend {
         Ok(())
     }
 
-    async fn ensure_domain_repo_exists(&self) -> Result<(), ZbobrError> {
+    async fn ensure_task_repo_exists(&self) -> Result<(), ZbobrError> {
         Ok(())
     }
 

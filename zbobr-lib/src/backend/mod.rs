@@ -256,10 +256,10 @@ pub trait Backend: Send + Sync {
     /// Check if a task is closed.
     async fn is_task_closed(&self, id: u64) -> Result<bool, ZbobrError>;
 
-    /// Check if a file exists in the domain repo.
+    /// Check if a file exists in the task repo.
     async fn repo_file_exists(&self, path: &str) -> Result<bool, ZbobrError>;
 
-    /// Create or update a file in the domain repo.
+    /// Create or update a file in the task repo.
     async fn create_repo_file(
         &self,
         path: &str,
@@ -267,8 +267,8 @@ pub trait Backend: Send + Sync {
         commit_message: &str,
     ) -> Result<(), ZbobrError>;
 
-    /// Ensure the domain repo exists.
-    async fn ensure_domain_repo_exists(&self) -> Result<(), ZbobrError>;
+    /// Ensure the task repo exists.
+    async fn ensure_task_repo_exists(&self) -> Result<(), ZbobrError>;
 
     /// Clone a repo into the workspace, checkout specific branch, set up fork remote.
     /// Returns the local path.
@@ -309,19 +309,19 @@ pub trait Backend: Send + Sync {
 
     // -- Setup methods --
 
-    /// List all stages (milestones) in the domain repo.
+    /// List all stages (milestones) in the task repo.
     async fn list_stages(&self) -> Result<Vec<(u64, String)>, ZbobrError>;
 
-    /// Create a stage (milestone) in the domain repo.
+    /// Create a stage (milestone) in the task repo.
     async fn create_stage(&self, title: &str, description: &str) -> Result<(), ZbobrError>;
 
     /// Delete a stage by its number.
     async fn delete_stage(&self, number: u64) -> Result<(), ZbobrError>;
 
-    /// List all labels in the domain repo.
+    /// List all labels in the task repo.
     async fn list_labels(&self) -> Result<Vec<String>, ZbobrError>;
 
-    /// Create a label in the domain repo.
+    /// Create a label in the task repo.
     async fn create_label(
         &self,
         name: &str,
@@ -329,11 +329,11 @@ pub trait Backend: Send + Sync {
         description: &str,
     ) -> Result<(), ZbobrError>;
 
-    /// Initialize the domain repository with stages and labels.
+    /// Initialize the task repository with stages and labels.
     /// If force is true, overwrites existing labels.
     async fn setup_repository(&self, force: bool) -> Result<(), ZbobrError>;
 
-    /// Validate that the backend can reach required resources (fork owner, domain repo, etc.).
+    /// Validate that the backend can reach required resources (fork owner, task repo, etc.).
     async fn validate_connectivity(&self) -> Result<(), ZbobrError>;
 
     /// Return a debug string of the backend state.

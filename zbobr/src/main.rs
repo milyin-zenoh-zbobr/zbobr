@@ -11,10 +11,10 @@ use zbobr_lib::{
 #[derive(Args, Clone)]
 #[command(next_help_heading = "Global Options")]
 struct GlobalArgs {
-    /// Domain repository with tasks to orchestrate, in "owner/repo" format
-    /// (e.g. "YoroolGui/copilot-zenoh"). Can also be set via ZBOBR_DOMAIN_REPO env var
+    /// Task repository with tasks to orchestrate, in "owner/repo" format
+    /// (e.g. "YoroolGui/copilot-zenoh"). Can also be set via ZBOBR_TASK_REPO env var
     #[arg(long)]
-    domain_repo: Option<String>,
+    task_repo: Option<String>,
 
     /// GitHub user or organization where target repos are forked for implementation
     /// (e.g. "YoroolGui"). Workers fork repos here to create PRs.
@@ -78,7 +78,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Initialize a domain project: create repo if needed, set up stages and labels
+    /// Initialize a task project: create repo if needed, set up stages and labels
     Setup {
         /// Force overwrite existing labels
         #[arg(long, short = 'f')]
@@ -259,8 +259,8 @@ fn load_config(cli: &Cli) -> anyhow::Result<ZbobrConfig> {
     let mut config = ZbobrConfig::build(toml_config.as_ref())?;
 
     // CLI arg overrides (highest priority)
-    if let Some(ref dr) = cli.global.domain_repo {
-        config.domain_repo = dr.clone();
+    if let Some(ref tr) = cli.global.task_repo {
+        config.task_repo = tr.clone();
     }
     if let Some(ref fo) = cli.global.fork_owner {
         config.fork_owner = fo.clone();
@@ -550,7 +550,7 @@ async fn run_manager_loop(
     let planner_prompt = build_full_prompt(&planner_base, Role::Planner);
     let worker_prompt = build_full_prompt(&worker_base, Role::Worker);
 
-    tracing::info!("Manager loop started for {}", zbobr.config().domain_repo);
+    tracing::info!("Manager loop started for {}", zbobr.config().task_repo);
     tracing::info!("Poll interval: {interval_secs}s, Cleanup interval: {cleanup_interval_secs}s");
     tracing::info!("Default Model: {model}");
     tracing::info!("CLI Tool: {:?}", zbobr.config().cli_tool);

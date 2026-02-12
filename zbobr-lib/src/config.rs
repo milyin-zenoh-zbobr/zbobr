@@ -51,7 +51,7 @@ pub struct TomlPrompts {
 #[derive(Debug, Clone, serde::Deserialize, Default)]
 #[serde(default)]
 pub struct TomlConfig {
-    pub domain_repo: Option<String>,
+    pub task_repo: Option<String>,
     pub fork_owner: Option<String>,
     pub default_model: Option<Model>,
     pub workspace: Option<PathBuf>,
@@ -82,8 +82,8 @@ impl TomlConfig {
 /// Configuration for the zbobr orchestrator.
 #[derive(Debug, Clone)]
 pub struct ZbobrConfig {
-    /// Domain project repository ("Org/repo").
-    pub domain_repo: String,
+    /// Task project repository ("Org/repo").
+    pub task_repo: String,
     /// Owner for forks (user or org).
     pub fork_owner: String,
     /// Default AI model to use.
@@ -113,7 +113,7 @@ pub struct ZbobrConfig {
 impl Default for ZbobrConfig {
     fn default() -> Self {
         Self {
-            domain_repo: String::new(),
+            task_repo: String::new(),
             fork_owner: String::new(),
             default_model: Model::default(),
             workspace: PathBuf::from("./workspace"),
@@ -203,11 +203,11 @@ impl ZbobrConfig {
     fn build_with_env<E: EnvSource>(toml: Option<&TomlConfig>, env: &E) -> Result<Self, ZbobrError> {
         let defaults = ZbobrConfig::default();
 
-        let domain_repo = env_or(
+        let task_repo = env_or(
             env,
-            "ZBOBR_DOMAIN_REPO",
-            toml.and_then(|t| t.domain_repo.as_deref()),
-            &defaults.domain_repo,
+            "ZBOBR_TASK_REPO",
+            toml.and_then(|t| t.task_repo.as_deref()),
+            &defaults.task_repo,
         );
 
         let fork_owner = env_or(
@@ -285,7 +285,7 @@ impl ZbobrConfig {
             .unwrap_or_default();
 
         Ok(Self {
-            domain_repo,
+            task_repo,
             fork_owner,
             default_model,
             workspace,
@@ -308,9 +308,9 @@ impl ZbobrConfig {
 
     /// Validate that all required fields are set.
     pub fn validate(&self) -> Result<(), ZbobrError> {
-        if self.domain_repo.is_empty() {
+        if self.task_repo.is_empty() {
             return Err(ZbobrError::Config(
-                "domain repo not set. Use --domain-repo owner/repo or set ZBOBR_DOMAIN_REPO.\n  \
+                "task repo not set. Use --task-repo owner/repo or set ZBOBR_TASK_REPO.\n  \
                  This is the GitHub repository whose issues the orchestrator processes."
                     .into(),
             ));
@@ -347,11 +347,11 @@ impl ZbobrConfig {
 
     /// Parse "owner/repo" into (owner, repo).
     pub fn parse_repo(&self) -> Result<(&str, &str), ZbobrError> {
-        let parts: Vec<&str> = self.domain_repo.splitn(2, '/').collect();
+        let parts: Vec<&str> = self.task_repo.splitn(2, '/').collect();
         if parts.len() != 2 {
             return Err(ZbobrError::Config(format!(
-                "Invalid domain_repo format '{}', expected 'owner/repo'",
-                self.domain_repo
+                "Invalid task_repo format '{}', expected 'owner/repo'",
+                self.task_repo
             )));
         }
         Ok((parts[0], parts[1]))
@@ -391,9 +391,9 @@ mod tests {
         }
     }
 
-    fn test_config(domain_repo: &str) -> ZbobrConfig {
+    fn test_config(task_repo: &str) -> ZbobrConfig {
         ZbobrConfig {
-            domain_repo: domain_repo.to_string(),
+            task_repo: task_repo.to_string(),
             fork_owner: "test-fork".to_string(),
             default_model: Model::Gpt5Mini,
             workspace: PathBuf::from("./workspace"),
@@ -440,18 +440,18 @@ mod tests {
 
         let config =
             ZbobrConfig::build_with_env(None, &env).expect("build should succeed with tokens");
-        // validate() should fail because domain_repo is missing
+        // validate() should fail because task_repo is missing
         assert!(config.validate().is_err());
     }
 
     #[test]
     fn toml_config_parse_minimal() {
         let toml_str = r#"
-domain_repo = "org/repo"
-fork_owner = "myuser"
-"#;
+    task_repo = "org/repo"
+    fork_owner = "myuser"
+    "#;
         let config: TomlConfig = toml::from_str(toml_str).unwrap();
-        assert_eq!(config.domain_repo.as_deref(), Some("org/repo"));
+        assert_eq!(config.task_repo.as_deref(), Some("org/repo"));
         assert_eq!(config.fork_owner.as_deref(), Some("myuser"));
         assert!(config.default_model.is_none());
         assert!(config.backend.is_none());
@@ -460,21 +460,21 @@ fork_owner = "myuser"
     #[test]
     fn toml_config_parse_full() {
         let toml_str = r#"
-domain_repo = "org/repo"
-fork_owner = "myuser"
-default_model = "gpt-5-mini"
-workspace = "/tmp/workspace"
-backend = "stub"
-cli_tool = "claude"
-work_branch_prefix = "my_fix"
+    task_repo = "org/repo"
+    fork_owner = "myuser"
+    default_model = "gpt-5-mini"
+    workspace = "/tmp/workspace"
+    backend = "stub"
+    cli_tool = "claude"
+    work_branch_prefix = "my_fix"
 
-[prompts]
-path = "/opt/prompts"
-planner = ["plan.md", "shared.md"]
-worker = ["work.md"]
-"#;
+    [prompts]
+    path = "/opt/prompts"
+    planner = ["plan.md", "shared.md"]
+    worker = ["work.md"]
+    "#;
         let config: TomlConfig = toml::from_str(toml_str).unwrap();
-        assert_eq!(config.domain_repo.as_deref(), Some("org/repo"));
+        assert_eq!(config.task_repo.as_deref(), Some("org/repo"));
         assert_eq!(config.default_model, Some(Model::Gpt5Mini));
         assert_eq!(config.backend, Some(BackendType::Stub));
         assert_eq!(config.cli_tool, Some(Tool::Claude));
@@ -490,7 +490,7 @@ worker = ["work.md"]
     fn build_with_toml() {
         let env = TestEnv::new(&[]);
         let toml = TomlConfig {
-            domain_repo: Some("toml-org/toml-repo".into()),
+            task_repo: Some("toml-org/toml-repo".into()),
             fork_owner: Some("toml-fork".into()),
             default_model: Some(Model::Claude3Opus),
             workspace: Some(PathBuf::from("/tmp/toml-ws")),
@@ -508,7 +508,7 @@ worker = ["work.md"]
         };
 
         let config = ZbobrConfig::build_with_env(Some(&toml), &env).unwrap();
-        assert_eq!(config.domain_repo, "toml-org/toml-repo");
+        assert_eq!(config.task_repo, "toml-org/toml-repo");
         assert_eq!(config.fork_owner, "toml-fork");
         assert_eq!(config.default_model, Model::Claude3Opus);
         assert_eq!(config.workspace, PathBuf::from("/tmp/toml-ws"));

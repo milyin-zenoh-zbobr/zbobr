@@ -7,7 +7,7 @@ struct MilestoneResponse {
 }
 
 impl Zbobr {
-    /// List all milestones in the domain repo.
+    /// List all milestones in the task repo.
     pub(crate) async fn list_milestones(&self) -> Result<Vec<(u64, String)>, ZbobrError> {
         let (owner, repo) = self.config.parse_repo()?;
         let milestones: Vec<MilestoneResponse> = self
@@ -20,7 +20,7 @@ impl Zbobr {
             .collect())
     }
 
-    /// Create a milestone in the domain repo.
+    /// Create a milestone in the task repo.
     pub(crate) async fn create_milestone(
         &self,
         title: &str,
