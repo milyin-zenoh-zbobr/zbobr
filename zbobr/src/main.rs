@@ -617,6 +617,7 @@ async fn run_manager_loop(
             }
         };
 
+        let mut transitioned = false;
         for task in pending_tasks {
             if let Some(signal) = task.signal {
                 let target_stage = signal.target_stage();
@@ -629,9 +630,15 @@ async fn run_manager_loop(
                     );
                     if let Err(e) = zbobr.set_task_stage(task.id, target_stage).await {
                         tracing::error!("Failed to transition task #{}: {e}", task.id);
+                    } else {
+                        transitioned = true;
                     }
                 }
             }
+        }
+
+        if transitioned {
+            continue;
         }
 
         // Check for GO_PLANNING tasks
