@@ -293,21 +293,22 @@ Work autonomously. Do not ask the user for anything.
 2. Call `{get_plan}` to retrieve the approved implementation plan (posted by the planner)
 3. Call `{get_checklist}` to read the implementation steps you need to do
 4. Call `{get_discussion}` if you need additional context from comments
-5. Set up the repository using one of:
+5. **Focus on one unchecked checklist item during this session**. Assume checked items were completed in previous sessions. In exceptional cases where multiple items logically depend on the same setup and can be done together, you may do more than one, but this should be rare.
+6. Set up the repository using one of:
    - `{pull_branch}` — pull any branch of any repository you need (forks automatically for write access)
    - `{pull_branch_by_pr}` — shortcut: if the task mentions a PR, pull it directly without reading the PR to find its branch
-6. `cd` into the returned path and implement the plan
-7. **REQUIRED**: Create a branch using `git checkout -b <name>` where `<name>` **must** come from `{create_branch_name}` (e.g. with short_name="implementation"). Do NOT use arbitrary branch names.
-8. Commit changes locally with clear messages
-9. Call `{push_branch_and_create_pr}` with local path and destination branch — this pushes to the fork and creates a PR within the fork
-   - Or call `{push_branch}` if you only need to push without creating a PR
-10. When you complete implementation steps:
-    - Call `{check_checklist_item}` to mark checklist items as done as you complete them
+7. `cd` into the returned path and implement the plan
+8. **REQUIRED**: Create a branch using `git checkout -b <name>` where `<name>` **must** come from `{create_branch_name}` (e.g. with short_name="implementation"). Do NOT use arbitrary branch names.
+9. Commit changes locally with clear messages
+10. Call `{push_branch_and_create_pr}` with local path and destination branch — this pushes to the fork and creates a PR within the fork
+    - Or call `{push_branch}` if you only need to push without creating a PR
+11. When you complete implementation steps:
+    - Call `{check_checklist_item}` to mark the completed checklist item(s) as done
     - Call `{post_message}` to summarize what was accomplished
-11. If there are issues requiring user or planner intervention:
-    - Call `{post_message}` to describe the problem
-    - Call `{ask_user}` to ask the user for input
-    - Call `{ask_planner}` to ask the planner for clarification or re-planning"#,
+12. If there are issues requiring user intervention:
+    - Call `{ask_user}` to describe the problem and ask the user for input
+13. If there are issues requiring planner intervention:
+    - Call `{ask_planner}` to describe the problem and ask the planner for clarification or re-planning"#,
         get_description = worker_tools::GET_DESCRIPTION,
         get_discussion = worker_tools::GET_DISCUSSION,
         get_plan = worker_tools::GET_PLAN,
