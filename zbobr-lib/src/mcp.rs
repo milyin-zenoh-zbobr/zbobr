@@ -285,8 +285,6 @@ Work autonomously. Do not ask the user for anything.
    - This context narrows the worker's scope and prevents unnecessary exploration
 7. Design a solution. 
 8. Post a solution in the form of a text plan with `{post_plan}` in markdown with sections: Overview, Relevant Files/Crates, Keywords, Changes Required (by repo/file), Testing Strategy, Risks.
-
-Note: The worker will create the implementation checklist based on your plan. Your job is to provide a clear, detailed plan.
 "#,
         get_description = planner_tools::GET_DESCRIPTION,
         get_discussion = planner_tools::GET_DISCUSSION,
@@ -316,13 +314,13 @@ Implement an approved plan by writing code and submitting it.
 The checklist is your persistent memory for this task. It survives across sessions and tells you exactly where to continue if the work is interrupted.
 
 **Key principles:**
-- If the checklist is empty when you start, **create it** based on the plan. Break the plan into clear, actionable steps.
+- Start by using `{get_checklist}` to read the current checklist — it tells you exactly where you are in the work.
+- If the checklist is empty when you start, use `{insert_checklist_item}` to create it based on the plan. Break the plan into clear, actionable steps.
 - Each checklist item is one logical unit of work. Usually a new session starts for each unchecked item.
-- Mark items as checked (`✓`) when you complete them to record progress.
-- Add new items during work if you discover additional steps needed.
-- Edit item text to refine understanding as you work.
-- Delete items only if they become unnecessary (keep most items for history).
-- This checklist persists: if you restart at any point, check it first to see exactly where to continue.
+- Use `{check_checklist_item}` to mark items as checked (`✓`) when you complete them to record progress.
+- Use `{insert_checklist_item}` to add new items during work if you discover additional steps needed.
+- Use `{update_checklist_item}` to edit item text to refine understanding as you work.
+- Use `{delete_checklist_item}` to remove items only if they become unnecessary (keep most items for history).
 
 ## Access Model
 
@@ -367,13 +365,14 @@ Work autonomously. Do not ask the user for anything.
         get_checklist = worker_tools::GET_CHECKLIST,
         insert_checklist_item = worker_tools::INSERT_CHECKLIST_ITEM,
         update_checklist_item = worker_tools::UPDATE_CHECKLIST_ITEM,
+        check_checklist_item = worker_tools::CHECK_CHECKLIST_ITEM,
+        delete_checklist_item = worker_tools::DELETE_CHECKLIST_ITEM,
         post_message = worker_tools::POST_MESSAGE,
         create_branch_name = worker_tools::CREATE_BRANCH_NAME,
         pull_branch = worker_tools::PULL_BRANCH,
         pull_branch_by_pr = worker_tools::PULL_BRANCH_BY_PR,
         push_branch = worker_tools::PUSH_BRANCH,
         push_branch_and_create_pr = worker_tools::PUSH_BRANCH_AND_CREATE_PR,
-        check_checklist_item = worker_tools::CHECK_CHECKLIST_ITEM,
         ask_user = worker_tools::ASK_USER,
         ask_planner = worker_tools::ASK_PLANNER,
     )
