@@ -184,7 +184,7 @@ async fn main() -> anyhow::Result<()> {
         );
 
         mcp.call_tool(
-            planner_tools::POST_MESSAGE,
+            planner_tools::REPORT_ERROR,
             MessageParam {
                 message: format!("## Implementation Plan\n\n{plan}\n\n---\n\nRequirements analyzed and plan created."),
             },

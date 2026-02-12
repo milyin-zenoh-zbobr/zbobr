@@ -161,7 +161,7 @@ mcp_tools! {
     GET_DISCUSSION = "get_discussion",
     GET_PLAN = "get_plan",
     POST_PLAN = "post_plan",
-    POST_MESSAGE = "post_message",
+    REPORT_ERROR = "report_error",
     PULL_WORK = "pull_work",
     GET_CHECKLIST = "get_checklist",
     GET_PARAM_DESTINATION_REPOSITORY = "get_param_destination_repository",
@@ -177,7 +177,7 @@ mcp_tools! {
     GET_DESCRIPTION = "get_description",
     GET_DISCUSSION = "get_discussion",
     GET_PLAN = "get_plan",
-    POST_MESSAGE = "post_message",
+    REPORT_ERROR = "report_error",
     ASK_USER = "ask_user",
     ASK_PLANNER = "ask_planner",
     CREATE_BRANCH_NAME = "create_branch_name",
@@ -197,7 +197,7 @@ mcp_tools! {
     GET_DESCRIPTION = "get_description",
     GET_DISCUSSION = "get_discussion",
     GET_PLAN = "get_plan",
-    POST_MESSAGE = "post_message",
+    REPORT_ERROR = "report_error",
     PULL_WORK = "pull_work",
     GET_CHECKLIST = "get_checklist",
     INSERT_CHECKLIST_ITEM = "insert_checklist_item",
@@ -228,12 +228,12 @@ Investigate a task and create an implementation plan with actionable steps.
 
 ## Access Model
 
-You can access the internet and run local commands. Your restrictions:
-- Do NOT run git clone/pull/fetch — use `{pull_work}` instead
-- Use MCP `{post_plan}` to post the implementation plan
-- Use MCP `{post_message}` to communicate results and questions
-- For reading GitHub data: use `git` and `gh` CLI only when no MCP tool provides the needed information
-- NEVER use git/gh for writing, pushing, or sending data to GitHub
+    You can access the internet and run local commands. Your restrictions:
+    - Do NOT run git clone/pull/fetch — use `{pull_work}` instead
+    - Use MCP `{post_plan}` to post the implementation plan
+    - Use MCP `{report_error}` only to report technical errors; use `{ask_user}` to request the user's explanations related to the task
+    - For reading GitHub data: use `git` and `gh` CLI only when no MCP tool provides the needed information
+    - NEVER use git/gh for writing, pushing, or sending data to GitHub
 
 Work autonomously. Do not ask the user for anything.
 
@@ -260,7 +260,8 @@ Work autonomously. Do not ask the user for anything.
         get_discussion = planner_tools::GET_DISCUSSION,
         get_plan = planner_tools::GET_PLAN,
         post_plan = planner_tools::POST_PLAN,
-        post_message = planner_tools::POST_MESSAGE,
+        report_error = planner_tools::REPORT_ERROR,
+        ask_user = worker_tools::ASK_USER,
         pull_work = planner_tools::PULL_WORK,
         get_param_destination_repository = planner_tools::GET_PARAM_DESTINATION_REPOSITORY,
         set_param_destination_repository = planner_tools::SET_PARAM_DESTINATION_REPOSITORY,
@@ -293,11 +294,11 @@ The checklist is your persistent memory for this task. It survives across sessio
 
 ## Access Model
 
-You can access the internet and run local commands. Your restrictions:
+    You can access the internet and run local commands. Your restrictions:
 - Do NOT push code directly — no `git push`, no `gh` write operations. Use `{push_work}` instead. Access rights are configured to prevent gh-based pushes anyway.
 - Do NOT run git clone/pull/fetch — use `{pull_work}` instead
-- Use MCP `{push_work}` to submit your work
-- Use MCP `{post_message}`, `{ask_user}`, `{ask_planner}` to communicate and request input
+    - Use MCP `{push_work}` to submit your work
+    - Use MCP `{ask_user}` to request the user's explanations related to the task; use `{report_error}` only to report technical errors; use `{ask_planner}` to request planner clarification
 - For reading GitHub data: use `git` and `gh` CLI only when no MCP tool provides the needed information
 - NEVER use git/gh for writing, pushing, or sending data to GitHub
 - The work repository has all remote information cleared. The model must not do git push itself. Only `{pull_work}` and `{push_work}` can access the remote. The MCP `{get_param_destination_branch}` returns the name of the original branch in pulled repository, the MCP `{get_param_work_branch}` gives the name of the brach to work.
@@ -325,7 +326,7 @@ Work autonomously. Do not ask the user for anything.
     - Use `{update_checklist_item}` to refine item text if needed as you learn more about the work
     - Use `{insert_checklist_item}` to add new items if you discover additional steps
     - Call `{check_checklist_item}` to mark the completed checklist item(s) as done
-    - Call `{post_message}` to summarize what was accomplished
+    - Call `{ask_planner}` or `{ask_user}` if you need acknowledgement; use `{report_error}` only for technical error reports
 13. If there are issues requiring user intervention:
     - Call `{ask_user}` to describe the problem and ask the user for input
 14. If there are issues requiring planner intervention:
@@ -338,7 +339,7 @@ Work autonomously. Do not ask the user for anything.
         update_checklist_item = worker_tools::UPDATE_CHECKLIST_ITEM,
         check_checklist_item = worker_tools::CHECK_CHECKLIST_ITEM,
         delete_checklist_item = worker_tools::DELETE_CHECKLIST_ITEM,
-        post_message = worker_tools::POST_MESSAGE,
+        report_error = worker_tools::REPORT_ERROR,
         create_branch_name = worker_tools::CREATE_BRANCH_NAME,
         pull_work = worker_tools::PULL_WORK,
         push_work = worker_tools::PUSH_WORK,
@@ -375,7 +376,7 @@ You have read-only access to all task information:
 - Use `{get_plan}` to see the implementation plan
 - Use `{get_discussion}` for context and prior comments
 - Use `{pull_work}` to access the work repository and examine changes
-- Use `{post_message}` to communicate findings
+    - Use `{ask_user}` to request the user's explanations related to review findings; use `{report_error}` only to report technical errors
 - You can run local git commands to examine changes, but you cannot push
 
 Work autonomously. Do not ask the user for anything.
@@ -406,7 +407,7 @@ Work autonomously. Do not ask the user for anything.
 12. When review is complete:
     - If issues were found: Signal `go_work` by checking all items you created (they should be unchecked initially), then the worker will address them
     - If no issues: Signal `done` by ensuring the checklist is empty or all items are checked
-13. Call `{post_message}` to summarize your review findings"#,
+13. Call `{ask_planner}` or `{ask_user}` to summarize or request clarification; use `{report_error}` only for technical error reports"#,
         get_description = reviewer_tools::GET_DESCRIPTION,
         get_plan = reviewer_tools::GET_PLAN,
         get_discussion = reviewer_tools::GET_DISCUSSION,
@@ -415,8 +416,10 @@ Work autonomously. Do not ask the user for anything.
         update_checklist_item = reviewer_tools::UPDATE_CHECKLIST_ITEM,
         check_checklist_item = reviewer_tools::CHECK_CHECKLIST_ITEM,
         delete_checklist_item = reviewer_tools::DELETE_CHECKLIST_ITEM,
-        post_message = reviewer_tools::POST_MESSAGE,
+        report_error = reviewer_tools::REPORT_ERROR,
         pull_work = reviewer_tools::PULL_WORK,
+        ask_user = worker_tools::ASK_USER,
+        ask_planner = worker_tools::ASK_PLANNER,
         get_param_destination_branch = reviewer_tools::GET_PARAM_DESTINATION_BRANCH,
         get_param_work_branch = reviewer_tools::GET_PARAM_WORK_BRANCH,
     )
@@ -518,17 +521,20 @@ pub trait CommonMcpImpl: Send + Sync {
         }
     }
 
-    async fn post_message_impl(&self, message: &str) -> String {
-        tracing::info!("[{}#{}] post_message", self.role_name(), self.session().task_id());
+    async fn report_error_impl(&self, message: &str) -> String {
+        tracing::info!("[{}#{}] report_error", self.role_name(), self.session().task_id());
         let hostname = get_hostname();
-        match self
-            .session()
-            .post_message(message, self.role().as_str(), &hostname)
-            .await
-        {
-            Ok(()) => "Message posted".to_string(),
-            Err(e) => format!("Error: {e}"),
+
+        if let Err(e) = self.session().post_message(message, "error", &hostname).await {
+            return format!("Error posting error message: {e}");
         }
+
+        // Signal to pause task processing and wait for user response
+        if let Err(e) = self.session().set_signal(crate::Signal::GoAsk).await {
+            return format!("Error reporting error but error pausing task: {e}");
+        }
+
+        "Error reported to user - task paused pending response".to_string()
     }
 
     async fn get_plan_impl(&self) -> String {
@@ -927,9 +933,9 @@ impl PlannerMcp {
         self.get_discussion_impl().await
     }
 
-    #[tool(description = "Post a message to the task discussion")]
-    async fn post_message(&self, Parameters(params): Parameters<MessageParam>) -> String {
-        self.post_message_impl(&params.message).await
+    #[tool(description = "Report an error to the user and pause task processing")]
+    async fn report_error(&self, Parameters(params): Parameters<MessageParam>) -> String {
+        self.report_error_impl(&params.message).await
     }
 
     #[tool(description = "Get the current implementation plan for this task")]
@@ -1045,9 +1051,9 @@ impl WorkerMcp {
         self.get_discussion_impl().await
     }
 
-    #[tool(description = "Post a message to the task discussion")]
-    async fn post_message(&self, Parameters(params): Parameters<MessageParam>) -> String {
-        self.post_message_impl(&params.message).await
+    #[tool(description = "Report an error to the user and pause task processing")]
+    async fn report_error(&self, Parameters(params): Parameters<MessageParam>) -> String {
+        self.report_error_impl(&params.message).await
     }
 
     #[tool(description = "Post a message to the user and pause task processing until user responds")]
@@ -1183,9 +1189,9 @@ impl ReviewerMcp {
         self.get_discussion_impl().await
     }
 
-    #[tool(description = "Post a message to the task discussion")]
-    async fn post_message(&self, Parameters(params): Parameters<MessageParam>) -> String {
-        self.post_message_impl(&params.message).await
+    #[tool(description = "Report an error to the user and pause task processing")]
+    async fn report_error(&self, Parameters(params): Parameters<MessageParam>) -> String {
+        self.report_error_impl(&params.message).await
     }
 
     #[tool(description = "Get the current implementation plan for this task (read-only)")]
