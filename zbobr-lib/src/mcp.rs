@@ -207,6 +207,8 @@ mcp_tools! {
     UPDATE_CHECKLIST_ITEM = "update_checklist_item",
     CHECK_CHECKLIST_ITEM = "check_checklist_item",
     DELETE_CHECKLIST_ITEM = "delete_checklist_item",
+    GET_PARAM_DESTINATION_BRANCH = "get_param_destination_branch",
+    GET_PARAM_WORK_BRANCH = "get_param_work_branch",
 }
 
 mcp_tools! {
@@ -301,7 +303,7 @@ You can access the internet and run local commands. Your restrictions:
 - Use MCP `{post_message}`, `{ask_user}`, `{ask_planner}` to communicate and request input
 - For reading GitHub data: use `git` and `gh` CLI only when no MCP tool provides the needed information
 - NEVER use git/gh for writing, pushing, or sending data to GitHub
-- The work repository has all remote information cleared. The model must not do git push itself. Only `{pull_work}` and `{push_work}` can access the remote.
+- The work repository has all remote information cleared. The model must not do git push itself. Only `{pull_work}` and `{push_work}` can access the remote. The MCP `{get_param_destination_branch}` returns the name of the original branch in pulled repository, the MCP `{get_param_work_branch}` gives the name of the brach to work.
 
 Work autonomously. Do not ask the user for anything.
 
@@ -693,6 +695,24 @@ pub trait PlannerMcpImpl: CommonMcpImpl {
 /// Worker-specific MCP implementations
 #[allow(async_fn_in_trait)]
 pub trait WorkerMcpImpl: CommonMcpImpl {
+    async fn get_param_impl(&self, param: Parameter) -> String {
+        let param_name = param.name();
+        tracing::info!("[worker#{}] get_param_{}", self.session().task_id(), param_name);
+        match self.session().get_parameter(param_name).await {
+            Ok(Some(value)) => value,
+            Ok(None) => format!("{} is not set", param_name),
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    async fn get_param_destination_branch_impl(&self) -> String {
+        self.get_param_impl(Parameter::DestinationBranch).await
+    }
+
+    async fn get_param_work_branch_impl(&self) -> String {
+        self.get_param_impl(Parameter::WorkBranch).await
+    }
+
     async fn ask_user_impl(&self, message: &str) -> String {
         tracing::info!("[worker#{}] ask_user", self.session().task_id());
         let hostname = get_hostname();
@@ -974,6 +994,16 @@ impl WorkerMcp {
     #[tool(description = "Delete a checklist item")]
     async fn delete_checklist_item(&self, Parameters(params): Parameters<DeleteChecklistItemParam>) -> String {
         self.delete_checklist_item_impl(&params.id).await
+    }
+
+    #[tool(description = "Get the destination branch name for this task (read-only)")]
+    async fn get_param_destination_branch(&self) -> String {
+        self.get_param_destination_branch_impl().await
+    }
+
+    #[tool(description = "Get the work branch name for this task (read-only)")]
+    async fn get_param_work_branch(&self) -> String {
+        self.get_param_work_branch_impl().await
     }
 }
 
