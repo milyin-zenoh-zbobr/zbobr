@@ -86,6 +86,23 @@ pub struct TaskIdParam {
     pub id: u64,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum Parameter {
+    DestinationRepository,
+    DestinationBranch,
+    WorkBranch,
+}
+
+impl Parameter {
+    fn name(&self) -> &'static str {
+        match self {
+            Parameter::DestinationRepository => "destination_repository",
+            Parameter::DestinationBranch => "destination_branch",
+            Parameter::WorkBranch => "work_branch",
+        }
+    }
+}
+
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct CreateTaskParam {
     #[schemars(description = "Task title")]
@@ -154,6 +171,24 @@ pub struct DeleteChecklistItemParam {
     pub id: String,
 }
 
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct SetDestinationRepositoryParam {
+    #[schemars(description = "Destination repository in owner/name format (or null to unset)")]
+    pub value: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct SetDestinationBranchParam {
+    #[schemars(description = "Destination branch name (or null to unset)")]
+    pub value: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct SetWorkBranchParam {
+    #[schemars(description = "Work branch name (or null to unset)")]
+    pub value: Option<String>,
+}
+
 macro_rules! mcp_tools {
     ($mod_name:ident, $($name:ident = $val:expr),* $(,)?) => {
         pub mod $mod_name {
@@ -177,6 +212,12 @@ mcp_tools! {
     UPDATE_CHECKLIST_ITEM = "update_checklist_item",
     CHECK_CHECKLIST_ITEM = "check_checklist_item",
     DELETE_CHECKLIST_ITEM = "delete_checklist_item",
+    GET_PARAM_DESTINATION_REPOSITORY = "get_param_destination_repository",
+    SET_PARAM_DESTINATION_REPOSITORY = "set_param_destination_repository",
+    GET_PARAM_DESTINATION_BRANCH = "get_param_destination_branch",
+    SET_PARAM_DESTINATION_BRANCH = "set_param_destination_branch",
+    GET_PARAM_WORK_BRANCH = "get_param_work_branch",
+    SET_PARAM_WORK_BRANCH = "set_param_work_branch",
 }
 
 mcp_tools! {
@@ -231,17 +272,22 @@ Work autonomously. Do not ask the user for anything.
 2. Call `{get_plan}` to read an existing plan if there is one
 3. Call `{get_checklist}` to read existing checklist items if there are any
 4. Call `{get_discussion}` for context and prior comments and questions to existing plan
-5. Pull the relevant repository using one of:
+5. **Set task parameters** that will guide the worker implementation:
+   - Call `{set_param_destination_repository}` with the target GitHub repository (owner/repo format)
+   - Call `{set_param_destination_branch}` with the target branch name (e.g., "main", "develop")
+   - Call `{set_param_work_branch}` with the local work branch name (e.g., "implement-feature")
+   - Use `{get_param_destination_repository}`, `{get_param_destination_branch}`, `{get_param_work_branch}` to read current values
+6. Pull the relevant repository using one of:
    - `{pull_branch}` — pull any branch of any repository you need to investigate
    - `{pull_branch_by_pr}` — shortcut: if the task mentions a PR, pull it directly without reading the PR to find its branch
-6. Explore the codebase, identify and document the files, crates, modules, and keywords relevant to the task. These help define the scope and guide the worker:
+7. Explore the codebase, identify and document the files, crates, modules, and keywords relevant to the task. These help define the scope and guide the worker:
    - List specific files that need to be modified or created
    - Identify crates/modules that contain related functionality
    - Include keywords/concepts the worker should focus on (e.g., "async/await", "error handling", "API compatibility")
    - This context narrows the worker's scope and prevents unnecessary exploration
-7. Design a solution. 
-8. Post a solution in the form of a text plan with `{post_plan}`
-9. Post or edit steps to implement the solution in the form of checklist items with `{insert_checklist_item}`, `{update_checklist_item}`, `{delete_checklist_item}`, `{check_checklist_item}`. 
+8. Design a solution. 
+9. Post a solution in the form of a text plan with `{post_plan}`
+10. Post or edit steps to implement the solution in the form of checklist items with `{insert_checklist_item}`, `{update_checklist_item}`, `{delete_checklist_item}`, `{check_checklist_item}`. 
 
 ## Plan Format
 
@@ -265,6 +311,12 @@ Post markdown with sections: Overview, Relevant Files/Crates, Keywords, Changes 
         update_checklist_item = planner_tools::UPDATE_CHECKLIST_ITEM,
         check_checklist_item = planner_tools::CHECK_CHECKLIST_ITEM,
         delete_checklist_item = planner_tools::DELETE_CHECKLIST_ITEM,
+        get_param_destination_repository = planner_tools::GET_PARAM_DESTINATION_REPOSITORY,
+        set_param_destination_repository = planner_tools::SET_PARAM_DESTINATION_REPOSITORY,
+        get_param_destination_branch = planner_tools::GET_PARAM_DESTINATION_BRANCH,
+        set_param_destination_branch = planner_tools::SET_PARAM_DESTINATION_BRANCH,
+        get_param_work_branch = planner_tools::GET_PARAM_WORK_BRANCH,
+        set_param_work_branch = planner_tools::SET_PARAM_WORK_BRANCH,
     )
 }
 
@@ -500,6 +552,25 @@ pub trait CommonMcpImpl: Send + Sync {
 /// Planner-specific MCP implementations
 #[allow(async_fn_in_trait)]
 pub trait PlannerMcpImpl: CommonMcpImpl {
+    async fn get_param_impl(&self, param: Parameter) -> String {
+        let param_name = param.name();
+        tracing::info!("[planner#{}] get_param_{}", self.session().task_id(), param_name);
+        match self.session().get_parameter(param_name).await {
+            Ok(Some(value)) => value,
+            Ok(None) => format!("{} is not set", param_name),
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    async fn set_param_impl(&self, param: Parameter, value: Option<String>) -> String {
+        let param_name = param.name();
+        tracing::info!("[planner#{}] set_param_{} value={:?}", self.session().task_id(), param_name, value);
+        match self.session().set_parameter(param_name, value).await {
+            Ok(()) => format!("{} updated", param_name),
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
     async fn post_plan_impl(&self, plan: &str) -> String {
         tracing::info!("[planner#{}] post_plan", self.session().task_id());
         match (self.session().get_description().await, self.session().get_checklist().await) {
@@ -629,6 +700,30 @@ pub trait PlannerMcpImpl: CommonMcpImpl {
             }
             (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => format!("Error: {e}"),
         }
+    }
+
+    async fn get_param_destination_repository_impl(&self) -> String {
+        self.get_param_impl(Parameter::DestinationRepository).await
+    }
+
+    async fn set_param_destination_repository_impl(&self, value: Option<String>) -> String {
+        self.set_param_impl(Parameter::DestinationRepository, value).await
+    }
+
+    async fn get_param_destination_branch_impl(&self) -> String {
+        self.get_param_impl(Parameter::DestinationBranch).await
+    }
+
+    async fn set_param_destination_branch_impl(&self, value: Option<String>) -> String {
+        self.set_param_impl(Parameter::DestinationBranch, value).await
+    }
+
+    async fn get_param_work_branch_impl(&self) -> String {
+        self.get_param_impl(Parameter::WorkBranch).await
+    }
+
+    async fn set_param_work_branch_impl(&self, value: Option<String>) -> String {
+        self.set_param_impl(Parameter::WorkBranch, value).await
     }
 }
 
@@ -802,6 +897,36 @@ impl PlannerMcp {
     #[tool(description = "Delete a checklist item")]
     async fn delete_checklist_item(&self, Parameters(params): Parameters<DeleteChecklistItemParam>) -> String {
         self.delete_checklist_item_impl(&params.id).await
+    }
+
+    #[tool(description = "Get the destination repository URL for this task (read-only)")]
+    async fn get_param_destination_repository(&self) -> String {
+        self.get_param_destination_repository_impl().await
+    }
+
+    #[tool(description = "Set the destination repository URL for this task (e.g. 'owner/repo')")]
+    async fn set_param_destination_repository(&self, Parameters(params): Parameters<SetDestinationRepositoryParam>) -> String {
+        self.set_param_destination_repository_impl(params.value).await
+    }
+
+    #[tool(description = "Get the destination branch name for this task (read-only)")]
+    async fn get_param_destination_branch(&self) -> String {
+        self.get_param_destination_branch_impl().await
+    }
+
+    #[tool(description = "Set the destination branch name for this task (e.g. 'main')")]
+    async fn set_param_destination_branch(&self, Parameters(params): Parameters<SetDestinationBranchParam>) -> String {
+        self.set_param_destination_branch_impl(params.value).await
+    }
+
+    #[tool(description = "Get the work branch name for this task (read-only)")]
+    async fn get_param_work_branch(&self) -> String {
+        self.get_param_work_branch_impl().await
+    }
+
+    #[tool(description = "Set the work branch name for this task (e.g. 'implement-feature')")]
+    async fn set_param_work_branch(&self, Parameters(params): Parameters<SetWorkBranchParam>) -> String {
+        self.set_param_work_branch_impl(params.value).await
     }
 }
 

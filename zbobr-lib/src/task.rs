@@ -378,6 +378,7 @@ pub struct Task {
     pub parent_task_id: Option<u64>,
     pub destination_repo: Option<String>,
     pub destination_branch: Option<String>,
+    pub work_branch: Option<String>,
     pub done: bool,
     pub checklist: Vec<ChecklistItem>,
     pub signal: Option<Signal>,
@@ -732,6 +733,51 @@ impl TaskSession {
     pub async fn mark_done(&self) -> Result<(), ZbobrError> {
         self.set_signal(Signal::Done).await?;
         Ok(())
+    }
+
+    /// Get a task parameter value. Parameters are stored as hidden fields in the task description.
+    pub async fn get_parameter(&self, param_name: &str) -> Result<Option<String>, ZbobrError> {
+        let task = self.zbobr.get_task(self.task_id).await?;
+        
+        // Map parameter names to task fields
+        Ok(match param_name.to_lowercase().as_str() {
+            "destination_repository" => task.destination_repo,
+            "destination_branch" => task.destination_branch,
+            "work_branch" => task.work_branch,
+            _ => None,
+        })
+    }
+
+    /// Set a task parameter value. Parameters are stored as hidden fields in the task description.
+    pub async fn set_parameter(&self, param_name: &str, value: Option<String>) -> Result<(), ZbobrError> {
+        use crate::backend::parse_description_with_plan_and_checklist;
+        
+        let task = self.zbobr.get_task(self.task_id).await?;
+        let (description, plan, checklist) = parse_description_with_plan_and_checklist(&task.description);
+        
+        // Create updated task description with the new parameter value
+        use crate::backend::serialize_description_with_plan_and_checklist;
+        let mut body = serialize_description_with_plan_and_checklist(&description, &plan, &checklist);
+        
+        // Update the hidden field in the body
+        let param_key = param_name.to_lowercase();
+        let start_tag = format!("<!-- {}: ", param_key);
+        let end_tag = " -->";
+        
+        // Remove any existing value for this parameter
+        if let Some(start_idx) = body.find(&start_tag) {
+            if let Some(end_idx) = body[start_idx..].find(end_tag) {
+                let end_pos = start_idx + end_idx + end_tag.len();
+                body.drain(start_idx..end_pos);
+            }
+        }
+        
+        // Add the new value if provided
+        if let Some(v) = value {
+            body.push_str(&format!("\n<!-- {}: {} -->", param_key, v));
+        }
+        
+        self.zbobr.update_task_description(self.task_id, &body).await
     }
 }
 #[cfg(test)]

@@ -272,6 +272,7 @@ impl Backend for GitHubBackend {
             extract_hidden_field(&body, "parent_task_id").and_then(|s| s.parse().ok());
         let destination_repo = extract_hidden_field(&body, "destination_repo");
         let destination_branch = extract_hidden_field(&body, "destination_branch");
+        let work_branch = extract_hidden_field(&body, "work_branch");
 
         // Check if 'done' signal is present
         let done = issue
@@ -305,6 +306,7 @@ impl Backend for GitHubBackend {
             parent_task_id,
             destination_repo,
             destination_branch,
+            work_branch,
             done,
             checklist,
             signal,
@@ -321,6 +323,7 @@ impl Backend for GitHubBackend {
         parent_task_id: Option<u64>,
         destination_repo: Option<String>,
         destination_branch: Option<String>,
+        work_branch: Option<String>,
     ) -> Result<u64, ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         let mut body = description.to_string();
@@ -331,6 +334,7 @@ impl Backend for GitHubBackend {
                 ("parent_task_id", parent_task_id.map(|id| id.to_string())),
                 ("destination_repo", destination_repo),
                 ("destination_branch", destination_branch),
+                ("work_branch", work_branch),
             ],
         );
 
@@ -544,6 +548,7 @@ impl Backend for GitHubBackend {
                 extract_hidden_field(&body, "parent_task_id").and_then(|s| s.parse().ok());
             let destination_repo = extract_hidden_field(&body, "destination_repo");
             let destination_branch = extract_hidden_field(&body, "destination_branch");
+            let work_branch = extract_hidden_field(&body, "work_branch");
             
             // Check if 'done' signal is present
             let done = issue
@@ -573,6 +578,7 @@ impl Backend for GitHubBackend {
                 parent_task_id,
                 destination_repo,
                 destination_branch,
+                work_branch,
                 done,
                 checklist,
                 signal,

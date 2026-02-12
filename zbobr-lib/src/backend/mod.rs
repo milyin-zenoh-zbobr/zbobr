@@ -151,6 +151,7 @@ pub trait Backend: Send + Sync {
         parent_task_id: Option<u64>,
         destination_repo: Option<String>,
         destination_branch: Option<String>,
+        work_branch: Option<String>,
     ) -> Result<u64, ZbobrError>;
 
     /// Close a task.

@@ -37,6 +37,7 @@ impl Default for StubState {
                 parent_task_id: None,
                 destination_repo: None,
                 destination_branch: None,
+                work_branch: None,
                 done: false,
                 checklist: vec![],
                 signal: None,
@@ -96,6 +97,7 @@ impl Backend for StubBackend {
         parent_task_id: Option<u64>,
         destination_repo: Option<String>,
         destination_branch: Option<String>,
+        work_branch: Option<String>,
     ) -> Result<u64, ZbobrError> {
         let mut state = self.state.write().unwrap();
         let id = state.next_task_id;
@@ -112,6 +114,7 @@ impl Backend for StubBackend {
             parent_task_id,
             destination_repo,
             destination_branch,
+            work_branch,
             done: false,
             checklist: vec![],
             signal: None,
