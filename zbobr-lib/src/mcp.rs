@@ -345,6 +345,8 @@ Work autonomously. Do not ask the user for anything.
         create_branch_name = worker_tools::CREATE_BRANCH_NAME,
         pull_work = worker_tools::PULL_WORK,
         push_work = worker_tools::PUSH_WORK,
+        get_param_destination_branch = worker_tools::GET_PARAM_DESTINATION_BRANCH,
+        get_param_work_branch = worker_tools::GET_PARAM_WORK_BRANCH,
         ask_user = worker_tools::ASK_USER,
         ask_planner = worker_tools::ASK_PLANNER,
     )
