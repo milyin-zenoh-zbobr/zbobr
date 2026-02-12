@@ -616,6 +616,37 @@ async fn run_manager_loop(
         // Check for processable tasks using tool-based filtering
         let current_tool = zbobr.config().cli_tool;
 
+        // First, check PENDING tasks for signals and transition them.
+        // Note: Only PENDING tasks are checked - tasks already in GO_PLANNING or GO_WORKING
+        // stages are locked and should not be transitioned by this logic.
+        let pending_tasks = match zbobr
+            .list_tasks_by_stage(Stage::Pending.milestone_name(), Some(current_tool))
+            .await
+        {
+            Ok(tasks) => tasks,
+            Err(e) => {
+                tracing::error!("Failed to check PENDING tasks: {e}");
+                vec![]
+            }
+        };
+
+        for task in pending_tasks {
+            if let Some(signal) = task.signal {
+                let target_stage = signal.target_stage();
+                if target_stage != Stage::Pending {
+                    tracing::info!(
+                        "Task #{} has signal {:?}, transitioning from PENDING to {}",
+                        task.id,
+                        signal,
+                        target_stage
+                    );
+                    if let Err(e) = zbobr.set_task_stage(task.id, target_stage).await {
+                        tracing::error!("Failed to transition task #{}: {e}", task.id);
+                    }
+                }
+            }
+        }
+
         // Check for GO_PLANNING tasks
         let planning_tasks = match zbobr
             .list_tasks_by_stage(Stage::GoPlanning.milestone_name(), Some(current_tool))
