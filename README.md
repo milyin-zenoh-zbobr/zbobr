@@ -292,6 +292,25 @@ Zbobr manages **three distinct GitHub tokens** with different access levels and 
 - **Agent processes** (Copilot/Claude) are spawned with the agent token in `GH_TOKEN`/`GITHUB_TOKEN` and the Copilot token in `COPILOT_GITHUB_TOKEN` so agents have read-only access while Copilot can use its own permissions. See [zbobr-lib/src/tool_executor.rs](zbobr-lib/src/tool_executor.rs).
 - **Runtime checks**: configuration validation enforces `ZBOBR_AGENT_GH_TOKEN` is set and different from the owner token to avoid accidental privilege escalation. See [zbobr-lib/src/config.rs](zbobr-lib/src/config.rs).
 
+Detailed configuration parameters:
+
+- Owner token:
+   - Env vars: `ZBOBR_OWNER_GH_TOKEN` (preferred), `GH_TOKEN`, `GITHUB_TOKEN`, or `$(gh auth token)` as fallback.
+   - TOML field: `owner_github_token` in `zbobr.toml`.
+   - Used for: `octocrab` API calls and owner-level `gh` operations.
+
+- Agent token (read-only):
+   - Env var: `ZBOBR_AGENT_GH_TOKEN` (required).
+   - TOML field: `agent_github_token` in `zbobr.toml`.
+   - Usage: passed to agent subprocesses as `GH_TOKEN` and `GITHUB_TOKEN` to restrict agent GitHub permissions.
+
+- Copilot token:
+   - Env vars: `ZBOBR_COPILOT_GITHUB_TOKEN` (preferred), `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, or `$(gh auth token)`.
+   - TOML field: `copilot_github_token` in `zbobr.toml`.
+   - Usage: passed as `COPILOT_GITHUB_TOKEN` to Copilot CLI subprocesses so Copilot can perform operations requiring its own permissions when the agent token is restricted.
+
+See `zbobr.toml.sample` for examples of these fields and the code references above for enforcement and usage.
+
 - **All issue/PR management** happens in the task project repository
 - **Agents never modify** target repositories directly—they only create forks and PRs
 - **Labels and milestones** are orchestrator-managed and universal
