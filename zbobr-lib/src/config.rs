@@ -39,7 +39,7 @@ impl std::str::FromStr for BackendType {
 
 /// TOML prompts configuration section.
 #[derive(Debug, Clone, serde::Deserialize, Default)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct TomlPrompts {
     pub path: Option<PathBuf>,
     pub planner: Option<Vec<PathBuf>>,
@@ -50,7 +50,7 @@ pub struct TomlPrompts {
 /// Configuration loaded from a TOML file.
 /// All fields are optional — missing fields fall back to env vars or defaults.
 #[derive(Debug, Clone, serde::Deserialize, Default)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct TomlConfig {
     pub task_repo: Option<String>,
     pub fork_owner: Option<String>,
@@ -494,6 +494,25 @@ mod tests {
             prompts.planner,
             Some(vec![PathBuf::from("plan.md"), PathBuf::from("shared.md")])
         );
+    }
+
+    #[test]
+    fn toml_config_unknown_keys_ignored() {
+        let toml_str = r#"
+    task_repo = "org/repo"
+    unknown_top = "value"
+
+    [prompts]
+    path = "/tmp"
+    extra = "ignored"
+
+    [unknown_table]
+    foo = "bar"
+    "#;
+
+        // With deny_unknown_fields, parsing should fail on unknown keys
+        let res: Result<TomlConfig, _> = toml::from_str(toml_str);
+        assert!(res.is_err());
     }
 
     #[test]
