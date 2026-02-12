@@ -11,7 +11,7 @@ use std::{path::PathBuf, sync::Arc};
 
 pub use config::{TomlConfig, ZbobrConfig};
 pub use mcp::{planner_instructions, worker_instructions, PlannerMcp, WorkerMcp};
-pub use task::{Model, ChecklistItem, Signal, Stage, Task, TaskSession, Tool};
+pub use task::{Model, ChecklistItem, Parameter, Signal, Stage, Task, TaskSession, Tool};
 pub use tool_executor::{ClaudeExecutor, CopilotExecutor, StubExecutor, ToolExecutor};
 
 use crate::{

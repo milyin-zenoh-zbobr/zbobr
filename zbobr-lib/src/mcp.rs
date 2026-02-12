@@ -12,7 +12,7 @@ use rmcp::{
 use serde_json::Value;
 
 use crate::{
-    task::{Model, ChecklistItem, Role, Stage, TaskSession, Tool},
+    task::{Model, ChecklistItem, Parameter, Role, Stage, TaskSession, Tool},
     Zbobr,
 };
 
@@ -60,25 +60,6 @@ pub struct ShortNameParam {
 pub struct TaskIdParam {
     #[schemars(description = "The task ID")]
     pub id: u64,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum Parameter {
-    DestinationRepository,
-    DestinationBranch,
-    WorkBranch,
-    PrUrl,
-}
-
-impl Parameter {
-    fn name(&self) -> &'static str {
-        match self {
-            Parameter::DestinationRepository => "destination_repository",
-            Parameter::DestinationBranch => "destination_branch",
-            Parameter::WorkBranch => "work_branch",
-            Parameter::PrUrl => "pr_url",
-        }
-    }
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]

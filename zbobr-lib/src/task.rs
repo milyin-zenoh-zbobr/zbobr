@@ -5,6 +5,29 @@ use std::{
 
 use crate::{Zbobr, ZbobrError};
 
+// -- Parameter names enum --
+
+/// Standardized parameter names for task configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Parameter {
+    DestinationRepository,
+    DestinationBranch,
+    WorkBranch,
+    PrUrl,
+}
+
+impl Parameter {
+    /// Returns the parameter name as a string.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Parameter::DestinationRepository => "destination_repository",
+            Parameter::DestinationBranch => "destination_branch",
+            Parameter::WorkBranch => "work_branch",
+            Parameter::PrUrl => "pr_url",
+        }
+    }
+}
+
 // -- Checklist item types --
 
 /// A single item in a task's checklist.
@@ -715,7 +738,7 @@ impl TaskSession {
     /// The work repository has all remote information cleared - only pull_work and push_work know where to push.
     pub async fn push_work(&self) -> Result<(), ZbobrError> {
         // Get the destination repo (needed to find the cloned path)
-        let dest_repo = self.get_parameter("destination_repository").await?
+        let dest_repo = self.get_parameter(Parameter::DestinationRepository.name()).await?
             .ok_or_else(|| ZbobrError::Other("destination_repository parameter not set".to_string()))?;
         
         // Find the work directory for this repository
@@ -738,7 +761,7 @@ impl TaskSession {
         }
 
         // Get the work_branch name
-        let work_branch = self.get_parameter("work_branch").await?
+        let work_branch = self.get_parameter(Parameter::WorkBranch.name()).await?
             .ok_or_else(|| ZbobrError::Other("work_branch parameter not set".to_string()))?;
 
         // Get current branch
@@ -804,13 +827,13 @@ impl TaskSession {
     /// Also creates a PR from work_branch to destination_branch in the fork repo if all parameters are set.
     pub async fn pull_work(&self) -> Result<String, ZbobrError> {
         // Get required parameters
-        let dest_repo = self.get_parameter("destination_repository").await?
+        let dest_repo = self.get_parameter(Parameter::DestinationRepository.name()).await?
             .ok_or_else(|| ZbobrError::Other("destination_repository parameter not set".to_string()))?;
         
-        let dest_branch = self.get_parameter("destination_branch").await?
+        let dest_branch = self.get_parameter(Parameter::DestinationBranch.name()).await?
             .ok_or_else(|| ZbobrError::Other("destination_branch parameter not set".to_string()))?;
 
-        let work_branch = self.get_parameter("work_branch").await?
+        let work_branch = self.get_parameter(Parameter::WorkBranch.name()).await?
             .ok_or_else(|| ZbobrError::Other("work_branch parameter not set".to_string()))?;
 
         // Clone and setup the repository with forking
@@ -906,7 +929,7 @@ impl TaskSession {
             .await?;
 
         // Store the PR URL in the task
-        self.set_parameter("pr_url", Some(pr_url)).await?;
+        self.set_parameter(Parameter::PrUrl.name(), Some(pr_url)).await?;
         
         Ok(())
     }
@@ -924,10 +947,10 @@ impl TaskSession {
         
         // First check task fields
         let from_task_fields = match param_name.to_lowercase().as_str() {
-            "destination_repository" => task.destination_repository,
-            "destination_branch" => task.destination_branch,
-            "work_branch" => task.work_branch,
-            "pr_url" => task.pr_url,
+            name if name == Parameter::DestinationRepository.name() => task.destination_repository,
+            name if name == Parameter::DestinationBranch.name() => task.destination_branch,
+            name if name == Parameter::WorkBranch.name() => task.work_branch,
+            name if name == Parameter::PrUrl.name() => task.pr_url,
             _ => None,
         };
         
