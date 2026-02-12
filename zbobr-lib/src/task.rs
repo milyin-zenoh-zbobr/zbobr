@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::collections::HashMap;
 
 use crate::{Zbobr, ZbobrError};
 
@@ -392,28 +389,16 @@ pub struct Task {
     pub signal: Option<Signal>,
 }
 
-/// Tracked repository information for a task session.
-#[derive(Debug, Clone)]
-struct TrackedRepo {
-    repo: String,
-    local_path: std::path::PathBuf,
-}
-
 /// Task session bound to a specific task, with role-based behavior.
 #[derive(Clone)]
 pub struct TaskSession {
     zbobr: Zbobr,
     task_id: u64,
-    tracked_repos: Arc<Mutex<HashMap<String, TrackedRepo>>>,
 }
 
 impl TaskSession {
     pub(crate) fn new(zbobr: Zbobr, task_id: u64) -> Self {
-        Self {
-            zbobr,
-            task_id,
-            tracked_repos: Arc::new(Mutex::new(HashMap::new())),
-        }
+        Self { zbobr, task_id }
     }
 
     pub fn task_id(&self) -> u64 {
@@ -556,17 +541,6 @@ impl TaskSession {
             .clone_readonly(repo, branch, self.task_id)
             .await?;
         let path_str = path.to_string_lossy().to_string();
-
-        // Track this repo and branch
-        let mut tracked = self.tracked_repos.lock().unwrap();
-        tracked.insert(
-            repo.to_string(),
-            TrackedRepo {
-                repo: repo.to_string(),
-                local_path: path,
-            },
-        );
-
         Ok(path_str)
     }
 
@@ -577,17 +551,6 @@ impl TaskSession {
             .clone_and_setup(repo, branch, self.task_id)
             .await?;
         let path_str = path.to_string_lossy().to_string();
-
-        // Track this repo and branch for later submit_work
-        let mut tracked = self.tracked_repos.lock().unwrap();
-        tracked.insert(
-            repo.to_string(),
-            TrackedRepo {
-                repo: repo.to_string(),
-                local_path: path,
-            },
-        );
-
         Ok(path_str)
     }
 
@@ -677,20 +640,12 @@ impl TaskSession {
 
         let fork_owner = &self.zbobr.config().fork_owner;
 
-        // Find the repo name from tracked repos
-        let repo_name = {
-            let tracked = self.tracked_repos.lock().unwrap();
-            tracked
-                .values()
-                .find(|r| r.local_path == work_dir)
-                .map(|r| r.repo.split('/').nth(1).unwrap_or(&r.repo).to_string())
-                .ok_or_else(|| {
-                    ZbobrError::Other(format!(
-                        "Path {} was not obtained from request_branch or request_branch_by_pr",
-                        path
-                    ))
-                })?
-        };
+        // Derive repository name from work directory name (workspace/task#/repo)
+        let repo_name = work_dir
+            .file_name()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| ZbobrError::Other(format!("Could not determine repo name from path: {}", path)))?
+            .to_string();
 
         let fork_repo = format!("{fork_owner}/{repo_name}");
 
@@ -737,17 +692,18 @@ impl TaskSession {
         let dest_repo = self.get_parameter(Parameter::DestinationRepository.name()).await?
             .ok_or_else(|| ZbobrError::Other("destination_repository parameter not set".to_string()))?;
         
-        // Find the work directory for this repository
-        let work_dir = {
-            let tracked = self.tracked_repos.lock().unwrap();
-            tracked
-                .get(&dest_repo)
-                .map(|r| r.local_path.clone())
-                .ok_or_else(|| ZbobrError::Other(format!(
-                    "Repository {} has not been pulled with pull_work",
-                    dest_repo
-                )))?
-        };
+        // Compute the work directory: workspace/task#<id>/<repo>
+        let repo_name = dest_repo
+            .split('/')
+            .nth(1)
+            .ok_or_else(|| ZbobrError::Other(format!("Invalid destination_repository format: {}", dest_repo)))?;
+
+        let work_dir = self
+            .zbobr
+            .config()
+            .workspace
+            .join(format!("task#{}", self.task_id))
+            .join(repo_name);
 
         if !work_dir.exists() {
             return Err(ZbobrError::Other(format!(
@@ -840,17 +796,7 @@ impl TaskSession {
         
         let path_str = path.to_string_lossy().to_string();
 
-        // Track this repo for later push_work
-        {
-            let mut tracked = self.tracked_repos.lock().unwrap();
-            tracked.insert(
-                dest_repo.clone(),
-                TrackedRepo {
-                    repo: dest_repo.clone(),
-                    local_path: path.clone(),
-                },
-            );
-        } // Drop the guard here before any await
+        // No tracking required: local path layout is workspace/task#<id>/<repo>
 
         // Create the work branch from destination_branch if it doesn't exist
         let create_branch = tokio::process::Command::new("git")
