@@ -284,6 +284,14 @@ Zbobr manages **three distinct GitHub tokens** with different access levels and 
 
 ## Important Notes
 
+**Security Model**
+
+- **Three tokens**: owner token (write, used by orchestrator), agent token (read-only, passed to agents as `GH_TOKEN`/`GITHUB_TOKEN`), and copilot token (for Copilot CLI, passed as `COPILOT_GITHUB_TOKEN`).
+- **Orchestrator (octocrab)** uses the owner token when talking to the GitHub API. See [zbobr-lib/src/lib.rs](zbobr-lib/src/lib.rs) which constructs `Octocrab` with the owner token.
+- **`gh` cloning** for private/forked repos runs with the owner token injected into the environment to ensure authenticated clones. See [zbobr-lib/src/backend/github.rs](zbobr-lib/src/backend/github.rs) where `gh repo clone` is invoked with `GH_TOKEN`/`GITHUB_TOKEN` set to the owner token.
+- **Agent processes** (Copilot/Claude) are spawned with the agent token in `GH_TOKEN`/`GITHUB_TOKEN` and the Copilot token in `COPILOT_GITHUB_TOKEN` so agents have read-only access while Copilot can use its own permissions. See [zbobr-lib/src/tool_executor.rs](zbobr-lib/src/tool_executor.rs).
+- **Runtime checks**: configuration validation enforces `ZBOBR_AGENT_GH_TOKEN` is set and different from the owner token to avoid accidental privilege escalation. See [zbobr-lib/src/config.rs](zbobr-lib/src/config.rs).
+
 - **All issue/PR management** happens in the task project repository
 - **Agents never modify** target repositories directly—they only create forks and PRs
 - **Labels and milestones** are orchestrator-managed and universal

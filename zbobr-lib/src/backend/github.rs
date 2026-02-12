@@ -722,6 +722,8 @@ impl Backend for GitHubBackend {
             tracing::info!("Cloning {target_repo} into {}", work_dir.display());
             let status = tokio::process::Command::new("gh")
                 .args(["repo", "clone", target_repo, work_dir.to_str().unwrap()])
+                .env("GH_TOKEN", &self.config.owner_github_token)
+                .env("GITHUB_TOKEN", &self.config.owner_github_token)
                 .status()
                 .await?;
             if !status.success() {
@@ -843,6 +845,8 @@ impl Backend for GitHubBackend {
             );
             let status = tokio::process::Command::new("gh")
                 .args(["repo", "clone", target_repo, work_dir.to_str().unwrap()])
+                .env("GH_TOKEN", &self.config.owner_github_token)
+                .env("GITHUB_TOKEN", &self.config.owner_github_token)
                 .status()
                 .await?;
             if !status.success() {
