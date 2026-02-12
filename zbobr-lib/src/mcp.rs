@@ -289,7 +289,7 @@ The checklist is your persistent memory for this task. It survives across sessio
 - Use `{check_checklist_item}` to mark items as checked (`✓`) when you complete them to record progress.
 - Use `{insert_checklist_item}` to add new items during work if you discover additional steps needed.
 - Use `{update_checklist_item}` to edit item text to refine understanding as you work.
-- Use `{delete_checklist_item}` to remove items only if they become unnecessary (keep most items for history).
+- Use `{delete_checklist_item}` to remove items only if they become unnecessary (keep most items for history). **Note:** You cannot delete checked items—this prevents accidental loss of completed work history.
 
 ## Access Model
 
@@ -364,7 +364,7 @@ The checklist is shared with the worker. It contains both implementation work it
 - Start by using `{get_checklist}` to see what's there — both work items and any prior review remarks.
 - Use `{insert_checklist_item}` to add each issue you find. Prefix with `[REVIEW]` to distinguish your remarks from work items.
 - Use `{update_checklist_item}` to clarify or refine your remarks if needed.
-- Use `{delete_checklist_item}` to remove remarks only if they become irrelevant.
+- Use `{delete_checklist_item}` to remove remarks only if they become irrelevant. **Note:** You cannot delete checked items—only unchecked remarks can be removed.
 - The worker will mark your review remarks as done — do not check items yourself.
 
 ## Access Model
@@ -681,6 +681,15 @@ pub trait CommonMcpImpl: Send + Sync {
             self.session().get_checklist().await,
         ) {
             (Ok(desc), Ok(plan), Ok(mut items)) => {
+                // Check if the item exists and is checked
+                if let Some(item) = items.iter().find(|i| i.id == id) {
+                    if item.checked {
+                        return format!("Error: Cannot delete checked checklist item '{}'. Checked items are preserved as work history.", id);
+                    }
+                } else {
+                    return format!("Error: Checklist item with id '{}' not found", id);
+                }
+                
                 let original_len = items.len();
                 items.retain(|item| item.id != id);
                 
@@ -1105,7 +1114,7 @@ impl WorkerMcp {
         self.check_checklist_item_impl(&params.id, params.checked).await
     }
 
-    #[tool(description = "Delete a checklist item")]
+    #[tool(description = "Delete an unchecked checklist item (checked items are preserved as history)")]
     async fn delete_checklist_item(&self, Parameters(params): Parameters<DeleteChecklistItemParam>) -> String {
         self.delete_checklist_item_impl(&params.id).await
     }
@@ -1219,7 +1228,7 @@ impl ReviewerMcp {
         self.check_checklist_item_impl(&params.id, params.checked).await
     }
 
-    #[tool(description = "Delete a checklist item")]
+    #[tool(description = "Delete an unchecked checklist item (checked items are preserved as history)")]
     async fn delete_checklist_item(&self, Parameters(params): Parameters<DeleteChecklistItemParam>) -> String {
         self.delete_checklist_item_impl(&params.id).await
     }
