@@ -202,7 +202,6 @@ mcp_tools! {
     GET_CHECKLIST = "get_checklist",
     INSERT_CHECKLIST_ITEM = "insert_checklist_item",
     UPDATE_CHECKLIST_ITEM = "update_checklist_item",
-    CHECK_CHECKLIST_ITEM = "check_checklist_item",
     DELETE_CHECKLIST_ITEM = "delete_checklist_item",
     GET_PARAM_DESTINATION_BRANCH = "get_param_destination_branch",
     GET_PARAM_WORK_BRANCH = "get_param_work_branch",
@@ -357,17 +356,16 @@ pub fn reviewer_instructions() -> String {
 
 Review the implementation changes and ensure they meet coding standards and task requirements.
 
-## Checklist: Your Review Memory
+## Checklist: Review Remarks
 
-The checklist is your persistent memory for this review. It survives across sessions and tells you exactly where to continue if the review is interrupted.
+The checklist is shared with the worker. It contains both implementation work items and review remarks. Add your review findings as new checklist items to communicate issues that need fixing.
 
-**Key principles:**
-- Start by using `{get_checklist}` to read the current checklist — it tells you what has been reviewed.
-- Each checklist item represents one review remark or concern that needs to be addressed.
-- Use `{insert_checklist_item}` to add new review remarks as you discover issues.
-- Use `{check_checklist_item}` to mark items as resolved when the worker has addressed them.
-- Use `{update_checklist_item}` to clarify or refine review remarks.
-- Use `{delete_checklist_item}` to remove items only if they become irrelevant.
+**How to use the checklist:**
+- Start by using `{get_checklist}` to see what's there — both work items and any prior review remarks.
+- Use `{insert_checklist_item}` to add each issue you find. Prefix with `[REVIEW]` to distinguish your remarks from work items.
+- Use `{update_checklist_item}` to clarify or refine your remarks if needed.
+- Use `{delete_checklist_item}` to remove remarks only if they become irrelevant.
+- The worker will mark your review remarks as done — do not check items yourself.
 
 ## Access Model
 
@@ -386,7 +384,7 @@ Work autonomously. Do not ask the user for anything.
 1. Call `{get_description}` to understand the task requirements
 2. Call `{get_plan}` to see what was supposed to be implemented
 3. Call `{get_discussion}` for additional context
-4. Call `{get_checklist}` to see if there are existing review items
+4. Call `{get_checklist}` to see what's been done and what review remarks already exist
 5. Set up the repository using `{pull_work}` to access the implementation
 6. `cd` into the returned path
 7. Use `{get_param_work_branch}` to get the work branch name
@@ -402,24 +400,19 @@ Work autonomously. Do not ask the user for anything.
     - Documentation completeness
     - Any potential bugs or issues
 11. For each issue found:
-    - Call `{insert_checklist_item}` to create a new review remark with clear description
+    - Call `{insert_checklist_item}` to add a review remark (prefix with `[REVIEW]`)
     - Include specific file names, line numbers, and what needs to be fixed
-12. When review is complete:
-    - If issues were found: Signal `go_work` by checking all items you created (they should be unchecked initially), then the worker will address them
-    - If no issues: Signal `done` by ensuring the checklist is empty or all items are checked
-13. Call `{ask_planner}` or `{ask_user}` to summarize or request clarification; use `{report_error}` only for technical error reports"#,
+"#,
         get_description = reviewer_tools::GET_DESCRIPTION,
         get_plan = reviewer_tools::GET_PLAN,
         get_discussion = reviewer_tools::GET_DISCUSSION,
         get_checklist = reviewer_tools::GET_CHECKLIST,
         insert_checklist_item = reviewer_tools::INSERT_CHECKLIST_ITEM,
         update_checklist_item = reviewer_tools::UPDATE_CHECKLIST_ITEM,
-        check_checklist_item = reviewer_tools::CHECK_CHECKLIST_ITEM,
         delete_checklist_item = reviewer_tools::DELETE_CHECKLIST_ITEM,
         report_error = reviewer_tools::REPORT_ERROR,
         pull_work = reviewer_tools::PULL_WORK,
         ask_user = worker_tools::ASK_USER,
-        ask_planner = worker_tools::ASK_PLANNER,
         get_param_destination_branch = reviewer_tools::GET_PARAM_DESTINATION_BRANCH,
         get_param_work_branch = reviewer_tools::GET_PARAM_WORK_BRANCH,
     )
