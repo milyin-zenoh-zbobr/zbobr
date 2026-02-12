@@ -281,10 +281,10 @@ impl Backend for GitHubBackend {
 
         let parent_task_id =
             extract_hidden_field(&body, "parent_task_id").and_then(|s| s.parse().ok());
-        let destination_repository = extract_hidden_field(&body, "destination_repository");
-        let destination_branch = extract_hidden_field(&body, "destination_branch");
-        let work_branch = extract_hidden_field(&body, "work_branch");
-        let pr_url = extract_hidden_field(&body, "pr_url");
+        let destination_repository = extract_hidden_field(&body, Parameter::DestinationRepository.name());
+        let destination_branch = extract_hidden_field(&body, Parameter::DestinationBranch.name());
+        let work_branch = extract_hidden_field(&body, Parameter::WorkBranch.name());
+        let pr_url = extract_hidden_field(&body, Parameter::PrUrl.name());
 
         // Build parameters HashMap
         let mut parameters = HashMap::new();
@@ -355,9 +355,9 @@ impl Backend for GitHubBackend {
             &mut body,
             &[
                 ("parent_task_id", parent_task_id.map(|id| id.to_string())),
-                ("destination_repository", parameters.get(&Parameter::DestinationRepository).cloned()),
-                ("destination_branch", parameters.get(&Parameter::DestinationBranch).cloned()),
-                ("work_branch", parameters.get(&Parameter::WorkBranch).cloned()),
+                (Parameter::DestinationRepository.name(), parameters.get(&Parameter::DestinationRepository).cloned()),
+                (Parameter::DestinationBranch.name(), parameters.get(&Parameter::DestinationBranch).cloned()),
+                (Parameter::WorkBranch.name(), parameters.get(&Parameter::WorkBranch).cloned()),
             ],
         );
 
@@ -570,10 +570,10 @@ impl Backend for GitHubBackend {
 
             let parent_task_id =
                 extract_hidden_field(&body, "parent_task_id").and_then(|s| s.parse().ok());
-            let destination_repository = extract_hidden_field(&body, "destination_repository");
-            let destination_branch = extract_hidden_field(&body, "destination_branch");
-            let work_branch = extract_hidden_field(&body, "work_branch");
-            let pr_url = extract_hidden_field(&body, "pr_url");
+            let destination_repository = extract_hidden_field(&body, Parameter::DestinationRepository.name());
+            let destination_branch = extract_hidden_field(&body, Parameter::DestinationBranch.name());
+            let work_branch = extract_hidden_field(&body, Parameter::WorkBranch.name());
+            let pr_url = extract_hidden_field(&body, Parameter::PrUrl.name());
             
             // Build parameters HashMap
             let mut parameters = HashMap::new();
