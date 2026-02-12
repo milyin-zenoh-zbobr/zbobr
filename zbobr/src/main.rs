@@ -520,11 +520,16 @@ async fn run_role_session(
 
     // Set stage based on signal (refetch task to get updated signal)
     let task = zbobr.get_task(task_id).await?;
-    let final_stage = if task.signal.is_some() {
-        // If any signal is set, transition to Pending
-        Stage::Pending
+    let final_stage = if let Some(signal) = task.signal {
+        // Map signal to target stage
+        signal.target_stage()
     } else {
-        Stage::GoWorking
+        // No signal set, transition to next stage based on role
+        if role == Role::Planner {
+            Stage::GoWorking
+        } else {
+            Stage::Pending
+        }
     };
     
     zbobr.set_task_stage(task_id, final_stage).await?;
