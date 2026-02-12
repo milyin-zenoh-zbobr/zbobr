@@ -1,9 +1,9 @@
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 
 use super::Backend;
-use crate::{Model, Signal, Stage, Task, Tool, ZbobrConfig, ZbobrError};
+use crate::{Model, Parameter, Signal, Stage, Task, Tool, ZbobrConfig, ZbobrError};
 
 pub struct GitHubBackend {
     config: Arc<ZbobrConfig>,
@@ -286,6 +286,21 @@ impl Backend for GitHubBackend {
         let work_branch = extract_hidden_field(&body, "work_branch");
         let pr_url = extract_hidden_field(&body, "pr_url");
 
+        // Build parameters HashMap
+        let mut parameters = HashMap::new();
+        if let Some(repo) = destination_repository {
+            parameters.insert(Parameter::DestinationRepository, repo);
+        }
+        if let Some(branch) = destination_branch {
+            parameters.insert(Parameter::DestinationBranch, branch);
+        }
+        if let Some(branch) = work_branch {
+            parameters.insert(Parameter::WorkBranch, branch);
+        }
+        if let Some(url) = pr_url {
+            parameters.insert(Parameter::PrUrl, url);
+        }
+
         // Check if 'done' signal is present
         let done = issue
             .labels
@@ -316,10 +331,7 @@ impl Backend for GitHubBackend {
             tool,
             model,
             parent_task_id,
-            destination_repository,
-            destination_branch,
-            work_branch,
-            pr_url,
+            parameters,
             done,
             checklist,
             signal,
@@ -334,9 +346,7 @@ impl Backend for GitHubBackend {
         tool: Option<Tool>,
         model: Option<Model>,
         parent_task_id: Option<u64>,
-        destination_repository: Option<String>,
-        destination_branch: Option<String>,
-        work_branch: Option<String>,
+        parameters: HashMap<Parameter, String>,
     ) -> Result<u64, ZbobrError> {
         let (owner, repo) = self.parse_repo()?;
         let mut body = description.to_string();
@@ -345,9 +355,9 @@ impl Backend for GitHubBackend {
             &mut body,
             &[
                 ("parent_task_id", parent_task_id.map(|id| id.to_string())),
-                ("destination_repository", destination_repository),
-                ("destination_branch", destination_branch),
-                ("work_branch", work_branch),
+                ("destination_repository", parameters.get(&Parameter::DestinationRepository).cloned()),
+                ("destination_branch", parameters.get(&Parameter::DestinationBranch).cloned()),
+                ("work_branch", parameters.get(&Parameter::WorkBranch).cloned()),
             ],
         );
 
@@ -565,6 +575,21 @@ impl Backend for GitHubBackend {
             let work_branch = extract_hidden_field(&body, "work_branch");
             let pr_url = extract_hidden_field(&body, "pr_url");
             
+            // Build parameters HashMap
+            let mut parameters = HashMap::new();
+            if let Some(repo) = destination_repository {
+                parameters.insert(Parameter::DestinationRepository, repo);
+            }
+            if let Some(branch) = destination_branch {
+                parameters.insert(Parameter::DestinationBranch, branch);
+            }
+            if let Some(branch) = work_branch {
+                parameters.insert(Parameter::WorkBranch, branch);
+            }
+            if let Some(url) = pr_url {
+                parameters.insert(Parameter::PrUrl, url);
+            }
+            
             // Check if 'done' signal is present
             let done = issue
                 .labels
@@ -591,10 +616,7 @@ impl Backend for GitHubBackend {
                 tool: task_tool,
                 model,
                 parent_task_id,
-                destination_repository,
-                destination_branch,
-                work_branch,
-                pr_url,
+                parameters,
                 done,
                 checklist,
                 signal,

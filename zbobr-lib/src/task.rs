@@ -8,7 +8,7 @@ use crate::{Zbobr, ZbobrError};
 // -- Parameter names enum --
 
 /// Standardized parameter names for task configuration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Parameter {
     DestinationRepository,
     DestinationBranch,
@@ -387,10 +387,7 @@ pub struct Task {
     pub tool: Option<Tool>,
     pub model: Option<Model>,
     pub parent_task_id: Option<u64>,
-    pub destination_repository: Option<String>,
-    pub destination_branch: Option<String>,
-    pub work_branch: Option<String>,
-    pub pr_url: Option<String>,
+    pub parameters: HashMap<Parameter, String>,
     pub done: bool,
     pub checklist: Vec<ChecklistItem>,
     pub signal: Option<Signal>,
@@ -941,24 +938,24 @@ impl TaskSession {
         Ok(())
     }
 
-    /// Get a task parameter value. Parameters are stored in the visible PARAMETERS section.
+    /// Get a task parameter value. Parameters are stored in the task's parameters HashMap.
     pub async fn get_parameter(&self, param_name: &str) -> Result<Option<String>, ZbobrError> {
         let task = self.zbobr.get_task(self.task_id).await?;
         
-        // First check task fields
-        let from_task_fields = match param_name.to_lowercase().as_str() {
-            name if name == Parameter::DestinationRepository.name() => task.destination_repository,
-            name if name == Parameter::DestinationBranch.name() => task.destination_branch,
-            name if name == Parameter::WorkBranch.name() => task.work_branch,
-            name if name == Parameter::PrUrl.name() => task.pr_url,
+        // Try to match parameter name to Parameter enum
+        let param = match param_name.to_lowercase().as_str() {
+            name if name == Parameter::DestinationRepository.name() => Some(Parameter::DestinationRepository),
+            name if name == Parameter::DestinationBranch.name() => Some(Parameter::DestinationBranch),
+            name if name == Parameter::WorkBranch.name() => Some(Parameter::WorkBranch),
+            name if name == Parameter::PrUrl.name() => Some(Parameter::PrUrl),
             _ => None,
         };
         
-        if from_task_fields.is_some() {
-            return Ok(from_task_fields);
+        if let Some(p) = param {
+            return Ok(task.parameters.get(&p).cloned());
         }
         
-        // If not in task fields, extract from PARAMETERS section
+        // If not a known parameter, extract from PARAMETERS section
         use crate::backend::extract_parameters;
         let parameters = extract_parameters(&task.description);
         Ok(parameters.get(param_name).cloned())
@@ -1024,10 +1021,7 @@ mod tests {
             tool: Some(Tool::Claude),
             model: Some(Model::Claude3Opus),
             parent_task_id: None,
-            destination_repository: None,
-            destination_branch: None,
-            work_branch: None,
-            pr_url: None,
+            parameters: HashMap::new(),
             done: false,
             checklist: vec![],
             signal: None,

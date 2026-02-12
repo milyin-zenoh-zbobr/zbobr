@@ -79,6 +79,14 @@ impl Zbobr {
         destination_repository: Option<String>,
         destination_branch: Option<String>,
     ) -> Result<u64, ZbobrError> {
+        let mut parameters = std::collections::HashMap::new();
+        if let Some(repo) = destination_repository {
+            parameters.insert(Parameter::DestinationRepository, repo);
+        }
+        if let Some(branch) = destination_branch {
+            parameters.insert(Parameter::DestinationBranch, branch);
+        }
+        
         self.backend
             .create_task(
                 title,
@@ -87,9 +95,7 @@ impl Zbobr {
                 tool,
                 model,
                 parent_task_id,
-                destination_repository,
-                destination_branch,
-                None,
+                parameters,
             )
             .await
     }

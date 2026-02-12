@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 
-use crate::{Model, Signal, Stage, Task, Tool, ZbobrError};
+use crate::{Model, Parameter, Signal, Stage, Task, Tool, ZbobrError};
 use crate::task::ChecklistItem;
 
 // -- Plan and Checklist parsing and serialization helpers --
@@ -220,9 +220,7 @@ pub trait Backend: Send + Sync {
         tool: Option<Tool>,
         model: Option<Model>,
         parent_task_id: Option<u64>,
-        destination_repository: Option<String>,
-        destination_branch: Option<String>,
-        work_branch: Option<String>,
+        parameters: std::collections::HashMap<Parameter, String>,
     ) -> Result<u64, ZbobrError>;
 
     /// Close a task.
