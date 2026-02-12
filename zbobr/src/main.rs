@@ -518,25 +518,12 @@ async fn run_role_session(
         }
     };
 
-    // Set stage based on signal (refetch task to get updated signal)
-    let task = zbobr.get_task(task_id).await?;
-    let final_stage = if let Some(signal) = task.signal {
-        // Map signal to target stage
-        signal.target_stage()
-    } else {
-        // No signal set, transition to next stage based on role
-        if role == Role::Planner {
-            Stage::GoWorking
-        } else {
-            Stage::Pending
-        }
-    };
-    
-    zbobr.set_task_stage(task_id, final_stage).await?;
+    // Unlock task by moving back to PENDING - main loop will handle any signal-based transitions
+    zbobr.set_task_stage(task_id, Stage::Pending).await?;
     if execution_result {
-        tracing::info!("Session interrupted, task #{task_id} set to {:?}", final_stage);
+        tracing::info!("Session interrupted for task #{task_id}, moved to PENDING");
     } else {
-        tracing::info!("Session complete, task #{task_id} set to {:?}", final_stage);
+        tracing::info!("Session complete for task #{task_id}, moved to PENDING");
     }
 
     // Shut down server

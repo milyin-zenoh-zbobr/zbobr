@@ -713,12 +713,9 @@ impl TaskSession {
         Ok(pr_url)
     }
 
-    /// Mark task as done (sets signal to Done and transitions to Pending).
+    /// Mark task as done (sets signal to Done). Stage transition will be handled by main loop.
     pub async fn mark_done(&self) -> Result<(), ZbobrError> {
         self.set_signal(Signal::Done).await?;
-        self.zbobr
-            .set_task_stage(self.task_id, Stage::Pending)
-            .await?;
         Ok(())
     }
 }
