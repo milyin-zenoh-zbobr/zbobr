@@ -28,7 +28,7 @@ impl Parameter {
 // -- Checklist item types --
 
 /// A single item in a task's checklist.
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct ChecklistItem {
     #[schemars(description = "Unique identifier for the checklist item")]
     pub id: String,
@@ -402,6 +402,10 @@ pub struct Task {
     pub done: bool,
     pub checklist: Vec<ChecklistItem>,
     pub signal: Option<Signal>,
+    /// ETag for optimistic locking to prevent concurrent update conflicts.
+    /// Used to detect if the task has been modified between read and write operations.
+    #[serde(skip)]
+    pub etag: Option<String>,
 }
 
 /// Task session bound to a specific task, with role-based behavior.
@@ -893,11 +897,14 @@ impl TaskSession {
         Ok(parameters.get(param_name).cloned())
     }
 
-    /// Set a task parameter value. Parameters are stored in the visible PARAMETERS section.
+    /// Set a task parameter value with conflict detection.
+    /// Prevents parameter updates from being lost due to concurrent modifications.
+    /// Parameters are stored in the visible PARAMETERS section.
     pub async fn set_parameter(&self, param_name: &str, value: Option<String>) -> Result<(), ZbobrError> {
         use crate::backend::{parse_description_full, serialize_description_full};
         
         let task = self.zbobr.get_task(self.task_id).await?;
+        let expected_description = task.etag.as_deref().unwrap_or(&task.description);
         let (description, mut parameters, plan, checklist) = parse_description_full(&task.description);
         
         // Update the parameter value
@@ -908,10 +915,12 @@ impl TaskSession {
             parameters.remove(&param_key);
         }
         
-        // Serialize back with updated parameters
+        // Serialize back with updated parameters, using conflict detection
         let body = serialize_description_full(&description, &parameters, &plan, &checklist);
         
-        self.zbobr.update_task_description(self.task_id, &body).await
+        self.zbobr
+            .update_task_description_with_conflict_detection(self.task_id, expected_description, &body)
+            .await
     }
 }
 #[cfg(test)]
@@ -959,6 +968,7 @@ mod tests {
             done: false,
             checklist: vec![],
             signal: None,
+            etag: None,
         };
         let json = serde_json::to_string(&task).unwrap();
         let back: Task = serde_json::from_str(&json).unwrap();

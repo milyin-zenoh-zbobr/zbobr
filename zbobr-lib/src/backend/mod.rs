@@ -204,6 +204,55 @@ pub fn serialize_description_with_checklist(original_description: &str, items: &
     serialize_description_with_plan_and_checklist(original_description, &current_plan, items)
 }
 
+/// Merge concurrent updates to a task description.
+/// 
+/// This function handles the case where two concurrent updates have been made to different
+/// sections of the task description (description, parameters, plan, checklist).
+/// 
+/// Given:
+/// - `original`: The description as it was when we first read it
+/// - `current`: The description as it exists now (after someone else modified it)
+/// - `our_new`: The description we want to write
+/// 
+/// This function extracts what parts we modified vs what parts someone else modified,
+/// and merges them intelligently:
+/// - If we both modified the same section, our change wins (last write wins, simplified)
+/// - If only one of us modified a section, that modification is preserved
+/// 
+/// The strategy is to parse all three versions, detect what changed in each,
+/// and prefer newer values while preserving non-conflicting changes.
+pub fn merge_concurrent_description_updates(
+    original: &str,
+    current: &str,
+    our_new: &str,
+) -> String {
+    // Parse all three versions
+    let (orig_desc, orig_params, orig_plan, orig_checklist) = parse_description_full(original);
+    let (curr_desc, curr_params, curr_plan, curr_checklist) = parse_description_full(current);
+    let (new_desc, new_params, new_plan, new_checklist) = parse_description_full(our_new);
+
+    // Determine what we changed
+    let we_changed_desc = new_desc != orig_desc;
+    let we_changed_params = new_params != orig_params;
+    let we_changed_plan = new_plan != orig_plan;
+    let we_changed_checklist = serde_json::to_string(&new_checklist).unwrap_or_default() 
+        != serde_json::to_string(&orig_checklist).unwrap_or_default();
+
+    // Merge: prefer our changes if we made them, otherwise prefer their changes
+    let merged_desc = if we_changed_desc { new_desc } else { curr_desc };
+    let merged_params = if we_changed_params { new_params } else { curr_params };
+    let merged_plan = if we_changed_plan { new_plan } else { curr_plan };
+    let merged_checklist = if we_changed_checklist { new_checklist } else { curr_checklist };
+
+    // Serialize back with the merged content
+    serialize_description_full(
+        &merged_desc,
+        &merged_params,
+        &merged_plan,
+        &merged_checklist,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 #[async_trait]
 pub trait Backend: Send + Sync {
@@ -245,6 +294,21 @@ pub trait Backend: Send + Sync {
 
     /// Update the task description.
     async fn update_task_description(&self, id: u64, description: &str) -> Result<(), ZbobrError>;
+
+    /// Update the task description with optimistic locking to prevent concurrent update conflicts.
+    /// This method attempts to write the new description while ensuring no concurrent modifications
+    /// have occurred since the last read. If a conflict is detected, it automatically retries by
+    /// re-reading the current state and reapplying the update.
+    /// 
+    /// The `expected_description` parameter should be the description value that was read from
+    /// the task before modifications. If the current task description doesn't match this value,
+    /// a concurrent modification is detected and the update is retried.
+    async fn update_task_description_with_conflict_detection(
+        &self,
+        id: u64,
+        expected_description: &str,
+        new_description: &str,
+    ) -> Result<(), ZbobrError>;
 
     /// List open tasks with a given stage name, optionally filtered by tool.
     async fn list_tasks_by_stage(

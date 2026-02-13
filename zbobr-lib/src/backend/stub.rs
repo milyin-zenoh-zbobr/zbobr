@@ -38,6 +38,7 @@ impl Default for StubState {
                 done: false,
                 checklist: vec![],
                 signal: None,
+                etag: None,
             },
         );
 
@@ -111,6 +112,7 @@ impl Backend for StubBackend {
             done: false,
             checklist: vec![],
             signal: None,
+            etag: None,
         };
         state.tasks.insert(id, task);
         Ok(id)
@@ -170,6 +172,36 @@ impl Backend for StubBackend {
         if let Some(task) = state.tasks.get_mut(&id) {
             // Ensure description doesn't contain checklist marker when storing
             task.description = strip_checklist_from_description(description);
+            Ok(())
+        } else {
+            Err(ZbobrError::Other(format!("Task {id} not found")))
+        }
+    }
+
+    async fn update_task_description_with_conflict_detection(
+        &self,
+        id: u64,
+        expected_description: &str,
+        new_description: &str,
+    ) -> Result<(), ZbobrError> {
+        use crate::backend::{strip_checklist_from_description, merge_concurrent_description_updates};
+        let mut state = self.state.write().unwrap();
+        if let Some(task) = state.tasks.get_mut(&id) {
+            let current_description = task.description.clone();
+            
+            // Check if there was a concurrent modification
+            if current_description != expected_description {
+                // Conflict detected! Merge the changes
+                let merged = merge_concurrent_description_updates(
+                    expected_description,
+                    &current_description,
+                    new_description,
+                );
+                task.description = strip_checklist_from_description(&merged);
+            } else {
+                // No conflict, just update
+                task.description = strip_checklist_from_description(new_description);
+            }
             Ok(())
         } else {
             Err(ZbobrError::Other(format!("Task {id} not found")))

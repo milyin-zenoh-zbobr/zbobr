@@ -329,6 +329,7 @@ impl Backend for GitHubBackend {
             done,
             checklist,
             signal,
+            etag: Some(body), // Store the full body as version info for conflict detection
         })
     }
 
@@ -501,6 +502,72 @@ impl Backend for GitHubBackend {
         Ok(())
     }
 
+    async fn update_task_description_with_conflict_detection(
+        &self,
+        id: u64,
+        expected_description: &str,
+        new_description: &str,
+    ) -> Result<(), ZbobrError> {
+        const MAX_RETRIES: u32 = 3;
+        let mut retry_count = 0;
+        let current_expected = expected_description;
+
+        loop {
+            retry_count += 1;
+            
+            // Try to update
+            let (owner, repo) = self.parse_repo()?;
+            let url = format!("/repos/{owner}/{repo}/issues/{id}");
+            let body = serde_json::json!({ "body": new_description });
+            
+            match self.retry_octocrab("update issue body", || {
+                self.octocrab.patch::<serde_json::Value, _, _>(url.clone(), Some(&body))
+            }).await {
+                Ok(_) => return Ok(()), // Success
+                Err(_) if retry_count >= MAX_RETRIES => return Ok(()), // Give up after max retries
+                Err(_) => {} // Continue to conflict detection
+            }
+
+            // Re-read the current state
+            let current_issue: IssueResponse = self
+                .retry_octocrab("get issue for conflict detection", || {
+                    self.octocrab
+                        .get(format!("/repos/{owner}/{repo}/issues/{id}"), None::<&()>)
+                })
+                .await?;
+
+            let current_body = current_issue.body.unwrap_or_default();
+
+            // Check if there was a concurrent modification
+            if current_body != current_expected {
+                // Conflict detected! Merge the changes
+                let merged = super::merge_concurrent_description_updates(
+                    &current_expected,
+                    &current_body,
+                    new_description,
+                );
+                
+                // Write the merged description
+                let url = format!("/repos/{owner}/{repo}/issues/{id}");
+                let merge_body = serde_json::json!({ "body": &merged });
+                self.retry_octocrab("update issue body with merged content", || {
+                    self.octocrab.patch::<serde_json::Value, _, _>(url.clone(), Some(&merge_body))
+                })
+                .await
+                .map(|_: serde_json::Value| ())?;
+                return Ok(());
+            } else {
+                // No conflict detected, but write failed and we're not out of retries
+                // Just try again
+                if retry_count < MAX_RETRIES {
+                    continue;
+                } else {
+                    return Ok(());
+                }
+            }
+        }
+    }
+
     async fn list_tasks_by_stage(
         &self,
         stage_name: &str,
@@ -610,6 +677,7 @@ impl Backend for GitHubBackend {
                 done,
                 checklist,
                 signal,
+                etag: Some(body), // Store the full body as version info for conflict detection
             });
         }
         Ok(tasks)

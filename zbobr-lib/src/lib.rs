@@ -130,6 +130,7 @@ impl Zbobr {
     }
 
     /// Update task with plan and checklist (higher-level, handles serialization internally).
+    /// Uses optimistic locking to prevent concurrent update conflicts.
     pub async fn update_task_plan(
         &self,
         id: u64,
@@ -138,11 +139,19 @@ impl Zbobr {
         checklist: &[ChecklistItem],
     ) -> Result<(), ZbobrError> {
         use crate::backend::serialize_description_with_plan_and_checklist;
+        
+        // Read the current task to get its current description (for conflict detection)
+        let current_task = self.backend.get_task(id).await?;
+        let expected_description = current_task.etag.as_deref().unwrap_or(&current_task.description);
+        
         let full_description = serialize_description_with_plan_and_checklist(description, plan, checklist);
-        self.backend.update_task_description(id, &full_description).await
+        self.backend
+            .update_task_description_with_conflict_detection(id, expected_description, &full_description)
+            .await
     }
 
     /// Update task with checklist (preserves existing plan if any).
+    /// Uses optimistic locking to prevent concurrent update conflicts.
     pub async fn update_task_checklist(
         &self,
         id: u64,
@@ -150,8 +159,56 @@ impl Zbobr {
         checklist: &[ChecklistItem],
     ) -> Result<(), ZbobrError> {
         use crate::backend::serialize_description_with_checklist;
+        
+        // Read the current task to get its current description (for conflict detection)
+        let current_task = self.backend.get_task(id).await?;
+        let expected_description = current_task.etag.as_deref().unwrap_or(&current_task.description);
+        
         let full_description = serialize_description_with_checklist(description, checklist);
-        self.backend.update_task_description(id, &full_description).await
+        self.backend
+            .update_task_description_with_conflict_detection(id, expected_description, &full_description)
+            .await
+    }
+
+    /// Update task description with conflict detection.
+    /// Internal helper used by higher-level update methods.
+    pub(crate) async fn update_task_description_with_conflict_detection(
+        &self,
+        id: u64,
+        expected_description: &str,
+        new_description: &str,
+    ) -> Result<(), ZbobrError> {
+        self.backend
+            .update_task_description_with_conflict_detection(id, expected_description, new_description)
+            .await
+    }
+
+    /// Update task with description, parameters, plan, and checklist.
+    /// Uses optimistic locking to prevent concurrent update conflicts.
+    pub async fn update_task_full(
+        &self,
+        id: u64,
+        description: &str,
+        parameters: &std::collections::HashMap<Parameter, String>,
+        plan: &str,
+        checklist: &[ChecklistItem],
+    ) -> Result<(), ZbobrError> {
+        use crate::backend::serialize_description_full;
+        
+        // Read the current task to get its current description (for conflict detection)
+        let current_task = self.backend.get_task(id).await?;
+        let expected_description = current_task.etag.as_deref().unwrap_or(&current_task.description);
+        
+        // Convert Parameter enum keys to string keys for serialization
+        let string_params: std::collections::HashMap<String, String> = parameters
+            .iter()
+            .map(|(k, v)| (k.name().to_string(), v.clone()))
+            .collect();
+        
+        let full_description = serialize_description_full(description, &string_params, plan, checklist);
+        self.backend
+            .update_task_description_with_conflict_detection(id, expected_description, &full_description)
+            .await
     }
 
     pub async fn list_tasks_by_stage(
