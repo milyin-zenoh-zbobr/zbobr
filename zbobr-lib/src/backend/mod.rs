@@ -259,16 +259,14 @@ pub fn merge_concurrent_description_updates(
 /// Creates `.zbobr/{branch_name}` file, stages it, and commits it.
 /// Does NOT push — the caller is responsible for pushing if needed.
 /// 
+/// Git user configuration should be set up by clone_and_setup or clone_readonly before calling this.
+/// 
 /// # Arguments
 /// * `work_dir` - The repository working directory
 /// * `branch_name` - The branch name (used for file naming and commit message)
-/// * `git_user_name` - Git user name for the commit
-/// * `git_user_email` - Git user email for the commit
 pub async fn create_placeholder_commit(
     work_dir: &std::path::Path,
     branch_name: &str,
-    git_user_name: &str,
-    git_user_email: &str,
 ) -> Result<(), ZbobrError> {
     let zbobr_dir = work_dir.join(".zbobr");
     let placeholder_path = zbobr_dir.join(branch_name);
@@ -293,29 +291,6 @@ pub async fn create_placeholder_commit(
 
     if !add_status.success() {
         return Err(ZbobrError::Other("git add for placeholder failed".to_string()));
-    }
-
-    // Set git user configuration for this repository
-    let config_user_status = tokio::process::Command::new("git")
-        .args(["config", "--local", "user.name", git_user_name])
-        .current_dir(work_dir)
-        .status()
-        .await
-        .map_err(|e| ZbobrError::Other(format!("Failed to set git user.name: {}", e)))?;
-
-    if !config_user_status.success() {
-        return Err(ZbobrError::Other("git config user.name failed".to_string()));
-    }
-
-    let config_email_status = tokio::process::Command::new("git")
-        .args(["config", "--local", "user.email", git_user_email])
-        .current_dir(work_dir)
-        .status()
-        .await
-        .map_err(|e| ZbobrError::Other(format!("Failed to set git user.email: {}", e)))?;
-
-    if !config_email_status.success() {
-        return Err(ZbobrError::Other("git config user.email failed".to_string()));
     }
 
     // Commit the file
