@@ -278,15 +278,18 @@ pub enum ZbobrError {
 
 impl From<octocrab::Error> for ZbobrError {
     fn from(e: octocrab::Error) -> Self {
-        // Provide more detailed error information
+        // Provide more detailed error information including GitHub error body
         let error_msg = match e {
             octocrab::Error::GitHub { source, .. } => {
+                // Include the primary message, status code and the full debug of the source
                 format!(
-                    "GitHub API error: {} (status: {})",
-                    source.message, source.status_code
+                    "GitHub API error: {} (status: {}) -- details: {:?}",
+                    source.message,
+                    source.status_code,
+                    source
                 )
             }
-            _ => format!("GitHub API error: {}", e),
+            other => format!("GitHub API error: {:?}", other),
         };
         ZbobrError::GitHub(error_msg)
     }
