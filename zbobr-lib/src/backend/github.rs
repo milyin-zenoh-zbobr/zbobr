@@ -935,6 +935,37 @@ impl Backend for GitHubBackend {
                     "Failed to create branch {branch_name}"
                 )));
             }
+            // Create a zero-sized placeholder file inside .zbobr to ensure
+            // the branch has at least one commit (some upstream PR APIs
+            // reject branches with no commits). The file is named after
+            // the branch. It will be removed later when actual changes
+            // are committed and pushed.
+            let zbobr_dir = work_dir.join(".zbobr");
+            let placeholder_path = zbobr_dir.join(&branch_name);
+            if let Err(e) = tokio::fs::create_dir_all(&zbobr_dir).await {
+                tracing::warn!("Failed to create .zbobr directory: {}", e);
+            } else {
+                match tokio::fs::File::create(&placeholder_path).await {
+                    Ok(_) => {
+                        // Add and commit the placeholder file
+                        let _ = tokio::process::Command::new("git")
+                            .args(["add", format!(".zbobr/{}", &branch_name).as_str()])
+                            .current_dir(&work_dir)
+                            .status()
+                            .await;
+                        let commit_msg = format!("chore: add branch placeholder {}", &branch_name);
+                        let commit_status = tokio::process::Command::new("git")
+                            .args(["commit", "-m", &commit_msg])
+                            .current_dir(&work_dir)
+                            .status()
+                            .await;
+                        if let Err(e) = commit_status {
+                            tracing::warn!("Failed to commit placeholder file: {}", e);
+                        }
+                    }
+                    Err(e) => tracing::warn!("Failed to create placeholder file: {}", e),
+                }
+            }
         }
 
         Ok(work_dir)
@@ -1051,6 +1082,47 @@ impl Backend for GitHubBackend {
         let branch_name = format!("fix{task_id}/implementation");
 
         // Push to fork
+        // If a placeholder file exists for this branch and there are local
+        // changes to commit, remove the placeholder and commit its removal
+        // together with the other changes so the resulting PR contains the
+        // real work only.
+        let zbobr_placeholder = work_dir.join(".zbobr").join(&branch_name);
+        if zbobr_placeholder.exists() {
+            // Check for local uncommitted changes
+            match tokio::process::Command::new("git")
+                .args(["status", "--porcelain"]) 
+                .current_dir(&work_dir)
+                .output()
+                .await
+            {
+                Ok(out) => {
+                    if !out.stdout.is_empty() {
+                        tracing::info!("Local changes detected; removing placeholder {} and committing changes", branch_name);
+                        let _ = tokio::process::Command::new("git")
+                            .args(["rm", "-f", format!(".zbobr/{}", &branch_name).as_str()])
+                            .current_dir(&work_dir)
+                            .status()
+                            .await;
+                        let _ = tokio::process::Command::new("git")
+                            .args(["add", "-A"]) 
+                            .current_dir(&work_dir)
+                            .status()
+                            .await;
+                        let commit_msg = format!("chore: remove placeholder {} and apply changes", &branch_name);
+                        let commit_status = tokio::process::Command::new("git")
+                            .args(["commit", "-m", &commit_msg])
+                            .current_dir(&work_dir)
+                            .status()
+                            .await;
+                        if let Err(e) = commit_status {
+                            tracing::warn!("Failed to commit after removing placeholder: {}", e);
+                        }
+                    }
+                }
+                Err(e) => tracing::warn!("Failed to check git status: {}", e),
+            }
+        }
+
         tracing::info!("Pushing {branch_name} to fork");
         let status = tokio::process::Command::new("git")
             .args(["push", "fork", "HEAD"])
