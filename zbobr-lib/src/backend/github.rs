@@ -229,7 +229,6 @@ impl GitHubBackend {
             return Err(ZbobrError::Config(format!("Invalid target repo: {}", target_repo)));
         }
         let upstream_owner = parts[0];
-        let repo = parts[1];
 
         // Ensure fork exists
         let fork_repo = self.ensure_fork(target_repo).await?; // "fork_owner/repo"
