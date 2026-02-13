@@ -313,7 +313,6 @@ The checklist is your persistent memory for this task. It survives across sessio
 - For reading GitHub data: use `git` and `gh` CLI only when no platform tool provides the needed information.
 - NEVER use git/gh for writing, pushing, or sending data to GitHub.
 - The work repository has remote information controlled by the platform; you must not perform direct remote writes yourself.
-    - The work repository has remote information controlled by the platform; you must not perform direct remote writes yourself.
 
 ## Workspace isolation
 
@@ -381,8 +380,6 @@ You have read-only access to all task information:
 - Use `{pull_work}` to access the work repository and examine changes
     - Use `{ask_user}` to request the user's explanations related to review findings; use `{report_error}` only to report technical errors
 - You can run local git commands to examine changes, but you cannot push
-
-You can run local git commands to examine changes, but you cannot push
 
 ## Workspace isolation
 
