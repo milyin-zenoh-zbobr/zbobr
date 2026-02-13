@@ -136,7 +136,7 @@ pub struct SetDestinationRepositoryParam {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct SetDestinationBranchParam {
-    #[schemars(description = "Destination branch name (or null to unset)")]
+    #[schemars(description = "Work branch postfix (the final segment after prefix/task_id) (or null to unset)")]
     pub value: Option<String>,
 }
 
@@ -167,7 +167,7 @@ mcp_tools! {
     GET_PARAM_DESTINATION_REPOSITORY = "get_param_destination_repository",
     SET_PARAM_DESTINATION_REPOSITORY = "set_param_destination_repository",
     GET_PARAM_DESTINATION_BRANCH = "get_param_destination_branch",
-    SET_PARAM_DESTINATION_BRANCH = "set_param_destination_branch",
+    SET_PARAM_WORK_BRANCH_POSTFIX = "set_param_work_branch_postfix",
     GET_PARAM_WORK_BRANCH = "get_param_work_branch",
     SET_PARAM_WORK_BRANCH = "set_param_work_branch",
 }
@@ -241,10 +241,10 @@ Work autonomously. Do not ask the user for anything.
 2. Call `{get_plan}` to read an existing plan if there is one
 3. Call `{get_discussion}` for context and prior comments and questions to existing plan
 4. **Set task parameters** that will guide the implementation:
-   - Call `{set_param_destination_repository}` with the target GitHub repository (owner/repo format)
-   - Call `{set_param_destination_branch}` with the target branch name (e.g., "main", "develop")
-   - Call `{set_param_work_branch}` with the local work branch name (e.g., "implement-feature")
-   - Use `{get_param_destination_repository}`, `{get_param_destination_branch}`, `{get_param_work_branch}` to read current values
+    - Call `{set_param_destination_repository}` with the target GitHub repository (owner/repo format)
+    - Read destination branch using `{get_param_destination_branch}` (e.g., "main", "develop")
+    - Call `{set_param_work_branch_postfix}` with the work branch postfix (e.g., "implement-feature") — the full work branch will be formed from prefix, task id and this postfix
+    - Use `{get_param_destination_repository}`, `{get_param_destination_branch}`, `{get_param_work_branch}` to read current values
 5. Pull the destination repository using `{pull_work}` to investigate the codebase, understand the context, and design the plan. This also ensures the repo is cached for the worker later.
 6. Explore the codebase, identify and document the files, crates, modules, and keywords relevant to the task. These help define the scope and guide the worker:
    - List specific files that need to be modified or created
@@ -264,9 +264,8 @@ Work autonomously. Do not ask the user for anything.
         get_param_destination_repository = planner_tools::GET_PARAM_DESTINATION_REPOSITORY,
         set_param_destination_repository = planner_tools::SET_PARAM_DESTINATION_REPOSITORY,
         get_param_destination_branch = planner_tools::GET_PARAM_DESTINATION_BRANCH,
-        set_param_destination_branch = planner_tools::SET_PARAM_DESTINATION_BRANCH,
+        set_param_work_branch_postfix = planner_tools::SET_PARAM_WORK_BRANCH_POSTFIX,
         get_param_work_branch = planner_tools::GET_PARAM_WORK_BRANCH,
-        set_param_work_branch = planner_tools::SET_PARAM_WORK_BRANCH,
     )
 }
 
@@ -735,8 +734,18 @@ pub trait PlannerMcpImpl: CommonMcpImpl {
         self.get_param_impl(Parameter::DestinationBranch).await
     }
 
-    async fn set_param_destination_branch_impl(&self, value: Option<String>) -> String {
-        self.set_param_impl(Parameter::DestinationBranch, value).await
+    async fn set_param_work_branch_postfix_impl(&self, value: Option<String>) -> String {
+        tracing::info!("[planner#{}] set_param_work_branch_postfix value={:?}", self.session().task_id(), value);
+        match value {
+            Some(postfix) => {
+                let full = self.session().create_branch_name(&postfix);
+                self.set_param_impl(Parameter::WorkBranch, Some(full)).await
+            }
+            None => {
+                // Unset work branch parameter
+                self.set_param_impl(Parameter::WorkBranch, None).await
+            }
+        }
     }
 
     async fn get_param_work_branch_impl(&self) -> String {
@@ -940,9 +949,9 @@ impl PlannerMcp {
         self.get_param_destination_branch_impl().await
     }
 
-    #[tool(description = "Set the destination branch name for this task (e.g. 'main')")]
-    async fn set_param_destination_branch(&self, Parameters(params): Parameters<SetDestinationBranchParam>) -> String {
-        self.set_param_destination_branch_impl(params.value).await
+    #[tool(description = "Set the work branch postfix for this task (the postfix segment, e.g. 'implement-feature')")]
+    async fn set_param_work_branch_postfix(&self, Parameters(params): Parameters<SetDestinationBranchParam>) -> String {
+        self.set_param_work_branch_postfix_impl(params.value).await
     }
 
     #[tool(description = "Get the work branch name for this task (read-only)")]
