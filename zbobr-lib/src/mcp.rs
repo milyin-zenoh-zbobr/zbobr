@@ -31,21 +31,9 @@ fn branch_isolation_instruction() -> String {
 /// Inject repository information (task repository and fork repository) into agent instructions.
 /// This ensures agents have the necessary owner context when using GitHub tools.
 fn inject_repo_info(instruction_text: &str, task_repo: &str, fork_repo: &str, fork_owner: &str) -> String {
-    // Insert a "Repository Information" section right after the role title
-    if let Some(first_newline_pos) = instruction_text.find('\n') {
-        let title_line = &instruction_text[..=first_newline_pos];
-        let rest = &instruction_text[first_newline_pos + 1..];
-        
-        format!(
-            "{}## Repository Information\n\nYour task repository: {task_repo}\nYour fork repository: {fork_repo} (owned by {fork_owner})\n\n{rest}",
-            title_line
-        )
-    } else {
-        // No newline found, just append
-        format!(
-            "{instruction_text}\n\n## Repository Information\n\nYour task repository: {task_repo}\nYour fork repository: {fork_repo} (owned by {fork_owner})"
-        )
-    }
+    format!(
+        "{instruction_text}\n\n## Repository Information\n\nYour task repository: {task_repo}\nYour fork repository: {fork_repo} (owned by {fork_owner})"
+    )
 }
 
 /// Get the current hostname, or "unknown" if it cannot be determined.
