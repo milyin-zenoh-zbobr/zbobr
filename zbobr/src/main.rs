@@ -483,6 +483,12 @@ async fn run_role_session(
     };
     zbobr.set_task_stage(task_id, stage).await?;
 
+    // Clear any existing signal when a session starts so signal labels are removed
+    // (GitHub backend will remove all "signal:*" labels when None is passed).
+    if let Err(e) = zbobr.set_task_signal(task_id, None).await {
+        tracing::warn!("Failed to clear signal for task {} when starting session: {}", task_id, e);
+    }
+
     // Create workspace dir
     let task_dir = zbobr.config().workspace.join(format!("task#{task_id}"));
     tokio::fs::create_dir_all(&task_dir).await?;
