@@ -874,17 +874,37 @@ impl TaskSession {
             tracing::info!("Removed 'fork' remote");
         }
 
-        // Push the work branch to the remote so it exists before creating the PR
-        tracing::info!("Pushing work branch '{}' to remote", work_branch);
+        // Get repo name for constructing fork URL
+        let repo_name = dest_repo
+            .split('/')
+            .nth(1)
+            .ok_or_else(|| ZbobrError::Other(format!("Invalid destination_repository format: {}", dest_repo)))?;
+        let fork_repo = format!("{}/{}", self.zbobr.config().fork_owner, repo_name);
+        let fork_url = format!("https://github.com/{fork_repo}.git");
+
+        // Add fork as a git remote
+        tracing::info!("Adding fork remote: {}", fork_url);
+        let add_remote = tokio::process::Command::new("git")
+            .args(["remote", "add", "fork", &fork_url])
+            .current_dir(&path)
+            .status()
+            .await?;
+
+        if !add_remote.success() {
+            return Err(ZbobrError::Other("Failed to add fork remote".to_string()));
+        }
+
+        // Push the work branch to the forked repository so it exists before creating the PR
+        tracing::info!("Pushing work branch '{}' to fork", work_branch);
         let push_status = tokio::process::Command::new("git")
-            .args(["push", "-u", "origin", &work_branch])
+            .args(["push", "-u", "fork", &work_branch])
             .current_dir(&path)
             .status()
             .await?;
 
         if !push_status.success() {
             return Err(ZbobrError::Other(format!(
-                "Failed to push work branch '{}' to remote",
+                "Failed to push work branch '{}' to fork",
                 work_branch
             )));
         }
@@ -892,12 +912,6 @@ impl TaskSession {
         // Create PR from work_branch to destination_branch in the fork repo
         // Ensure PR creation targets the fork (fork_owner/repo). Pass the fork repo
         // to create_pr_for_work_branch rather than the real destination repository.
-        let repo_name = dest_repo
-            .split('/')
-            .nth(1)
-            .ok_or_else(|| ZbobrError::Other(format!("Invalid destination_repository format: {}", dest_repo)))?;
-        let fork_repo = format!("{}/{}", self.zbobr.config().fork_owner, repo_name);
-
         if let Err(e) = self.create_pr_for_work_branch(&fork_repo, &work_branch, &dest_branch).await {
             // Log the error and also notify the user via task discussion, but don't fail the pull_work
             tracing::error!("Failed to create PR for work branch {}/{} -> {}: {e}", fork_repo, work_branch, dest_branch);
