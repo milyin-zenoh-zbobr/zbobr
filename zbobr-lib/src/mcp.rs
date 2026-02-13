@@ -19,9 +19,9 @@ use crate::{
 // Instruction shared across all role prompts explaining branch isolation rules.
 fn branch_isolation_instruction() -> String {
     format!(
-        "Workspace branch isolation: When preparing the workspace, clone ONLY the destination branch as provided by the MCP tool `{}` and avoid fetching or using any other branches. Do NOT use branches other than the destination branch and the designated work branch obtained via `{}`. If you need temporary or experimental branches, prefix their names with the work branch name to avoid interfering with other agents.",
-        planner_tools::GET_PARAM_DESTINATION_BRANCH,
-        planner_tools::GET_PARAM_WORK_BRANCH,
+        "Workspace branch isolation: When preparing the workspace, checkout ONLY the destination and work branches with names provided by the MCP tools `{get_param_destination_branch}`, `{get_param_work_branch}`. Do NOT fetch or use any other branches. Do NOT look at branches other than the work and destination branches. If you need temporary or experimental branches, prefix their names with the work branch name to avoid interfering with other agents.",
+        get_param_destination_branch = planner_tools::GET_PARAM_DESTINATION_BRANCH,
+        get_param_work_branch = planner_tools::GET_PARAM_WORK_BRANCH,
     )
 }
 
