@@ -138,6 +138,20 @@ enum Command {
         #[arg(long)]
         show_prompt: bool,
     },
+    /// Run reviewer role for a specific task (reviews the implementation)
+    Review {
+        /// Task ID
+        task: u64,
+        /// AI model to use (e.g. "gpt-5-mini", "claude-3-5-sonnet")
+        #[arg(long)]
+        model: Option<String>,
+        /// Port for the MCP server that the agent connects to
+        #[arg(long, default_value = "3000")]
+        port: u16,
+        /// Show the prompt that would be sent to the model instead of running
+        #[arg(long)]
+        show_prompt: bool,
+    },
     /// Run merger role for a specific task (resolves merge conflicts)
     Merge {
         /// Task ID
@@ -456,6 +470,26 @@ async fn main() -> anyhow::Result<()> {
                 .transpose()
                 .map_err(anyhow::Error::msg)?;
             run_role_session(&zbobr, task, Role::Worker, model_enum, port, &full_prompt).await?;
+        }
+        Command::Review {
+            task,
+            model,
+            port,
+            show_prompt,
+        } => {
+            let base_prompt = load_prompts(&prompts.reviewer, prompts.base_path.as_ref())?;
+            let full_prompt = build_full_prompt(&base_prompt, Role::Reviewer, &zbobr.config().task_repo, &zbobr.config().fork_owner);
+
+            if show_prompt {
+                println!("{}", full_prompt);
+                return Ok(());
+            }
+
+            let model_enum = model
+                .map(|m| m.parse::<Model>())
+                .transpose()
+                .map_err(anyhow::Error::msg)?;
+            run_role_session(&zbobr, task, Role::Reviewer, model_enum, port, &full_prompt).await?;
         }
         Command::Merge {
             task,
