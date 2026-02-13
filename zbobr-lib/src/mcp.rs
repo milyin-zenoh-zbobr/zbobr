@@ -19,9 +19,12 @@ use crate::{
 // Instruction shared across all role prompts explaining branch isolation rules.
 fn branch_isolation_instruction() -> String {
     format!(
-        "Workspace branch isolation: When preparing the workspace, checkout ONLY the destination and work branches with names provided by the MCP tools `{get_param_destination_branch}`, `{get_param_work_branch}`. Do NOT fetch or use any other branches. Do NOT look at branches other than the work and destination branches. If you need temporary or experimental branches, prefix their names with the work branch name to avoid interfering with other agents.",
+        "Workspace branch isolation: When preparing the workspace, checkout ONLY the destination and work branches with names provided by the MCP tools `{get_param_destination_branch}`, `{get_param_work_branch}`. Do NOT fetch or use any other branches. Do NOT look at branches other than the work and destination branches. If you need temporary or experimental branches, prefix their names with the work branch name to avoid interfering with other agents.\n\n\
+        Automatic merge from destination branch: When you use `{pull_work}` and the work branch already exists, the platform automatically merges the destination branch into the work branch to incorporate upstream changes. If the merge succeeds, you can proceed normally. If there are merge conflicts that cannot be resolved automatically, `{pull_work}` will fail with a conflict error and notify the user — in that case, use `{report_error}` to report the conflict and stop. Do NOT attempt to resolve merge conflicts yourself.",
         get_param_destination_branch = planner_tools::GET_PARAM_DESTINATION_BRANCH,
         get_param_work_branch = planner_tools::GET_PARAM_WORK_BRANCH,
+        pull_work = planner_tools::PULL_WORK,
+        report_error = planner_tools::REPORT_ERROR,
     )
 }
 

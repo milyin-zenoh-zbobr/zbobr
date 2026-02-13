@@ -892,6 +892,77 @@ impl TaskSession {
                     work_branch
                 )));
             }
+
+            // Merge destination branch into work branch to pick up upstream changes.
+            // Configure git user first so merge commits (if any) have valid author info.
+            let config = self.zbobr.config();
+            crate::backend::configure_git_user(&path, &config.git_user_name, &config.git_user_email).await?;
+
+            tracing::info!(
+                "Merging destination branch '{}' into work branch '{}'",
+                dest_branch,
+                work_branch
+            );
+            let merge_output = tokio::process::Command::new("git")
+                .args(["merge", &dest_branch, "--no-edit"])
+                .current_dir(&path)
+                .output()
+                .await?;
+
+            if !merge_output.status.success() {
+                let stderr = String::from_utf8_lossy(&merge_output.stderr);
+                let stdout = String::from_utf8_lossy(&merge_output.stdout);
+
+                // Check if there are merge conflicts
+                let has_conflicts = stderr.contains("CONFLICT")
+                    || stdout.contains("CONFLICT")
+                    || stderr.contains("Automatic merge failed");
+
+                if has_conflicts {
+                    // Abort the merge so the repo is left in a clean state
+                    let _ = tokio::process::Command::new("git")
+                        .args(["merge", "--abort"])
+                        .current_dir(&path)
+                        .status()
+                        .await;
+
+                    // Collect conflict details for the user
+                    let conflict_msg = format!(
+                        "Merge conflict: cannot automatically merge '{}' into '{}'. \
+                         Stderr: {} Stdout: {}. \
+                         Please resolve the conflicts manually or rebase the work branch.",
+                        dest_branch, work_branch,
+                        stderr.trim(), stdout.trim()
+                    );
+
+                    // Post a message to the task discussion so the user is notified
+                    let hostname = hostname::get()
+                        .ok()
+                        .and_then(|h| h.into_string().ok())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    let user_msg = format!(
+                        "⚠️  Merge conflict detected while merging destination branch '{}' into work branch '{}'. \
+                         Automatic resolution was not possible. Please resolve the conflicts manually and restart the agent.\n\n\
+                         Details:\n```\n{}\n{}\n```",
+                        dest_branch, work_branch, stderr.trim(), stdout.trim()
+                    );
+                    let _ = self.post_message(&user_msg, "agent", &hostname).await;
+
+                    return Err(ZbobrError::Other(conflict_msg));
+                } else {
+                    // Non-conflict merge failure
+                    return Err(ZbobrError::Other(format!(
+                        "Failed to merge '{}' into '{}': {}",
+                        dest_branch, work_branch, stderr.trim()
+                    )));
+                }
+            } else {
+                tracing::info!(
+                    "Successfully merged '{}' into '{}'",
+                    dest_branch,
+                    work_branch
+                );
+            }
         } else {
             // Branch does not exist locally; create it from current HEAD (destination branch)
             let create_branch = tokio::process::Command::new("git")
