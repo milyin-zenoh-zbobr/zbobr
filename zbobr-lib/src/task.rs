@@ -444,56 +444,101 @@ impl TaskSession {
         branch.starts_with(&prefix)
     }
 
+    /// Read the full task state.
+    pub async fn get_task(&self) -> Result<Task, ZbobrError> {
+        self.zbobr.get_task(self.task_id).await
+    }
+
     /// Get the current task description.
     pub async fn get_description(&self) -> Result<String, ZbobrError> {
-        let task = self.zbobr.get_task(self.task_id).await?;
-        Ok(task.description)
+        Ok(self.get_task().await?.description)
     }
 
     /// Get the current task plan.
     pub async fn get_plan(&self) -> Result<String, ZbobrError> {
-        let task = self.zbobr.get_task(self.task_id).await?;
-        Ok(task.plan)
+        Ok(self.get_task().await?.plan)
     }
 
     /// Get the current task checklist.
     pub async fn get_checklist(&self) -> Result<Vec<ChecklistItem>, ZbobrError> {
-        let task = self.zbobr.get_task(self.task_id).await?;
-        Ok(task.checklist)
+        Ok(self.get_task().await?.checklist)
     }
 
-    /// Update the task plan.
-    pub async fn update_plan(&self, description: &str, plan: &str, checklist: &[ChecklistItem]) -> Result<(), ZbobrError> {
+    /// Atomically read-modify-write the task body (description, parameters, plan, checklist).
+    ///
+    /// The closure receives a mutable `Task` reference and may modify `description`,
+    /// `parameters`, `plan`, and `checklist`. All other `Task` fields are ignored on write.
+    ///
+    /// Conflict detection and three-way merge are handled automatically:
+    /// if another writer changed the issue body between our read and write, the
+    /// closure result is merged with the concurrent change and retried.
+    pub async fn modify_task<F>(&self, mutate: F) -> Result<(), ZbobrError>
+    where
+        F: FnOnce(&mut Task),
+    {
+        use crate::backend::serialize_description_full;
+
+        // 1. Read current state (with etag)
+        let mut task = self.zbobr.get_task(self.task_id).await?;
+        let expected_description = task.etag.clone().unwrap_or_else(|| {
+            // Fallback: serialize current parsed fields as the "original" snapshot
+            let string_params: std::collections::HashMap<String, String> = task
+                .parameters
+                .iter()
+                .map(|(k, v)| (k.name().to_string(), v.clone()))
+                .collect();
+            serialize_description_full(&task.description, &string_params, &task.plan, &task.checklist)
+        });
+
+        // 2. Apply caller's mutation
+        mutate(&mut task);
+
+        // 3. Serialize the new body from mutated fields
+        let string_params: std::collections::HashMap<String, String> = task
+            .parameters
+            .iter()
+            .map(|(k, v)| (k.name().to_string(), v.clone()))
+            .collect();
+        let new_description = serialize_description_full(
+            &task.description,
+            &string_params,
+            &task.plan,
+            &task.checklist,
+        );
+
+        // 4. Write with conflict detection (backend handles merge + retry)
         self.zbobr
-            .update_task_plan(self.task_id, description, plan, checklist)
+            .backend
+            .update_task_description_with_conflict_detection(
+                self.task_id,
+                &expected_description,
+                &new_description,
+            )
             .await
     }
 
-    /// Update the task description and checklist separately.
-    /// The checklist will be serialized into the description for storage via the backend.
-    pub async fn update_checklist(&self, description: &str, checklist: &[ChecklistItem]) -> Result<(), ZbobrError> {
-        self.zbobr
-            .update_task_checklist(self.task_id, description, checklist)
-            .await
-    }
-
-    /// Update the task checklist while preserving an explicit plan.
-    pub async fn update_checklist_with_plan(
-        &self,
-        description: &str,
-        plan: &str,
-        checklist: &[ChecklistItem],
-    ) -> Result<(), ZbobrError> {
-        self.zbobr
-            .update_task_plan(self.task_id, description, plan, checklist)
-            .await
-    }
-
-    /// Update the task description.
+    /// Update the task description (only the description part, preserving plan/checklist/parameters).
     pub async fn update_description(&self, description: &str) -> Result<(), ZbobrError> {
-        self.zbobr
-            .update_task_description(self.task_id, description)
-            .await
+        let desc = description.to_string();
+        self.modify_task(|task| {
+            task.description = desc;
+        }).await
+    }
+
+    /// Update the task plan (preserving description/checklist/parameters).
+    pub async fn update_plan(&self, plan: &str) -> Result<(), ZbobrError> {
+        let plan = plan.to_string();
+        self.modify_task(|task| {
+            task.plan = plan;
+        }).await
+    }
+
+    /// Update the task checklist (preserving description/plan/parameters).
+    pub async fn update_checklist(&self, checklist: &[ChecklistItem]) -> Result<(), ZbobrError> {
+        let items = checklist.to_vec();
+        self.modify_task(|task| {
+            task.checklist = items;
+        }).await
     }
 
     /// Get all discussion messages on the task.
@@ -897,30 +942,29 @@ impl TaskSession {
         Ok(parameters.get(param_name).cloned())
     }
 
-    /// Set a task parameter value with conflict detection.
-    /// Prevents parameter updates from being lost due to concurrent modifications.
+    /// Set a task parameter value with automatic conflict detection.
     /// Parameters are stored in the visible PARAMETERS section.
     pub async fn set_parameter(&self, param_name: &str, value: Option<String>) -> Result<(), ZbobrError> {
-        use crate::backend::{parse_description_full, serialize_description_full};
-        
-        let task = self.zbobr.get_task(self.task_id).await?;
-        let expected_description = task.etag.as_deref().unwrap_or(&task.description);
-        let (description, mut parameters, plan, checklist) = parse_description_full(&task.description);
-        
-        // Update the parameter value
         let param_key = param_name.to_lowercase();
-        if let Some(v) = value {
-            parameters.insert(param_key, v);
-        } else {
-            parameters.remove(&param_key);
-        }
-        
-        // Serialize back with updated parameters, using conflict detection
-        let body = serialize_description_full(&description, &parameters, &plan, &checklist);
-        
-        self.zbobr
-            .update_task_description_with_conflict_detection(self.task_id, expected_description, &body)
-            .await
+        let param_enum = match param_key.as_str() {
+            name if name == Parameter::DestinationRepository.name() => Some(Parameter::DestinationRepository),
+            name if name == Parameter::DestinationBranch.name() => Some(Parameter::DestinationBranch),
+            name if name == Parameter::WorkBranch.name() => Some(Parameter::WorkBranch),
+            name if name == Parameter::PrUrl.name() => Some(Parameter::PrUrl),
+            _ => None,
+        };
+
+        self.modify_task(|task| {
+            if let Some(p) = param_enum {
+                if let Some(v) = value {
+                    task.parameters.insert(p, v);
+                } else {
+                    task.parameters.remove(&p);
+                }
+            }
+            // For unknown parameter names, we currently only support the known Parameter enum.
+            // Unknown parameters are silently ignored.
+        }).await
     }
 }
 #[cfg(test)]

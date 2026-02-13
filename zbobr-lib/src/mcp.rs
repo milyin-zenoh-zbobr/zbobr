@@ -553,160 +553,124 @@ pub trait CommonMcpImpl: Send + Sync {
 
     async fn check_checklist_item_impl(&self, id: &str, checked: bool) -> String {
         tracing::info!("[{}#{}] check_checklist_item id={} checked={}", self.role_name(), self.session().task_id(), id, checked);
-        match (
-            self.session().get_description().await,
-            self.session().get_plan().await,
-            self.session().get_checklist().await,
-        ) {
-            (Ok(desc), Ok(plan), Ok(mut items)) => {
-                if let Some(item) = items.iter_mut().find(|item| item.id == id) {
-                    item.checked = checked;
-                    
-                    match self
-                        .session()
-                        .update_checklist_with_plan(&desc, &plan, &items)
-                        .await
-                    {
-                        Ok(()) => {
-                            // Signal task completion status based on role:
-                            // - Worker: when all items checked, ready for review (go_review)
-                            // - Reviewer: when all items checked, either go back to work (go_work) or mark as done
-                            // - If unchecked items remain, ready for same role to continue
-                            let has_unchecked = items.iter().any(|i| !i.checked);
-                            let signal = if has_unchecked {
-                                // Still have work to do, continue with current role
-                                match self.role() {
-                                    crate::task::Role::Worker => crate::Signal::GoWork,
-                                    crate::task::Role::Reviewer => crate::Signal::GoReview,
-                                    crate::task::Role::Planner => crate::Signal::GoPlan,
-                                }
-                            } else {
-                                // All items checked - transition based on role
-                                match self.role() {
-                                    crate::task::Role::Worker => crate::Signal::GoReview,  // Worker done -> review
-                                    crate::task::Role::Reviewer => crate::Signal::Done,     // Reviewer done -> complete
-                                    crate::task::Role::Planner => crate::Signal::GoWork,    // Planner done -> work
-                                }
-                            };
-                            
-                            if let Err(e) = self.session().set_signal(signal).await {
-                                return format!("Checklist item '{}' checked state updated to {} but error updating task state: {}", id, checked, e);
-                            }
-                            
-                            format!("Checklist item '{}' checked state updated to {}", id, checked)
-                        }
-                        Err(e) => format!("Error updating task: {e}"),
+        let item_id = id.to_string();
+        let role = self.role();
+        match self.session().modify_task(|task| {
+            if let Some(item) = task.checklist.iter_mut().find(|item| item.id == item_id) {
+                item.checked = checked;
+            }
+        }).await {
+            Ok(()) => {
+                // Determine signal based on checklist completion and role
+                let checklist = match self.session().get_checklist().await {
+                    Ok(c) => c,
+                    Err(e) => return format!("Checklist item '{}' checked state updated to {} but error reading checklist: {}", id, checked, e),
+                };
+                let has_unchecked = checklist.iter().any(|i| !i.checked);
+                let signal = if has_unchecked {
+                    match role {
+                        crate::task::Role::Worker => crate::Signal::GoWork,
+                        crate::task::Role::Reviewer => crate::Signal::GoReview,
+                        crate::task::Role::Planner => crate::Signal::GoPlan,
                     }
                 } else {
-                    format!("Error: Checklist item with id '{}' not found", id)
+                    match role {
+                        crate::task::Role::Worker => crate::Signal::GoReview,
+                        crate::task::Role::Reviewer => crate::Signal::Done,
+                        crate::task::Role::Planner => crate::Signal::GoWork,
+                    }
+                };
+
+                if let Err(e) = self.session().set_signal(signal).await {
+                    return format!("Checklist item '{}' checked state updated to {} but error updating task state: {}", id, checked, e);
                 }
+
+                format!("Checklist item '{}' checked state updated to {}", id, checked)
             }
-            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => format!("Error: {e}"),
+            Err(e) => format!("Error: {e}"),
         }
     }
 
     async fn insert_checklist_item_impl(&self, id: &str, after_id: Option<String>, text: &str) -> String {
         tracing::info!("[{}#{}] insert_checklist_item id={} after_id={:?}", self.role_name(), self.session().task_id(), id, after_id);
-        match (
-            self.session().get_description().await,
-            self.session().get_plan().await,
-            self.session().get_checklist().await,
-        ) {
-            (Ok(desc), Ok(plan), Ok(mut items)) => {
-                if items.iter().any(|item| item.id == id) {
+        let item_id = id.to_string();
+        let item_text = text.to_string();
+        let after = after_id.clone();
+        
+        // Validate first by reading the task
+        match self.session().get_checklist().await {
+            Ok(items) => {
+                if items.iter().any(|item| item.id == item_id) {
                     return format!("Error: Checklist item with id '{}' already exists", id);
                 }
-                
-                let new_item = ChecklistItem {
-                    id: id.to_string(),
-                    checked: false,
-                    text: text.to_string(),
-                };
-                
-                if let Some(after_id) = after_id {
-                    if let Some(pos) = items.iter().position(|item| item.id == after_id) {
-                        items.insert(pos + 1, new_item);
-                    } else {
-                        return format!("Error: Checklist item with id '{}' not found", after_id);
+                if let Some(ref aid) = after {
+                    if !items.iter().any(|item| item.id == *aid) {
+                        return format!("Error: Checklist item with id '{}' not found", aid);
                     }
-                } else {
-                    items.push(new_item);
-                }
-                
-                match self
-                    .session()
-                    .update_checklist_with_plan(&desc, &plan, &items)
-                    .await
-                {
-                    Ok(()) => format!("Checklist item '{}' inserted", id),
-                    Err(e) => format!("Error updating task: {e}"),
                 }
             }
-            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => format!("Error: {e}"),
+            Err(e) => return format!("Error: {e}"),
+        }
+
+        match self.session().modify_task(|task| {
+            let new_item = ChecklistItem {
+                id: item_id,
+                checked: false,
+                text: item_text,
+            };
+
+            if let Some(ref after_id) = after {
+                if let Some(pos) = task.checklist.iter().position(|item| item.id == *after_id) {
+                    task.checklist.insert(pos + 1, new_item);
+                } else {
+                    task.checklist.push(new_item);
+                }
+            } else {
+                task.checklist.push(new_item);
+            }
+        }).await {
+            Ok(()) => format!("Checklist item '{}' inserted", id),
+            Err(e) => format!("Error updating task: {e}"),
         }
     }
 
     async fn update_checklist_item_impl(&self, id: &str, text: &str) -> String {
         tracing::info!("[{}#{}] update_checklist_item id={}", self.role_name(), self.session().task_id(), id);
-        match (
-            self.session().get_description().await,
-            self.session().get_plan().await,
-            self.session().get_checklist().await,
-        ) {
-            (Ok(desc), Ok(plan), Ok(mut items)) => {
-                if let Some(item) = items.iter_mut().find(|item| item.id == id) {
-                    item.text = text.to_string();
-                    
-                    match self
-                        .session()
-                        .update_checklist_with_plan(&desc, &plan, &items)
-                        .await
-                    {
-                        Ok(()) => format!("Checklist item '{}' updated", id),
-                        Err(e) => format!("Error updating task: {e}"),
-                    }
-                } else {
-                    format!("Error: Checklist item with id '{}' not found", id)
-                }
+        let item_id = id.to_string();
+        let item_text = text.to_string();
+        match self.session().modify_task(|task| {
+            if let Some(item) = task.checklist.iter_mut().find(|item| item.id == item_id) {
+                item.text = item_text;
             }
-            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => format!("Error: {e}"),
+        }).await {
+            Ok(()) => format!("Checklist item '{}' updated", id),
+            Err(e) => format!("Error updating task: {e}"),
         }
     }
 
     async fn delete_checklist_item_impl(&self, id: &str) -> String {
         tracing::info!("[{}#{}] delete_checklist_item id={}", self.role_name(), self.session().task_id(), id);
-        match (
-            self.session().get_description().await,
-            self.session().get_plan().await,
-            self.session().get_checklist().await,
-        ) {
-            (Ok(desc), Ok(plan), Ok(mut items)) => {
-                // Check if the item exists and is checked
-                if let Some(item) = items.iter().find(|i| i.id == id) {
+        let item_id = id.to_string();
+
+        // Pre-validate: check the item exists and is not checked
+        match self.session().get_checklist().await {
+            Ok(items) => {
+                if let Some(item) = items.iter().find(|i| i.id == item_id) {
                     if item.checked {
                         return format!("Error: Cannot delete checked checklist item '{}'. Checked items are preserved as work history.", id);
                     }
                 } else {
                     return format!("Error: Checklist item with id '{}' not found", id);
                 }
-                
-                let original_len = items.len();
-                items.retain(|item| item.id != id);
-                
-                if items.len() == original_len {
-                    return format!("Error: Checklist item with id '{}' not found", id);
-                }
-                
-                match self
-                    .session()
-                    .update_checklist_with_plan(&desc, &plan, &items)
-                    .await
-                {
-                    Ok(()) => format!("Checklist item '{}' deleted", id),
-                    Err(e) => format!("Error updating task: {e}"),
-                }
             }
-            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => format!("Error: {e}"),
+            Err(e) => return format!("Error: {e}"),
+        }
+
+        match self.session().modify_task(|task| {
+            task.checklist.retain(|item| item.id != item_id);
+        }).await {
+            Ok(()) => format!("Checklist item '{}' deleted", id),
+            Err(e) => format!("Error updating task: {e}"),
         }
     }
 }
@@ -735,20 +699,18 @@ pub trait PlannerMcpImpl: CommonMcpImpl {
 
     async fn post_plan_impl(&self, plan: &str) -> String {
         tracing::info!("[planner#{}] post_plan", self.session().task_id());
-        match (self.session().get_description().await, self.session().get_checklist().await) {
-            (Ok(desc), Ok(items)) => {
-                match self.session().update_plan(&desc, plan, &items).await {
-                    Ok(()) => {
-                        // Mark plan as ready for worker to implement
-                        if let Err(e) = self.session().set_signal(crate::Signal::GoWork).await {
-                            return format!("Plan posted but error marking task ready for work: {e}");
-                        }
-                        "Plan posted and task ready for worker implementation".to_string()
-                    }
-                    Err(e) => format!("Error updating task: {e}"),
+        let plan_text = plan.to_string();
+        match self.session().modify_task(|task| {
+            task.plan = plan_text;
+        }).await {
+            Ok(()) => {
+                // Mark plan as ready for worker to implement
+                if let Err(e) = self.session().set_signal(crate::Signal::GoWork).await {
+                    return format!("Plan posted but error marking task ready for work: {e}");
                 }
+                "Plan posted and task ready for worker implementation".to_string()
             }
-            (Err(e), _) | (_, Err(e)) => format!("Error: {e}"),
+            Err(e) => format!("Error updating task: {e}"),
         }
     }
 
