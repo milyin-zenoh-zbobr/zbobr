@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use anyhow::Context;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use zbobr_lib::{
-    task::{Model, Role, Tool},
     Stage, TomlConfig, Zbobr, ZbobrConfig,
+    task::{Model, Role, Tool},
 };
 
 #[derive(Args, Clone)]
@@ -294,7 +294,6 @@ fn load_config(cli: &Cli) -> anyhow::Result<ZbobrConfig> {
     Ok(config)
 }
 
-
 /// Parse CLI, allowing global options both before and after the subcommand.
 ///
 /// Global options are defined without `global = true` so they only appear in
@@ -486,7 +485,11 @@ async fn run_role_session(
     // Clear any existing signal when a session starts so signal labels are removed
     // (GitHub backend will remove all "signal:*" labels when None is passed).
     if let Err(e) = zbobr.set_task_signal(task_id, None).await {
-        tracing::warn!("Failed to clear signal for task {} when starting session: {}", task_id, e);
+        tracing::warn!(
+            "Failed to clear signal for task {} when starting session: {}",
+            task_id,
+            e
+        );
     }
 
     // Create workspace dir
@@ -578,11 +581,17 @@ async fn run_role_session(
                 // Only set signal for Worker/Reviewer logic above
                 if matches!(role, Role::Worker | Role::Reviewer) {
                     if let Err(e) = session.set_signal(next_signal).await {
-                        tracing::error!("Failed to set follow-up signal for task {} after session: {e}", task_id);
+                        tracing::error!(
+                            "Failed to set follow-up signal for task {} after session: {e}",
+                            task_id
+                        );
                     }
                 }
             }
-            Err(e) => tracing::error!("Failed to read checklist for task {} after session: {e}", task_id),
+            Err(e) => tracing::error!(
+                "Failed to read checklist for task {} after session: {e}",
+                task_id
+            ),
         }
     }
 
@@ -688,7 +697,6 @@ async fn run_manager_loop(
             }
         };
 
-        let mut transitioned = false;
         for task in pending_tasks {
             if let Some(signal) = task.signal {
                 let target_stage = signal.target_stage();
@@ -701,16 +709,11 @@ async fn run_manager_loop(
                     );
                     if let Err(e) = zbobr.set_task_stage(task.id, target_stage).await {
                         tracing::error!("Failed to transition task #{}: {e}", task.id);
-                    } else {
-                        transitioned = true;
                     }
                 }
             }
         }
 
-        if transitioned {
-            continue;
-        }
 
         // Check for GO_PLANNING tasks
         let planning_tasks = match zbobr
