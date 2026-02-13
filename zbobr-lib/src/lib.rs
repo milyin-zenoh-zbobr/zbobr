@@ -231,6 +231,11 @@ impl Zbobr {
             .await
     }
 
+    /// Ensure the fork under `fork_owner` is synchronized with the upstream `target_repo` on `branch`.
+    pub async fn sync_fork(&self, target_repo: &str, branch: &str) -> Result<(), ZbobrError> {
+        self.backend.sync_fork(target_repo, branch).await
+    }
+
     pub async fn list_stages(&self) -> Result<Vec<(u64, String)>, ZbobrError> {
         self.backend.list_stages().await
     }

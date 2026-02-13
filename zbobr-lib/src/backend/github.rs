@@ -219,6 +219,44 @@ impl GitHubBackend {
         Ok(())
     }
 
+    /// Sync the fork under `self.config.fork_owner` with the given `target_repo` on `branch`.
+    /// Uses the server-side merge-upstream endpoint (equivalent to `gh repo sync`).
+    /// Returns an error if the operation fails; no fallback is performed.
+    pub async fn sync_fork_internal(&self, target_repo: &str, branch: &str) -> Result<(), ZbobrError> {
+        // Parse owner/repo
+        let parts: Vec<&str> = target_repo.splitn(2, '/').collect();
+        if parts.len() != 2 {
+            return Err(ZbobrError::Config(format!("Invalid target repo: {}", target_repo)));
+        }
+        let upstream_owner = parts[0];
+        let repo = parts[1];
+
+        // Ensure fork exists
+        let fork_repo = self.ensure_fork(target_repo).await?; // "fork_owner/repo"
+
+        // Prepare merge-upstream payload
+        let endpoint = format!("/repos/{}/merge-upstream", fork_repo);
+        let body = serde_json::json!({
+            "branch": branch,
+            "upstream": format!("{}:{}", upstream_owner, branch),
+            "commit_message": format!("Sync fork {} from {}/{}", fork_repo, upstream_owner, branch),
+        });
+
+        tracing::info!("Calling merge-upstream for {} -> {}", fork_repo, branch);
+
+        // Call the endpoint and return any error to the caller
+        match self.octocrab.post::<serde_json::Value, serde_json::Value>(endpoint, Some(&body)).await {
+            Ok(_) => {
+                tracing::info!("Successfully synced fork {} from {}/{}", fork_repo, upstream_owner, branch);
+                Ok(())
+            }
+            Err(e) => {
+                tracing::error!("merge-upstream failed for {}: {}", fork_repo, e);
+                return Err(e.into());
+            }
+        }
+    }
+
     /// Update a label's color and description.
     async fn update_label(
         &self,
@@ -1100,6 +1138,11 @@ impl Backend for GitHubBackend {
             .await?;
 
         Ok(response.html_url)
+    }
+
+    async fn sync_fork(&self, target_repo: &str, branch: &str) -> Result<(), ZbobrError> {
+        // Delegate to internal implementation
+        self.sync_fork_internal(target_repo, branch).await
     }
 
     async fn parse_pr_to_repo_branch(&self, pr_ref: &str) -> Result<(String, String), ZbobrError> {

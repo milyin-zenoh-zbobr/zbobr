@@ -348,6 +348,11 @@ impl Backend for StubBackend {
         Ok(format!("https://github.com/stub/fork/pull/{task_id}"))
     }
 
+    async fn sync_fork(&self, _target_repo: &str, _branch: &str) -> Result<(), ZbobrError> {
+        // Stub: nothing to do for sync
+        Ok(())
+    }
+
     async fn list_stages(&self) -> Result<Vec<(u64, String)>, ZbobrError> {
         let state = self.state.read().unwrap();
         Ok(state.stages.iter().map(|(k, v)| (*v, k.clone())).collect())

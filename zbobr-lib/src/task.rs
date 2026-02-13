@@ -829,6 +829,10 @@ impl TaskSession {
             .ok_or_else(|| ZbobrError::Other("work_branch parameter not set".to_string()))?;
 
         // Clone and setup the repository with forking
+        // Ensure the fork in GitHub is synchronized with the destination repository
+        tracing::info!("Synchronizing fork for {} on branch {}", dest_repo, dest_branch);
+        self.zbobr.sync_fork(&dest_repo, &dest_branch).await?;
+
         let path = self
             .zbobr
             .clone_and_setup(&dest_repo, &dest_branch, self.task_id)
