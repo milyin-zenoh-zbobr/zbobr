@@ -861,8 +861,8 @@ impl TaskSession {
             }
         }
 
-        // Clean up remote information - remove all remotes except origin
-        tracing::info!("Cleaning up remote information in work repository");
+        // Clean up remote information - remove fork if it was previously set up
+        tracing::info!("Cleaning up fork remote in work repository");
         let remove_fork = tokio::process::Command::new("git")
             .args(["remote", "remove", "fork"])
             .current_dir(&path)
@@ -882,22 +882,34 @@ impl TaskSession {
         let fork_repo = format!("{}/{}", self.zbobr.config().fork_owner, repo_name);
         let fork_url = format!("https://github.com/{fork_repo}.git");
 
-        // Add fork as a git remote
-        tracing::info!("Adding fork remote: {}", fork_url);
-        let add_remote = tokio::process::Command::new("git")
-            .args(["remote", "add", "fork", &fork_url])
+        // Remove origin remote and replace it with fork remote URL
+        tracing::info!("Replacing origin remote with fork");
+        let remove_origin = tokio::process::Command::new("git")
+            .args(["remote", "remove", "origin"])
             .current_dir(&path)
             .status()
             .await?;
 
-        if !add_remote.success() {
-            return Err(ZbobrError::Other("Failed to add fork remote".to_string()));
+        if !remove_origin.success() {
+            return Err(ZbobrError::Other("Failed to remove origin remote".to_string()));
+        }
+
+        // Add fork as origin so pushes go to fork
+        tracing::info!("Adding fork as origin remote: {}", fork_url);
+        let add_origin = tokio::process::Command::new("git")
+            .args(["remote", "add", "origin", &fork_url])
+            .current_dir(&path)
+            .status()
+            .await?;
+
+        if !add_origin.success() {
+            return Err(ZbobrError::Other("Failed to add fork as origin remote".to_string()));
         }
 
         // Push the work branch to the forked repository so it exists before creating the PR
         tracing::info!("Pushing work branch '{}' to fork", work_branch);
         let push_status = tokio::process::Command::new("git")
-            .args(["push", "-u", "fork", &work_branch])
+            .args(["push", "-u", "origin", &work_branch])
             .current_dir(&path)
             .status()
             .await?;
