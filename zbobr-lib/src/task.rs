@@ -50,6 +50,8 @@ pub enum Stage {
     Working,
     GoReviewing,
     Reviewing,
+    GoMerging,
+    Merging,
 }
 
 impl Stage {
@@ -62,6 +64,8 @@ impl Stage {
             Stage::Working => "WORKING",
             Stage::GoReviewing => "GO_REVIEWING",
             Stage::Reviewing => "REVIEWING",
+            Stage::GoMerging => "GO_MERGING",
+            Stage::Merging => "MERGING",
         }
     }
 
@@ -74,6 +78,8 @@ impl Stage {
             "WORKING" => Some(Stage::Working),
             "GO_REVIEWING" => Some(Stage::GoReviewing),
             "REVIEWING" => Some(Stage::Reviewing),
+            "GO_MERGING" => Some(Stage::GoMerging),
+            "MERGING" => Some(Stage::Merging),
             _ => None,
         }
     }
@@ -85,7 +91,7 @@ impl std::fmt::Display for Stage {
     }
 }
 
-/// Role for task execution (planner, worker, or reviewer).
+/// Role for task execution (planner, worker, reviewer, or merger).
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
 )]
@@ -96,6 +102,8 @@ pub enum Role {
     Worker,
     #[serde(rename = "reviewer")]
     Reviewer,
+    #[serde(rename = "merger")]
+    Merger,
 }
 
 impl Role {
@@ -105,6 +113,7 @@ impl Role {
             Role::Planner => "planner",
             Role::Worker => "worker",
             Role::Reviewer => "reviewer",
+            Role::Merger => "merger",
         }
     }
 }
@@ -122,6 +131,7 @@ impl std::str::FromStr for Role {
             "planner" => Ok(Role::Planner),
             "worker" => Ok(Role::Worker),
             "reviewer" => Ok(Role::Reviewer),
+            "merger" => Ok(Role::Merger),
             _ => Err(format!("Unknown role: {}", s)),
         }
     }
@@ -141,12 +151,14 @@ pub enum Signal {
                // if both are signalled by an agent.
     #[serde(rename = "done")]
     Done = 2,
+    #[serde(rename = "go_merge")]
+    GoMerge = 3,
     #[serde(rename = "go_review")]
-    GoReview = 3,
+    GoReview = 4,
     #[serde(rename = "go_work")]
-    GoWork = 4,
+    GoWork = 5,
     #[serde(rename = "go_plan")]
-    GoPlan = 5,
+    GoPlan = 6,
 }
 
 impl Signal {
@@ -156,6 +168,7 @@ impl Signal {
             Signal::Stop => "stop",
             Signal::Done => "done",
             Signal::GoAsk => "go_ask",
+            Signal::GoMerge => "go_merge",
             Signal::GoReview => "go_review",
             Signal::GoWork => "go_work",
             Signal::GoPlan => "go_plan",
@@ -164,13 +177,14 @@ impl Signal {
 
     /// Returns all available signals in priority order.
     pub fn all() -> &'static [Signal] {
-        &[Signal::Stop, Signal::Done, Signal::GoAsk, Signal::GoReview, Signal::GoWork, Signal::GoPlan]
+        &[Signal::Stop, Signal::Done, Signal::GoAsk, Signal::GoMerge, Signal::GoReview, Signal::GoWork, Signal::GoPlan]
     }
 
     /// Maps signal to target stage.
     pub fn target_stage(&self) -> Stage {
         match self {
             Signal::Stop | Signal::Done | Signal::GoAsk => Stage::Pending,
+            Signal::GoMerge => Stage::GoMerging,
             Signal::GoReview => Stage::GoReviewing,
             Signal::GoWork => Stage::GoWorking,
             Signal::GoPlan => Stage::GoPlanning,
@@ -191,6 +205,7 @@ impl std::str::FromStr for Signal {
             "stop" => Ok(Signal::Stop),
             "done" => Ok(Signal::Done),
             "goask" | "go-ask" => Ok(Signal::GoAsk),
+            "gomerge" | "go-merge" => Ok(Signal::GoMerge),
             "goreview" | "go-review" => Ok(Signal::GoReview),
             "gowork" | "go-work" => Ok(Signal::GoWork),
             "goplan" | "go-plan" => Ok(Signal::GoPlan),
@@ -919,36 +934,27 @@ impl TaskSession {
                     || stderr.contains("Automatic merge failed");
 
                 if has_conflicts {
-                    // Abort the merge so the repo is left in a clean state
-                    let _ = tokio::process::Command::new("git")
-                        .args(["merge", "--abort"])
-                        .current_dir(&path)
-                        .status()
-                        .await;
-
-                    // Collect conflict details for the user
-                    let conflict_msg = format!(
-                        "Merge conflict: cannot automatically merge '{}' into '{}'. \
-                         Stderr: {} Stdout: {}. \
-                         Please resolve the conflicts manually or rebase the work branch.",
-                        dest_branch, work_branch,
-                        stderr.trim(), stdout.trim()
-                    );
-
-                    // Post a message to the task discussion so the user is notified
+                    // Don't abort the merge yet - leave it in conflict state for the merger agent
+                    // The merger agent will examine the conflicts and try to resolve them
+                    
                     let hostname = hostname::get()
                         .ok()
                         .and_then(|h| h.into_string().ok())
                         .unwrap_or_else(|| "unknown".to_string());
                     let user_msg = format!(
-                        "⚠️  Merge conflict detected while merging destination branch '{}' into work branch '{}'. \
-                         Automatic resolution was not possible. Please resolve the conflicts manually and restart the agent.\n\n\
-                         Details:\n```\n{}\n{}\n```",
-                        dest_branch, work_branch, stderr.trim(), stdout.trim()
+                        "⚠️  Merge conflict detected while automatically merging destination branch '{}' into work branch '{}'. \
+                         A merger agent has been started to attempt automatic conflict resolution.",
+                        dest_branch, work_branch
                     );
-                    let _ = self.post_message(&user_msg, "agent", &hostname).await;
+                    let _ = self.post_message(&user_msg, "system", &hostname).await;
 
-                    return Err(ZbobrError::Other(conflict_msg));
+                    // Signal the merger to handle this
+                    let _ = self.set_signal(Signal::GoMerge).await;
+
+                    tracing::info!(
+                        "Merge conflict detected for task #{}, signaling GoMerge",
+                        self.task_id
+                    );
                 } else {
                     // Non-conflict merge failure
                     return Err(ZbobrError::Other(format!(

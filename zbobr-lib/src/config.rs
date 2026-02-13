@@ -45,6 +45,7 @@ pub struct TomlPrompts {
     pub planner: Option<Vec<PathBuf>>,
     pub worker: Option<Vec<PathBuf>>,
     pub reviewer: Option<Vec<PathBuf>>,
+    pub merger: Option<Vec<PathBuf>>,
 }
 
 /// Configuration loaded from a TOML file.
@@ -109,6 +110,8 @@ pub struct ZbobrConfig {
     pub worker_prompts: Vec<PathBuf>,
     /// Custom prompt files for reviewer agent.
     pub reviewer_prompts: Vec<PathBuf>,
+    /// Custom prompt files for merger agent.
+    pub merger_prompts: Vec<PathBuf>,
     /// Prefix for work branches (default: "zbobr_fix").
     pub work_branch_prefix: String,
     /// Base directory for resolving prompt file paths.
@@ -134,6 +137,7 @@ impl Default for ZbobrConfig {
             planner_prompts: vec!["prompts/planner.md".into(), "prompts/common.md".into()],
             worker_prompts: vec!["prompts/worker.md".into(), "prompts/common.md".into()],
             reviewer_prompts: vec!["prompts/reviewer.md".into(), "prompts/common.md".into()],
+            merger_prompts: vec!["prompts/merger.md".into(), "prompts/common.md".into()],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
             git_user_name: String::new(),
@@ -268,6 +272,10 @@ impl ZbobrConfig {
             .or_else(|| toml_prompts.and_then(|p| p.reviewer.clone()))
             .unwrap_or(defaults.reviewer_prompts);
 
+        let merger_prompts = env_path_list(env, "ZBOBR_MERGER_PROMPTS")
+            .or_else(|| toml_prompts.and_then(|p| p.merger.clone()))
+            .unwrap_or(defaults.merger_prompts);
+
         let prompts_path = env
             .var("ZBOBR_PROMPTS_PATH")
             .map(PathBuf::from)
@@ -323,6 +331,7 @@ impl ZbobrConfig {
             planner_prompts,
             worker_prompts,
             reviewer_prompts,
+            merger_prompts,
             work_branch_prefix,
             prompts_path,
             git_user_name,
@@ -448,6 +457,7 @@ mod tests {
             planner_prompts: vec![],
             worker_prompts: vec![],
             reviewer_prompts: vec![],
+            merger_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
             git_user_name: "zbobr".to_string(),

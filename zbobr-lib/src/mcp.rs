@@ -219,6 +219,18 @@ mcp_tools! {
 }
 
 mcp_tools! {
+    merger_tools,
+    GET_DESCRIPTION = "get_description",
+    GET_DISCUSSION = "get_discussion",
+    REPORT_ERROR = "report_error",
+    ASK_USER = "ask_user",
+    PULL_WORK = "pull_work",
+    PUSH_WORK = "push_work",
+    GET_PARAM_DESTINATION_BRANCH = "get_param_destination_branch",
+    GET_PARAM_WORK_BRANCH = "get_param_work_branch",
+}
+
+mcp_tools! {
     admin_tools,
     LIST_TASKS = "list_tasks",
     CREATE_TASK = "create_task",
@@ -426,6 +438,69 @@ Work autonomously. Do not ask the user for anything.
         ask_user = worker_tools::ASK_USER,
         get_param_destination_branch = reviewer_tools::GET_PARAM_DESTINATION_BRANCH,
         get_param_work_branch = reviewer_tools::GET_PARAM_WORK_BRANCH,
+        branch_isolation = branch_isolation_instruction(),
+    )
+}
+
+/// Generate hardcoded merger instructions using tool name constants.
+pub fn merger_instructions() -> String {
+    format!(
+        r#"# Merger Agent
+
+Resolve merge conflicts when the destination branch cannot be automatically merged into the work branch.
+
+## When Merger Runs
+
+A merge conflict occurred when trying to automatically merge the destination branch into the work branch. The merger agent is started to examine conflicts and resolve them when possible.
+
+## Access Model
+
+You have read access to the task and repository:
+- Use `{get_description}` to understand the task context
+- Use `{get_discussion}` to see prior comments and what happened
+- Use `{pull_work}` to access the repository with conflicts
+- Use `{push_work}` to push resolved conflicts back to work branch
+- Use `{ask_user}` to ask the user for clarification on conflict resolution
+- Use `{report_error}` to report when conflicts cannot be resolved
+
+## Workspace isolation
+
+    {branch_isolation}
+
+## Workflow
+
+1. Call `{get_description}` to understand the task being worked on
+2. Call `{get_discussion}` for context about what work was being done
+3. Call `{pull_work}` to access the repository (the work branch currently has merge conflicts)
+4. `cd` into the returned path and examine the conflicts:
+   - `git status` to see which files have conflicts
+   - `git diff` to examine conflict markers and understand what changed in each branch
+   - Review the code in both branches to understand the intent
+5. **Attempt automatic resolution:**
+   - For simple, non-overlapping changes (e.g., formatting, imports, unrelated edits), apply manual fixes that combine both changes
+   - Use `git add` to resolve simple conflicts, then `git commit -m "chore: merge conflicts resolved"`
+   - If you can create a reasonable merged version, do so and commit it
+6. **If automatic resolution is not possible:**
+   - Use `{ask_user}` to describe the conflicts and ask which version should be preferred, or ask for guidance
+   - Wait for user input before proceeding
+7. **After successful resolution:**
+   - Commit all changes: `git commit -m "chore: merge resolution"`
+   - Use `{push_work}` to push the resolved merge to the work branch
+   - The task will then resume normally with the merged code
+
+## Conflict Resolution Principles
+
+- Combine non-overlapping changes from both branches (destination and work) when possible
+- For conflicting edits to the same code, ask the user which version is preferred
+- Preserve the intent of both branches' changes if both changes are valid
+- Do NOT delete either branch's work without explicit user guidance
+"#,
+        get_description = merger_tools::GET_DESCRIPTION,
+        get_discussion = merger_tools::GET_DISCUSSION,
+        pull_work = merger_tools::PULL_WORK,
+        push_work = merger_tools::PUSH_WORK,
+        ask_user = merger_tools::ASK_USER,
+        report_error = merger_tools::REPORT_ERROR,
         branch_isolation = branch_isolation_instruction(),
     )
 }
@@ -859,6 +934,153 @@ pub trait ReviewerMcpImpl: CommonMcpImpl {
             Ok(path) => path,
             Err(e) => format!("Error: {e}"),
         }
+    }
+}
+
+// -- Merger MCP service --
+
+#[allow(async_fn_in_trait)]
+pub trait MergerMcpImpl: CommonMcpImpl {
+    async fn get_param_impl(&self, param: Parameter) -> String {
+        let param_name = param.name();
+        tracing::info!("[merger#{}] get_param_{}", self.session().task_id(), param_name);
+        match self.session().get_parameter(param_name).await {
+            Ok(Some(value)) => value,
+            Ok(None) => format!("{} is not set", param_name),
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    async fn get_param_destination_branch_impl(&self) -> String {
+        self.get_param_impl(Parameter::DestinationBranch).await
+    }
+
+    async fn get_param_work_branch_impl(&self) -> String {
+        self.get_param_impl(Parameter::WorkBranch).await
+    }
+
+    async fn pull_work_impl(&self) -> String {
+        tracing::info!("[merger#{}] pull_work", self.session().task_id());
+        match self.session().pull_work().await {
+            Ok(path) => path,
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    async fn push_work_impl(&self) -> String {
+        tracing::info!("[merger#{}] push_work", self.session().task_id());
+        match self.session().push_work().await {
+            Ok(()) => "Merged conflicts pushed successfully".to_string(),
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    async fn ask_user_impl(&self, message: &str) -> String {
+        tracing::info!("[merger#{}] ask_user", self.session().task_id());
+        let hostname = get_hostname();
+        
+        if let Err(e) = self.session().post_message(message, self.role().as_str(), &hostname).await {
+            tracing::error!("Failed to post merger message for task {}: {e}", self.session().task_id());
+            return format!("Error posting message: {e}");
+        }
+        
+        // Signal to pause task processing and wait for user response
+        if let Err(e) = self.session().set_signal(crate::Signal::GoAsk).await {
+            tracing::error!("Failed to set signal GoAsk for task {} after asking user: {e}", self.session().task_id());
+            return format!("Error pausing task: {e}");
+        }
+        
+        "Message posted to user - task paused pending response".to_string()
+    }
+}
+
+#[derive(Clone)]
+pub struct MergerMcp {
+    session: TaskSession,
+    tool_router: ToolRouter<Self>,
+}
+
+impl CommonMcpImpl for MergerMcp {
+    fn session(&self) -> &TaskSession {
+        &self.session
+    }
+    
+    fn role(&self) -> Role {
+        Role::Merger
+    }
+}
+
+impl MergerMcpImpl for MergerMcp {}
+
+#[tool_router]
+impl MergerMcp {
+    pub fn new(zbobr: Zbobr, task_id: u64) -> Self {
+        Self {
+            session: zbobr.task_session(task_id),
+            tool_router: Self::tool_router(),
+        }
+    }
+
+    #[tool(description = "Get the current description for this task")]
+    async fn get_description(&self) -> String {
+        self.get_description_impl().await
+    }
+
+    #[tool(description = "Get all discussion messages on this task")]
+    async fn get_discussion(&self) -> String {
+        self.get_discussion_impl().await
+    }
+
+    #[tool(description = "Report an error to the user and pause task processing")]
+    async fn report_error(&self, Parameters(params): Parameters<MessageParam>) -> String {
+        self.report_error_impl(&params.message).await
+    }
+
+    #[tool(description = "Post a message to the user and pause task processing until user responds")]
+    async fn ask_user(&self, Parameters(params): Parameters<MessageParam>) -> String {
+        self.ask_user_impl(&params.message).await
+    }
+
+    #[tool(description = "Your workspace currently has a merge conflict. Use this to access the repository and resolve the conflicts")]
+    async fn pull_work(&self) -> String {
+        self.pull_work_impl().await
+    }
+
+    #[tool(description = "Push the resolved merge to the work branch in the fork. All changes must be committed before pushing.")]
+    async fn push_work(&self) -> String {
+        self.push_work_impl().await
+    }
+
+    #[tool(description = "Get the destination branch name for this task (read-only)")]
+    async fn get_param_destination_branch(&self) -> String {
+        self.get_param_destination_branch_impl().await
+    }
+
+    #[tool(description = "Get the work branch name for this task (read-only)")]
+    async fn get_param_work_branch(&self) -> String {
+        self.get_param_work_branch_impl().await
+    }
+}
+
+#[tool_handler]
+impl ServerHandler for MergerMcp {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo {
+            capabilities: ServerCapabilities::builder().enable_tools().build(),
+            instructions: Some(
+                "Merger tools: resolve merge conflicts in the work branch."
+                    .to_string(),
+            ),
+            ..Default::default()
+        }
+    }
+}
+
+impl MergerMcp {
+    /// Generate API documentation for merger tools
+    pub fn generate_api_docs() -> String {
+        let tools = Self::tool_router();
+        generate_api_docs_from_router(&tools, "Merger")
     }
 }
 
@@ -1452,6 +1674,18 @@ pub async fn run_role_mcp_server(
                 move || {
                     tracing::debug!("Creating new ReviewerMcp instance for task {task_id}");
                     Ok(ReviewerMcp::new(zbobr.clone(), task_id))
+                },
+                Arc::new(LocalSessionManager::default()),
+                Default::default(),
+            );
+            axum::Router::new().nest_service(&path, svc)
+        }
+        Role::Merger => {
+            tracing::info!("Creating MergerMcp service for task {task_id} at path {path}");
+            let svc = StreamableHttpService::new(
+                move || {
+                    tracing::debug!("Creating new MergerMcp instance for task {task_id}");
+                    Ok(MergerMcp::new(zbobr.clone(), task_id))
                 },
                 Arc::new(LocalSessionManager::default()),
                 Default::default(),

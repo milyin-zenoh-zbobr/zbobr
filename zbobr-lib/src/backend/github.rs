@@ -1520,6 +1520,8 @@ fn stage_description(stage: Stage) -> &'static str {
         Stage::Working => "Task is in work, other bots ignore it",
         Stage::GoReviewing => "Task must be taken by reviewer agent, any matching bot can take it",
         Stage::Reviewing => "Task is in review, other bots ignore it",
+        Stage::GoMerging => "Task must be taken by merger agent to resolve conflicts, any matching bot can take it",
+        Stage::Merging => "Task is in merge conflict resolution, other bots ignore it",
     }
 }
 

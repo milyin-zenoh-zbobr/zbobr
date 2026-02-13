@@ -137,14 +137,29 @@ enum Command {
         #[arg(long)]
         show_prompt: bool,
     },
+    /// Run merger role for a specific task (resolves merge conflicts)
+    Merge {
+        /// Task ID
+        task: u64,
+        /// AI model to use (e.g. "gpt-5-mini", "claude-3-5-sonnet")
+        #[arg(long)]
+        model: Option<String>,
+        /// Port for the MCP server that the agent connects to
+        #[arg(long, default_value = "3000")]
+        port: u16,
+        /// Show the prompt that would be sent to the model instead of running
+        #[arg(long)]
+        show_prompt: bool,
+    },
 }
 
-/// Resolved prompt file paths for planner and worker.
+/// Resolved prompt file paths for planner, worker, and merger.
 struct Prompts {
     base_path: Option<PathBuf>,
     planner: Vec<PathBuf>,
     worker: Vec<PathBuf>,
     reviewer: Vec<PathBuf>,
+    merger: Vec<PathBuf>,
 }
 
 /// Resolve prompt paths: CLI arg > config values.
@@ -169,6 +184,8 @@ fn resolve_prompts(cli: &Cli, config: &ZbobrConfig) -> anyhow::Result<Prompts> {
         .clone()
         .unwrap_or_else(|| config.reviewer_prompts.clone());
 
+    let merger = config.merger_prompts.clone();
+
     // CLI prompts_path > config.prompts_path (which came from TOML/env)
     let base_path = cli
         .global
@@ -181,6 +198,7 @@ fn resolve_prompts(cli: &Cli, config: &ZbobrConfig) -> anyhow::Result<Prompts> {
         planner,
         worker,
         reviewer,
+        merger,
     })
 }
 
@@ -234,12 +252,14 @@ fn build_full_prompt(user_context: &str, role: Role) -> String {
         Role::Planner => zbobr_lib::planner_instructions(),
         Role::Worker => zbobr_lib::worker_instructions(),
         Role::Reviewer => zbobr_lib::reviewer_instructions(),
+        Role::Merger => zbobr_lib::merger_instructions(),
     };
 
     let api_docs = match role {
         Role::Planner => zbobr_lib::PlannerMcp::generate_api_docs(),
         Role::Worker => zbobr_lib::WorkerMcp::generate_api_docs(),
         Role::Reviewer => zbobr_lib::ReviewerMcp::generate_api_docs(),
+        Role::Merger => zbobr_lib::MergerMcp::generate_api_docs(),
     };
 
     if user_context.is_empty() {
@@ -436,6 +456,26 @@ async fn main() -> anyhow::Result<()> {
                 .map_err(anyhow::Error::msg)?;
             run_role_session(&zbobr, task, Role::Worker, model_enum, port, &full_prompt).await?;
         }
+        Command::Merge {
+            task,
+            model,
+            port,
+            show_prompt,
+        } => {
+            let base_prompt = load_prompts(&prompts.merger, prompts.base_path.as_ref())?;
+            let full_prompt = build_full_prompt(&base_prompt, Role::Merger);
+
+            if show_prompt {
+                println!("{}", full_prompt);
+                return Ok(());
+            }
+
+            let model_enum = model
+                .map(|m| m.parse::<Model>())
+                .transpose()
+                .map_err(anyhow::Error::msg)?;
+            run_role_session(&zbobr, task, Role::Merger, model_enum, port, &full_prompt).await?;
+        }
         Command::Loop {
             interval,
             cleanup_interval,
@@ -479,6 +519,7 @@ async fn run_role_session(
         Role::Planner => Stage::Planning,
         Role::Worker => Stage::Working,
         Role::Reviewer => Stage::Reviewing,
+        Role::Merger => Stage::Merging,
     };
     zbobr.set_task_stage(task_id, stage).await?;
 
@@ -571,6 +612,10 @@ async fn run_role_session(
                             Signal::Done
                         }
                     }
+                    Role::Merger => {
+                        // After merger resolves the conflict, resume work
+                        Signal::GoWork
+                    }
                     _ => {
                         // Planner and other roles don't change signal here.
                         // Leave as-is.
@@ -578,8 +623,8 @@ async fn run_role_session(
                     }
                 };
 
-                // Only set signal for Worker/Reviewer logic above
-                if matches!(role, Role::Worker | Role::Reviewer) {
+                // Only set signal for Worker/Reviewer/Merger logic above
+                if matches!(role, Role::Worker | Role::Reviewer | Role::Merger) {
                     if let Err(e) = session.set_signal(next_signal).await {
                         tracing::error!(
                             "Failed to set follow-up signal for task {} after session: {e}",
