@@ -28,6 +28,26 @@ fn branch_isolation_instruction() -> String {
     )
 }
 
+/// Inject repository information (task repository and fork repository) into agent instructions.
+/// This ensures agents have the necessary owner context when using GitHub tools.
+fn inject_repo_info(instruction_text: &str, task_repo: &str, fork_repo: &str, fork_owner: &str) -> String {
+    // Insert a "Repository Information" section right after the role title
+    if let Some(first_newline_pos) = instruction_text.find('\n') {
+        let title_line = &instruction_text[..=first_newline_pos];
+        let rest = &instruction_text[first_newline_pos + 1..];
+        
+        format!(
+            "{}## Repository Information\n\nYour task repository: {task_repo}\nYour fork repository: {fork_repo} (owned by {fork_owner})\n\n{rest}",
+            title_line
+        )
+    } else {
+        // No newline found, just append
+        format!(
+            "{instruction_text}\n\n## Repository Information\n\nYour task repository: {task_repo}\nYour fork repository: {fork_repo} (owned by {fork_owner})"
+        )
+    }
+}
+
 /// Get the current hostname, or "unknown" if it cannot be determined.
 fn get_hostname() -> String {
     hostname::get()
@@ -301,8 +321,8 @@ Work autonomously. Do not ask the user for anything.
 
 
 /// Generate hardcoded worker instructions using tool name constants.
-pub fn worker_instructions() -> String {
-    format!(
+pub fn worker_instructions(task_repo: Option<&str>, fork_owner: Option<&str>) -> String {
+    let mut instructions = format!(
         r#"# Worker Agent
 
 Implement an approved plan by writing code and progressing checklist items.
@@ -365,12 +385,21 @@ Work autonomously. Do not ask the user for anything unless the task genuinely re
         ask_user = worker_tools::ASK_USER,
         ask_planner = worker_tools::ASK_PLANNER,
         branch_isolation = branch_isolation_instruction(),
-    )
+    );
+    
+    // Inject repository information if provided
+    if let (Some(task_repo), Some(fork_owner)) = (task_repo, fork_owner) {
+        let task_repo_name = task_repo.split('/').last().unwrap_or(task_repo);
+        let fork_repo = format!("{}/{}", fork_owner, task_repo_name);
+        instructions = inject_repo_info(&instructions, task_repo, &fork_repo, fork_owner);
+    }
+    
+    instructions
 }
 
 /// Generate hardcoded reviewer instructions using tool name constants.
-pub fn reviewer_instructions() -> String {
-    format!(
+pub fn reviewer_instructions(task_repo: Option<&str>, fork_owner: Option<&str>) -> String {
+    let mut instructions = format!(
         r#"# Reviewer Agent
 
 Review the implementation changes and ensure they meet coding standards and task requirements.
@@ -439,12 +468,21 @@ Work autonomously. Do not ask the user for anything.
         get_param_destination_branch = reviewer_tools::GET_PARAM_DESTINATION_BRANCH,
         get_param_work_branch = reviewer_tools::GET_PARAM_WORK_BRANCH,
         branch_isolation = branch_isolation_instruction(),
-    )
+    );
+    
+    // Inject repository information if provided
+    if let (Some(task_repo), Some(fork_owner)) = (task_repo, fork_owner) {
+        let task_repo_name = task_repo.split('/').last().unwrap_or(task_repo);
+        let fork_repo = format!("{}/{}", fork_owner, task_repo_name);
+        instructions = inject_repo_info(&instructions, task_repo, &fork_repo, fork_owner);
+    }
+    
+    instructions
 }
 
 /// Generate hardcoded merger instructions using tool name constants.
-pub fn merger_instructions() -> String {
-    format!(
+pub fn merger_instructions(task_repo: Option<&str>, fork_owner: Option<&str>) -> String {
+    let mut instructions = format!(
         r#"# Merger Agent
 
 Resolve merge conflicts when the destination branch cannot be automatically merged into the work branch.
@@ -502,7 +540,16 @@ You have read access to the task and repository:
         ask_user = merger_tools::ASK_USER,
         report_error = merger_tools::REPORT_ERROR,
         branch_isolation = branch_isolation_instruction(),
-    )
+    );
+    
+    // Inject repository information if provided
+    if let (Some(task_repo), Some(fork_owner)) = (task_repo, fork_owner) {
+        let task_repo_name = task_repo.split('/').last().unwrap_or(task_repo);
+        let fork_repo = format!("{}/{}", fork_owner, task_repo_name);
+        instructions = inject_repo_info(&instructions, task_repo, &fork_repo, fork_owner);
+    }
+    
+    instructions
 }
 
 /// Generate concise API documentation from a tool router
@@ -1732,6 +1779,7 @@ mod tests {
             planner_prompts: vec![],
             worker_prompts: vec![],
             reviewer_prompts: vec![],
+            merger_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
             git_user_name: "Test User".to_string(),
@@ -1768,6 +1816,7 @@ mod tests {
             planner_prompts: vec![],
             worker_prompts: vec![],
             reviewer_prompts: vec![],
+            merger_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
             git_user_name: "Test User".to_string(),
@@ -1804,6 +1853,7 @@ mod tests {
             planner_prompts: vec![],
             worker_prompts: vec![],
             reviewer_prompts: vec![],
+            merger_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
             git_user_name: "Test User".to_string(),

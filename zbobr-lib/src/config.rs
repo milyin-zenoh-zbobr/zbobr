@@ -582,6 +582,7 @@ mod tests {
                 planner: Some(vec![PathBuf::from("p.md")]),
                 worker: Some(vec![PathBuf::from("w.md")]),
                 reviewer: Some(vec![PathBuf::from("r.md")]),
+                merger: Some(vec![PathBuf::from("m.md")]),
             }),
         };
 
