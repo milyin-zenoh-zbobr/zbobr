@@ -66,9 +66,10 @@ struct GlobalArgs {
     name = "zbobr",
     about = "AI-powered task orchestrator",
     long_about = "AI-powered task orchestrator that manages tasks through automated stages.\n\n\
-        Tasks flow through: PENDING -> GO_PLANNING -> PLANNING -> GO_WORKING -> WORKING.\n\
+        Tasks flow through: PENDING -> GO_PLANNING -> PLANNING -> GO_WORKING -> WORKING -> GO_REVIEWING -> REVIEWING -> GO_MERGING -> MERGING.\n\
         Planner roles create implementation plans, worker roles implement them\n\
-        by forking target repositories and creating pull requests.\n\n\
+        by forking target repositories and creating pull requests, reviewer roles review the changes,\n\
+        and merger roles resolve any merge conflicts.\n\n\
         Requires a GitHub token: set GH_TOKEN or GITHUB_TOKEN env var.\n\
         Easiest way: export GH_TOKEN=$(gh auth token)"
 )]
@@ -662,9 +663,11 @@ async fn run_manager_loop(
     let planner_base = load_prompts(&prompts.planner, prompts.base_path.as_ref())?;
     let worker_base = load_prompts(&prompts.worker, prompts.base_path.as_ref())?;
     let reviewer_base = load_prompts(&prompts.reviewer, prompts.base_path.as_ref())?;
+    let merger_base = load_prompts(&prompts.merger, prompts.base_path.as_ref())?;
     let planner_prompt = build_full_prompt(&planner_base, Role::Planner);
     let worker_prompt = build_full_prompt(&worker_base, Role::Worker);
     let reviewer_prompt = build_full_prompt(&reviewer_base, Role::Reviewer);
+    let merger_prompt = build_full_prompt(&merger_base, Role::Merger);
 
     tracing::info!("Manager loop started for {}", zbobr.config().task_repo);
     tracing::info!("Poll interval: {interval_secs}s, Cleanup interval: {cleanup_interval_secs}s");
@@ -695,6 +698,15 @@ async fn run_manager_loop(
         "Reviewer prompt files: {}",
         prompts
             .reviewer
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join("; ")
+    );
+    tracing::info!(
+        "Merger prompt files: {}",
+        prompts
+            .merger
             .iter()
             .map(|p| p.display().to_string())
             .collect::<Vec<_>>()
@@ -865,13 +877,49 @@ async fn run_manager_loop(
             continue;
         }
 
+        // Check for GO_MERGING tasks
+        let merging_tasks = match zbobr
+            .list_tasks_by_stage(Stage::GoMerging.milestone_name(), Some(current_tool))
+            .await
+        {
+            Ok(tasks) => tasks,
+            Err(e) => {
+                tracing::error!("Failed to check GO_MERGING tasks: {e}");
+                vec![]
+            }
+        };
+
+        if let Some(task) = merging_tasks.first() {
+            let task_model = task.model.clone().unwrap_or_else(|| model.clone());
+            tracing::info!(
+                "Found GO_MERGING task #{} (tool: {:?}, model: {}) - running merger",
+                task.id,
+                task.tool,
+                task_model
+            );
+            if let Err(e) = run_role_session(
+                zbobr,
+                task.id,
+                Role::Merger,
+                Some(task_model),
+                port,
+                &merger_prompt,
+            )
+            .await
+            {
+                tracing::error!("Merger session failed: {e}");
+            }
+            continue;
+        }
+
         // Log task statistics before sleeping
         tracing::info!(
-            "Task statistics for tool {:?}: GO_PLANNING={}, GO_WORKING={}, GO_REVIEWING={}",
+            "Task statistics for tool {:?}: GO_PLANNING={}, GO_WORKING={}, GO_REVIEWING={}, GO_MERGING={}",
             current_tool,
             planning_tasks.len(),
             working_tasks.len(),
-            reviewing_tasks.len()
+            reviewing_tasks.len(),
+            merging_tasks.len()
         );
 
         if !planning_tasks.is_empty() {
@@ -896,6 +944,14 @@ async fn run_manager_loop(
                 .map(|t| format!("#{} (tool: {:?}, model: {:?})", t.id, t.tool, t.model))
                 .collect();
             tracing::info!("  GO_REVIEWING tasks: {}", summary.join(", "));
+        }
+
+        if !merging_tasks.is_empty() {
+            let summary: Vec<_> = merging_tasks
+                .iter()
+                .map(|t| format!("#{} (tool: {:?}, model: {:?})", t.id, t.tool, t.model))
+                .collect();
+            tracing::info!("  GO_MERGING tasks: {}", summary.join(", "));
         }
 
         tracing::info!("No processable tasks. Sleeping {interval_secs}s...");
