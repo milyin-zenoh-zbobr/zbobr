@@ -332,7 +332,7 @@ Work autonomously. Do not ask the user for anything unless the task genuinely re
 7. Use platform-provided workspace setup helper `{pull_work}` to prepare the repository and environment; when working with branches, consult `{get_param_destination_branch}` and `{get_param_work_branch}` for branch names if needed.
 8. `cd` into the returned path and implement the plan
 9. Commit changes locally with clear messages (describe what the change does, why, and reference relevant checklist item)
-10. When implementation for an item is complete, mark the item done with `{check_checklist_item}`, save intermediate results with `{push_work}`, and update or insert follow-up items as needed
+10. When implementation for an item is complete, mark the item done with `{check_checklist_item}`, save intermediate results with `{push_work}` (which requires all changes to be committed first), and update or insert follow-up items as needed
 11. Do not add low-level platform or tool-invocation steps (for example, `{push_work}`) into your checklist — checklist items should remain human-meaningful and task-focused
 12. If you need human clarification or intervention, call `{ask_user}` or `{ask_planner}` as appropriate; use `{report_error}` only to report technical errors"#,
         get_description = worker_tools::GET_DESCRIPTION,
@@ -1047,7 +1047,7 @@ impl WorkerMcp {
     }
 
     #[tool(
-        description = "Push the work_branch in the cloned repository. Returns nothing. Stashes local changes if a different branch is selected as current. The work repository has all remote information cleared - only pull_work and push_work know where to push/pull. The model must not do git push directly."
+        description = "Push the work_branch in the cloned repository. Returns nothing. Stashes local changes if a different branch is selected as current. All changes must be committed before pushing - the push will fail with an error listing uncommitted files if any exist. The work repository has all remote information cleared - only pull_work and push_work know where to push/pull. The model must not do git push directly."
     )]
     async fn push_work(&self) -> String {
         self.push_work_impl().await

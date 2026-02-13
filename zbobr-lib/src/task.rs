@@ -726,6 +726,7 @@ impl TaskSession {
     }
 
     /// Push the work_branch in the cloned repository. Stashes local changes if a different branch is selected.
+    /// Rejects the push if there are uncommitted changes - all work must be committed before pushing.
     /// The work repository has all remote information cleared - only pull_work and push_work know where to push.
     pub async fn push_work(&self) -> Result<(), ZbobrError> {
         // Get the destination repo (needed to find the cloned path)
@@ -796,6 +797,29 @@ impl TaskSession {
                     work_branch
                 )));
             }
+        }
+
+        // Check for uncommitted changes before pushing
+        tracing::info!("Checking for uncommitted changes on branch '{}'", work_branch);
+        let status_output = tokio::process::Command::new("git")
+            .args(["status", "--porcelain"])
+            .current_dir(&work_dir)
+            .output()
+            .await?;
+
+        if !status_output.status.success() {
+            return Err(ZbobrError::Other("Failed to check git status".into()));
+        }
+
+        let uncommitted = String::from_utf8_lossy(&status_output.stdout).trim().to_string();
+        if !uncommitted.is_empty() {
+            return Err(ZbobrError::Other(
+                format!(
+                    "Cannot push: there are uncommitted changes on branch '{}'. Please commit all changes before pushing.\n\nUncommitted files:\n{}",
+                    work_branch,
+                    uncommitted
+                )
+            ));
         }
 
         // Push to the configured remote (set by pull_work)
