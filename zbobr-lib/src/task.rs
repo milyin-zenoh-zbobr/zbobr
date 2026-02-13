@@ -975,6 +975,19 @@ impl TaskSession {
             destination_branch
         );
 
+        // If a PR URL is already stored in the task parameters, verify it exists
+        // and skip creating a new PR when that's the case.
+        if let Ok(Some(existing_pr)) = self.get_parameter(Parameter::PrUrl.name()).await {
+            match self.zbobr.parse_pr_to_repo_branch(&existing_pr).await {
+                Ok((_repo, _branch)) => {
+                    tracing::info!("PR already exists for task {}: {}", self.task_id, existing_pr);
+                    return Ok(());
+                }
+                Err(e) => {
+                    tracing::info!("Stored pr_url '{}' could not be verified: {}. Creating new PR.", existing_pr, e);
+                }
+            }
+        }
         // Guard: work_branch must be a branch name or owner:branch, but not a full repo path
         // (e.g. owner/repo/branch) which is invalid for the Pulls API head field.
         let slash_count = work_branch.chars().filter(|c| *c == '/').count();
