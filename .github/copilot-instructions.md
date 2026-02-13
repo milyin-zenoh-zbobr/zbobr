@@ -33,6 +33,10 @@ Add the following project-wide rules for Copilot / agent-related changes:
 - Only execute the `gh` CLI from the coordinator when the required operation cannot be achieved with `octocrab` (for example, a feature that is only available via the CLI or a one-off administrative action). Document the reason and the exact CLI command in a code comment or changelog entry when falling back to `gh`.
 - Rationale: using the API client keeps interactions testable, reproducible, and avoids shelling out where a stable library exists.
 
+4) Keep setup script in sync with stage and label changes
+- When adding, removing, or modifying task stages (milestones) or labels, update [zbobr-lib/src/backend/github.rs](zbobr-lib/src/backend/github.rs) in the `setup_repository` function to match.
+- Rationale: ensures the setup command continues to properly initialize repositories with all necessary stages and labels.
+
 Where to apply these rules
 - New code and edits touching agent tooling, task orchestration, GitHub integrations, or shared constants should follow these guidelines.
 - Helpful code locations: [zbobr-lib/src/config.rs](zbobr-lib/src/config.rs), [zbobr-lib/src/tool_executor.rs](zbobr-lib/src/tool_executor.rs), [zbobr-lib/src/mcp.rs](zbobr-lib/src/mcp.rs), and the coordinator binary at [zbobr/src/main.rs](zbobr/src/main.rs).
