@@ -170,7 +170,6 @@ mcp_tools! {
     GET_PARAM_DESTINATION_BRANCH = "get_param_destination_branch",
     SET_PARAM_WORK_BRANCH_POSTFIX = "set_param_work_branch_postfix",
     GET_PARAM_WORK_BRANCH = "get_param_work_branch",
-    SET_PARAM_WORK_BRANCH = "set_param_work_branch",
 }
 
 mcp_tools! {
@@ -722,9 +721,6 @@ pub trait PlannerMcpImpl: CommonMcpImpl {
         self.get_param_impl(Parameter::WorkBranch).await
     }
 
-    async fn set_param_work_branch_impl(&self, value: Option<String>) -> String {
-        self.set_param_impl(Parameter::WorkBranch, value).await
-    }
 }
 
 /// Worker-specific MCP implementations
@@ -932,11 +928,6 @@ impl PlannerMcp {
     #[tool(description = "Get the work branch name for this task (read-only)")]
     async fn get_param_work_branch(&self) -> String {
         self.get_param_work_branch_impl().await
-    }
-
-    #[tool(description = "Set the work branch name for this task (e.g. 'implement-feature')")]
-    async fn set_param_work_branch(&self, Parameters(params): Parameters<SetWorkBranchParam>) -> String {
-        self.set_param_work_branch_impl(params.value).await
     }
 }
 
