@@ -1500,6 +1500,8 @@ mod tests {
             reviewer_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
+            git_user_name: "Test User".to_string(),
+            git_user_email: "test@example.com".to_string(),
         };
         let zbobr = Zbobr::new(config).unwrap();
         let admin = AdminMcp::new(zbobr);
@@ -1534,6 +1536,8 @@ mod tests {
             reviewer_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
+            git_user_name: "Test User".to_string(),
+            git_user_email: "test@example.com".to_string(),
         };
         let zbobr = Zbobr::new(config).unwrap();
         let planner = PlannerMcp::new(zbobr, 123);
@@ -1568,6 +1572,8 @@ mod tests {
             reviewer_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
+            git_user_name: "Test User".to_string(),
+            git_user_email: "test@example.com".to_string(),
         };
         let zbobr = Zbobr::new(config).unwrap();
         let worker = WorkerMcp::new(zbobr, 123);

@@ -24,10 +24,11 @@ fork_owner = "{{FORK_OWNER}}"
 
 # Git user name and email for commits made by the tool
 # These override any global git config when making commits.
-# Priority: ZBOBR_GIT_USER_NAME > git_user_name > default ("zbobr")
-# Priority: ZBOBR_GIT_USER_EMAIL > git_user_email > default ("zbobr@example.com")
-# git_user_name = "Your Name"
-# git_user_email = "your.email@example.com"
+# REQUIRED: Must be set in config, env vars, or global git config.
+# Priority: ZBOBR_GIT_USER_NAME > git_user_name > (then required)
+# Priority: ZBOBR_GIT_USER_EMAIL > git_user_email > (then required)
+git_user_name = "Your Name"
+git_user_email = "your.email@example.com"
 
 # GitHub token with write access for orchestrator (used with octocrab for repo operations).
 # Priority: ZBOBR_OWNER_GH_TOKEN > GH_TOKEN > GITHUB_TOKEN > $(gh auth token)

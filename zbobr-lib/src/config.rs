@@ -136,8 +136,8 @@ impl Default for ZbobrConfig {
             reviewer_prompts: vec!["prompts/reviewer.md".into(), "prompts/common.md".into()],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
-            git_user_name: "zbobr".to_string(),
-            git_user_email: "zbobr@example.com".to_string(),
+            git_user_name: String::new(),
+            git_user_email: String::new(),
         }
     }
 }
@@ -300,19 +300,15 @@ impl ZbobrConfig {
             .or_else(|| toml.and_then(|t| t.agent_github_token.clone()))
             .unwrap_or_default();
 
-        let git_user_name = env_or(
-            env,
-            "ZBOBR_GIT_USER_NAME",
-            toml.and_then(|t| t.git_user_name.as_deref()),
-            &defaults.git_user_name,
-        );
+        let git_user_name = env
+            .var("ZBOBR_GIT_USER_NAME")
+            .or_else(|| toml.and_then(|t| t.git_user_name.clone()))
+            .unwrap_or_default();
 
-        let git_user_email = env_or(
-            env,
-            "ZBOBR_GIT_USER_EMAIL",
-            toml.and_then(|t| t.git_user_email.as_deref()),
-            &defaults.git_user_email,
-        );
+        let git_user_email = env
+            .var("ZBOBR_GIT_USER_EMAIL")
+            .or_else(|| toml.and_then(|t| t.git_user_email.clone()))
+            .unwrap_or_default();
 
         Ok(Self {
             task_repo,
@@ -372,6 +368,20 @@ impl ZbobrConfig {
             return Err(ZbobrError::Config(
                 "ZBOBR_AGENT_GH_TOKEN must be different from ZBOBR_OWNER_GH_TOKEN.\n  \
                  Agent token must have read-only access while owner token requires write access."
+                    .into(),
+            ));
+        }
+        if self.git_user_name.is_empty() {
+            return Err(ZbobrError::Config(
+                "git user name not set. Use --git-user-name NAME or set ZBOBR_GIT_USER_NAME in config file or env var.\n  \
+                 This is used for git commits made by the tool."
+                    .into(),
+            ));
+        }
+        if self.git_user_email.is_empty() {
+            return Err(ZbobrError::Config(
+                "git user email not set. Use --git-user-email EMAIL or set ZBOBR_GIT_USER_EMAIL in config file or env var.\n  \
+                 This is used for git commits made by the tool."
                     .into(),
             ));
         }
