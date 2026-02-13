@@ -164,10 +164,19 @@ impl Zbobr {
         // Clone if not already present, or update if it exists
         if !work_dir.exists() {
             tracing::info!("Cloning {target_repo} into {}", work_dir.display());
-            // Use `git clone` instead of `gh repo clone` so we rely on git directly
+            // Clone only the specified branch to keep the agent isolated from other branches.
             let clone_url = format!("https://github.com/{}.git", target_repo);
             let status = tokio::process::Command::new("git")
-                .args(["clone", &clone_url, work_dir.to_str().unwrap()])
+                .args([
+                    "clone",
+                    "--branch",
+                    branch,
+                    "--single-branch",
+                    "--depth",
+                    "1",
+                    &clone_url,
+                    work_dir.to_str().unwrap(),
+                ])
                 .status()
                 .await?;
             if !status.success() {
@@ -176,8 +185,9 @@ impl Zbobr {
         } else {
             // Fetch latest changes from origin if repo already exists
             tracing::info!("Updating {target_repo} in {}", work_dir.display());
+            // Fetch only the destination branch to avoid exposing other branches to the agent.
             let fetch_status = tokio::process::Command::new("git")
-                .args(["fetch", "origin"])
+                .args(["fetch", "--depth", "1", "origin", branch])
                 .current_dir(&work_dir)
                 .status()
                 .await?;

@@ -16,6 +16,15 @@ use crate::{
     Zbobr,
 };
 
+// Instruction shared across all role prompts explaining branch isolation rules.
+fn branch_isolation_instruction() -> String {
+    format!(
+        "Workspace branch isolation: When preparing the workspace, clone ONLY the destination branch as provided by the MCP tool `{}` and avoid fetching or using any other branches. Do NOT use branches other than the destination branch and the designated work branch obtained via `{}`. If you need temporary or experimental branches, prefix their names with the work branch name to avoid interfering with other agents.",
+        planner_tools::GET_PARAM_DESTINATION_BRANCH,
+        planner_tools::GET_PARAM_WORK_BRANCH,
+    )
+}
+
 /// Get the current hostname, or "unknown" if it cannot be determined.
 fn get_hostname() -> String {
     hostname::get()
@@ -233,6 +242,10 @@ Investigate a task and create an implementation plan with actionable steps.
     - For reading GitHub data: use `git` and `gh` CLI only when no MCP tool provides the needed information
     - NEVER use git/gh for writing, pushing, or sending data to GitHub
 
+## Workspace isolation
+
+    {branch_isolation}
+
 Work autonomously. Do not ask the user for anything.
 
 ## Workflow
@@ -254,6 +267,7 @@ Work autonomously. Do not ask the user for anything.
 7. Design a solution. 
 8. Post a solution in the form of a text plan with `{post_plan}`. Use planning mode if available.
 "#,
+    branch_isolation = branch_isolation_instruction(),
         get_description = planner_tools::GET_DESCRIPTION,
         get_discussion = planner_tools::GET_DISCUSSION,
         get_plan = planner_tools::GET_PLAN,
@@ -269,6 +283,7 @@ Work autonomously. Do not ask the user for anything.
         get_param_work_branch = planner_tools::GET_PARAM_WORK_BRANCH,
     )
 }
+
 
 /// Generate hardcoded worker instructions using tool name constants.
 pub fn worker_instructions() -> String {
@@ -298,6 +313,11 @@ The checklist is your persistent memory for this task. It survives across sessio
 - For reading GitHub data: use `git` and `gh` CLI only when no platform tool provides the needed information.
 - NEVER use git/gh for writing, pushing, or sending data to GitHub.
 - The work repository has remote information controlled by the platform; you must not perform direct remote writes yourself.
+    - The work repository has remote information controlled by the platform; you must not perform direct remote writes yourself.
+
+## Workspace isolation
+
+    {branch_isolation}
 
 Work autonomously. Do not ask the user for anything unless the task genuinely requires human input.
 
@@ -330,6 +350,7 @@ Work autonomously. Do not ask the user for anything unless the task genuinely re
         push_work = worker_tools::PUSH_WORK,
         ask_user = worker_tools::ASK_USER,
         ask_planner = worker_tools::ASK_PLANNER,
+        branch_isolation = branch_isolation_instruction(),
     )
 }
 
@@ -360,6 +381,12 @@ You have read-only access to all task information:
 - Use `{pull_work}` to access the work repository and examine changes
     - Use `{ask_user}` to request the user's explanations related to review findings; use `{report_error}` only to report technical errors
 - You can run local git commands to examine changes, but you cannot push
+
+You can run local git commands to examine changes, but you cannot push
+
+## Workspace isolation
+
+    {branch_isolation}
 
 Work autonomously. Do not ask the user for anything.
 
@@ -399,6 +426,7 @@ Work autonomously. Do not ask the user for anything.
         ask_user = worker_tools::ASK_USER,
         get_param_destination_branch = reviewer_tools::GET_PARAM_DESTINATION_BRANCH,
         get_param_work_branch = reviewer_tools::GET_PARAM_WORK_BRANCH,
+        branch_isolation = branch_isolation_instruction(),
     )
 }
 

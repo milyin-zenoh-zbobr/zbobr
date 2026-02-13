@@ -788,8 +788,20 @@ impl Backend for GitHubBackend {
         // Clone if not already present
         if !work_dir.exists() {
             tracing::info!("Cloning {target_repo} into {}", work_dir.display());
+            // Clone only the specified branch to keep the agent isolated from other branches.
             let status = tokio::process::Command::new("gh")
-                .args(["repo", "clone", target_repo, work_dir.to_str().unwrap()])
+                .args([
+                    "repo",
+                    "clone",
+                    target_repo,
+                    work_dir.to_str().unwrap(),
+                    "--",
+                    "--branch",
+                    branch,
+                    "--single-branch",
+                    "--depth",
+                    "1",
+                ])
                 .env("GH_TOKEN", &self.config.owner_github_token)
                 .env("GITHUB_TOKEN", &self.config.owner_github_token)
                 .status()
@@ -800,8 +812,9 @@ impl Backend for GitHubBackend {
         } else {
             // Fetch latest changes from origin if repo already exists
             tracing::info!("Updating {target_repo} in {}", work_dir.display());
+            // Fetch only the destination branch to avoid exposing other branches to the agent.
             let fetch_status = tokio::process::Command::new("git")
-                .args(["fetch", "origin"])
+                .args(["fetch", "--depth", "1", "origin", branch])
                 .current_dir(&work_dir)
                 .status()
                 .await?;
@@ -912,7 +925,18 @@ impl Backend for GitHubBackend {
                 work_dir.display()
             );
             let status = tokio::process::Command::new("gh")
-                .args(["repo", "clone", target_repo, work_dir.to_str().unwrap()])
+                .args([
+                    "repo",
+                    "clone",
+                    target_repo,
+                    work_dir.to_str().unwrap(),
+                    "--",
+                    "--branch",
+                    branch,
+                    "--single-branch",
+                    "--depth",
+                    "1",
+                ])
                 .env("GH_TOKEN", &self.config.owner_github_token)
                 .env("GITHUB_TOKEN", &self.config.owner_github_token)
                 .status()
@@ -928,7 +952,7 @@ impl Backend for GitHubBackend {
             );
 
             let fetch_status = tokio::process::Command::new("git")
-                .args(["fetch", "origin"])
+                .args(["fetch", "--depth", "1", "origin", branch])
                 .current_dir(&work_dir)
                 .status()
                 .await?;
