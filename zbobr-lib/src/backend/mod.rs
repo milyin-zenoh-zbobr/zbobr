@@ -253,13 +253,53 @@ pub fn merge_concurrent_description_updates(
     )
 }
 
+/// Configure git user settings for a repository.
+/// Sets user.name and user.email at the repository level.
+pub async fn configure_git_user(
+    work_dir: &std::path::Path,
+    git_user_name: &str,
+    git_user_email: &str,
+) -> Result<(), ZbobrError> {
+    // Set git user configuration for this repository
+    let config_user_status = tokio::process::Command::new("git")
+        .args(["config", "--local", "user.name", git_user_name])
+        .current_dir(work_dir)
+        .status()
+        .await
+        .map_err(|e| ZbobrError::Other(format!("Failed to set git user.name: {}", e)))?;
+
+    if !config_user_status.success() {
+        return Err(ZbobrError::Other("git config user.name failed".to_string()));
+    }
+
+    let config_email_status = tokio::process::Command::new("git")
+        .args(["config", "--local", "user.email", git_user_email])
+        .current_dir(work_dir)
+        .status()
+        .await
+        .map_err(|e| ZbobrError::Other(format!("Failed to set git user.email: {}", e)))?;
+
+    if !config_email_status.success() {
+        return Err(ZbobrError::Other("git config user.email failed".to_string()));
+    }
+
+    tracing::info!(
+        "Configured git user '{}' <{}> in {}",
+        git_user_name,
+        git_user_email,
+        work_dir.display()
+    );
+
+    Ok(())
+}
+
 /// Create a placeholder file in a branch to ensure it has at least one commit.
 /// This is used to prevent GitHub PR API from rejecting branches with no commits.
 /// 
 /// Creates `.zbobr/{branch_name}` file, stages it, and commits it.
 /// Does NOT push — the caller is responsible for pushing if needed.
 /// 
-/// Git user configuration should be set up by clone_and_setup or clone_readonly before calling this.
+/// Git user configuration should be set up before calling this function (via configure_git_user).
 /// 
 /// # Arguments
 /// * `work_dir` - The repository working directory

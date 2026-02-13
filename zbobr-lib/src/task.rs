@@ -885,6 +885,8 @@ impl TaskSession {
 
             // Create a placeholder file to ensure the branch has at least one commit
             // (GitHub PR API rejects branches with no commits between them)
+            let config = self.zbobr.config();
+            crate::backend::configure_git_user(&path, &config.git_user_name, &config.git_user_email).await?;
             crate::backend::create_placeholder_commit(&path, &work_branch).await?;
         }
 

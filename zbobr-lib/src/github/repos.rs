@@ -149,37 +149,7 @@ impl Zbobr {
         &self,
         work_dir: &std::path::Path,
     ) -> Result<(), ZbobrError> {
-        // Set git user configuration for this repository
-        let config_user_status = tokio::process::Command::new("git")
-            .args(["config", "--local", "user.name", &self.config.git_user_name])
-            .current_dir(work_dir)
-            .status()
-            .await
-            .map_err(|e| ZbobrError::Other(format!("Failed to set git user.name: {}", e)))?;
-
-        if !config_user_status.success() {
-            return Err(ZbobrError::Other("git config user.name failed".to_string()));
-        }
-
-        let config_email_status = tokio::process::Command::new("git")
-            .args(["config", "--local", "user.email", &self.config.git_user_email])
-            .current_dir(work_dir)
-            .status()
-            .await
-            .map_err(|e| ZbobrError::Other(format!("Failed to set git user.email: {}", e)))?;
-
-        if !config_email_status.success() {
-            return Err(ZbobrError::Other("git config user.email failed".to_string()));
-        }
-
-        tracing::info!(
-            "Configured git user '{}' <{}> in {}",
-            self.config.git_user_name,
-            self.config.git_user_email,
-            work_dir.display()
-        );
-
-        Ok(())
+        crate::backend::configure_git_user(work_dir, &self.config.git_user_name, &self.config.git_user_email).await
     }
 
     /// Clone a repo into the workspace, set up fork remote and feature branch.

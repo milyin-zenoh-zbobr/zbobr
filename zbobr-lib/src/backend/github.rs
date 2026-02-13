@@ -284,6 +284,9 @@ impl GitHubBackend {
         work_dir: &std::path::Path,
         branch_name: &str,
     ) -> Result<(), ZbobrError> {
+        // Ensure git user is configured for this repository
+        crate::backend::configure_git_user(work_dir, &self.config.git_user_name, &self.config.git_user_email).await?;
+
         // Create placeholder file and commit it
         crate::backend::create_placeholder_commit(work_dir, branch_name).await?;
 
