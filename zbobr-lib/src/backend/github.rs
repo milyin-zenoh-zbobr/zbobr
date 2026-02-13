@@ -284,43 +284,8 @@ impl GitHubBackend {
         work_dir: &std::path::Path,
         branch_name: &str,
     ) -> Result<(), ZbobrError> {
-        let zbobr_dir = work_dir.join(".zbobr");
-        let placeholder_path = zbobr_dir.join(branch_name);
-
-        // Create .zbobr directory
-        tokio::fs::create_dir_all(&zbobr_dir)
-            .await
-            .map_err(|e| ZbobrError::Other(format!("Failed to create .zbobr directory: {}", e)))?;
-
-        // Create placeholder file
-        tokio::fs::File::create(&placeholder_path)
-            .await
-            .map_err(|e| ZbobrError::Other(format!("Failed to create placeholder file: {}", e)))?;
-
-        // Stage the file
-        let add_status = tokio::process::Command::new("git")
-            .args(["add", &format!(".zbobr/{}", branch_name)])
-            .current_dir(work_dir)
-            .status()
-            .await
-            .map_err(|e| ZbobrError::Other(format!("Failed to run git add: {}", e)))?;
-
-        if !add_status.success() {
-            return Err(ZbobrError::Other("git add for placeholder failed".to_string()));
-        }
-
-        // Commit the file
-        let commit_msg = format!("chore: add branch placeholder {}", branch_name);
-        let commit_status = tokio::process::Command::new("git")
-            .args(["commit", "-m", &commit_msg])
-            .current_dir(work_dir)
-            .status()
-            .await
-            .map_err(|e| ZbobrError::Other(format!("Failed to run git commit: {}", e)))?;
-
-        if !commit_status.success() {
-            return Err(ZbobrError::Other("git commit for placeholder failed".to_string()));
-        }
+        // Create placeholder file and commit it
+        crate::backend::create_placeholder_commit(work_dir, branch_name).await?;
 
         // Push to fork immediately with tracking
         let push_status = tokio::process::Command::new("git")

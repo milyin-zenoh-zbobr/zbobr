@@ -253,6 +253,60 @@ pub fn merge_concurrent_description_updates(
     )
 }
 
+/// Create a placeholder file in a branch to ensure it has at least one commit.
+/// This is used to prevent GitHub PR API from rejecting branches with no commits.
+/// 
+/// Creates `.zbobr/{branch_name}` file, stages it, and commits it.
+/// Does NOT push — the caller is responsible for pushing if needed.
+/// 
+/// # Arguments
+/// * `work_dir` - The repository working directory
+/// * `branch_name` - The branch name (used for file naming and commit message)
+pub async fn create_placeholder_commit(
+    work_dir: &std::path::Path,
+    branch_name: &str,
+) -> Result<(), ZbobrError> {
+    let zbobr_dir = work_dir.join(".zbobr");
+    let placeholder_path = zbobr_dir.join(branch_name);
+
+    // Create .zbobr directory
+    tokio::fs::create_dir_all(&zbobr_dir)
+        .await
+        .map_err(|e| ZbobrError::Other(format!("Failed to create .zbobr directory: {}", e)))?;
+
+    // Create placeholder file
+    tokio::fs::File::create(&placeholder_path)
+        .await
+        .map_err(|e| ZbobrError::Other(format!("Failed to create placeholder file: {}", e)))?;
+
+    // Stage the file
+    let add_status = tokio::process::Command::new("git")
+        .args(["add", &format!(".zbobr/{}", branch_name)])
+        .current_dir(work_dir)
+        .status()
+        .await
+        .map_err(|e| ZbobrError::Other(format!("Failed to run git add: {}", e)))?;
+
+    if !add_status.success() {
+        return Err(ZbobrError::Other("git add for placeholder failed".to_string()));
+    }
+
+    // Commit the file
+    let commit_msg = format!("chore: add branch placeholder {}", branch_name);
+    let commit_status = tokio::process::Command::new("git")
+        .args(["commit", "-m", &commit_msg])
+        .current_dir(work_dir)
+        .status()
+        .await
+        .map_err(|e| ZbobrError::Other(format!("Failed to run git commit: {}", e)))?;
+
+    if !commit_status.success() {
+        return Err(ZbobrError::Other("git commit for placeholder failed".to_string()));
+    }
+
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 #[async_trait]
 pub trait Backend: Send + Sync {

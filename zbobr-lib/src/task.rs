@@ -882,6 +882,10 @@ impl TaskSession {
                     work_branch
                 )));
             }
+
+            // Create a placeholder file to ensure the branch has at least one commit
+            // (GitHub PR API rejects branches with no commits between them)
+            crate::backend::create_placeholder_commit(&path, &work_branch).await?;
         }
 
         // Clean up remote information - remove fork if it was previously set up
