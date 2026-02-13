@@ -166,6 +166,7 @@ mcp_tools! {
     GET_CHECKLIST = "get_checklist",
     GET_PARAM_DESTINATION_REPOSITORY = "get_param_destination_repository",
     SET_PARAM_DESTINATION_REPOSITORY = "set_param_destination_repository",
+    SET_PARAM_DESTINATION_BRANCH = "set_param_destination_branch",
     GET_PARAM_DESTINATION_BRANCH = "get_param_destination_branch",
     SET_PARAM_WORK_BRANCH_POSTFIX = "set_param_work_branch_postfix",
     GET_PARAM_WORK_BRANCH = "get_param_work_branch",
@@ -699,6 +700,10 @@ pub trait PlannerMcpImpl: CommonMcpImpl {
         self.get_param_impl(Parameter::DestinationBranch).await
     }
 
+    async fn set_param_destination_branch_impl(&self, value: Option<String>) -> String {
+        self.set_param_impl(Parameter::DestinationBranch, value).await
+    }
+
     async fn set_param_work_branch_postfix_impl(&self, value: Option<String>) -> String {
         tracing::info!("[planner#{}] set_param_work_branch_postfix value={:?}", self.session().task_id(), value);
         match value {
@@ -912,6 +917,11 @@ impl PlannerMcp {
     #[tool(description = "Get the destination branch name for this task (read-only)")]
     async fn get_param_destination_branch(&self) -> String {
         self.get_param_destination_branch_impl().await
+    }
+
+    #[tool(description = "Set the destination branch name for this task (e.g. 'main')")]
+    async fn set_param_destination_branch(&self, Parameters(params): Parameters<SetDestinationBranchParam>) -> String {
+        self.set_param_destination_branch_impl(params.value).await
     }
 
     #[tool(description = "Set the work branch postfix for this task (the postfix segment, e.g. 'implement-feature')")]
