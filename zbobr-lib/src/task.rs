@@ -469,14 +469,18 @@ impl TaskSession {
     /// The closure receives a mutable `Task` reference and may modify `description`,
     /// `parameters`, `plan`, and `checklist`. All other `Task` fields are ignored on write.
     ///
-    /// Conflict detection and three-way merge are handled automatically:
-    /// if another writer changed the issue body between our read and write, the
-    /// closure result is merged with the concurrent change and retried.
+    /// Concurrent `modify_task` calls on the same task are serialized by an in-process
+    /// per-task mutex, so concurrent MCP tool calls cannot overwrite each other's changes.
+    /// Cross-process conflicts are handled by backend-level three-way merge.
     pub async fn modify_task<F>(&self, mutate: F) -> Result<(), ZbobrError>
     where
         F: FnOnce(&mut Task),
     {
         use crate::backend::serialize_description_full;
+
+        // Acquire per-task lock to serialize concurrent modify_task calls
+        let lock = self.zbobr.task_lock(self.task_id);
+        let _guard = lock.lock().await;
 
         // 1. Read current state (with etag)
         let mut task = self.zbobr.get_task(self.task_id).await?;

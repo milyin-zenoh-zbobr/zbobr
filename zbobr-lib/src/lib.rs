@@ -7,7 +7,7 @@ pub mod setup;
 pub mod task;
 pub mod tool_executor;
 
-use std::{path::PathBuf, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 pub use config::{TomlConfig, ZbobrConfig};
 pub use mcp::{planner_instructions, worker_instructions, reviewer_instructions, PlannerMcp, WorkerMcp, ReviewerMcp};
@@ -24,6 +24,9 @@ use crate::{
 pub struct Zbobr {
     config: Arc<ZbobrConfig>,
     pub(crate) backend: Arc<dyn Backend>,
+    /// Per-task mutexes to serialize concurrent read-modify-write cycles
+    /// for the same task within this process.
+    task_locks: Arc<std::sync::Mutex<HashMap<u64, Arc<tokio::sync::Mutex<()>>>>>,
 }
 
 impl Zbobr {
@@ -44,11 +47,21 @@ impl Zbobr {
         Ok(Self {
             config: config_arc,
             backend,
+            task_locks: Arc::new(std::sync::Mutex::new(HashMap::new())),
         })
     }
 
     pub fn config(&self) -> &ZbobrConfig {
         &self.config
+    }
+
+    /// Get or create a per-task async mutex for serializing read-modify-write cycles.
+    pub(crate) fn task_lock(&self, task_id: u64) -> Arc<tokio::sync::Mutex<()>> {
+        let mut locks = self.task_locks.lock().unwrap();
+        locks
+            .entry(task_id)
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+            .clone()
     }
 
     /// Create a TaskSession bound to a specific task.
