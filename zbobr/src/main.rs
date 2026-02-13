@@ -538,6 +538,46 @@ async fn run_role_session(
         tracing::info!("Session interrupted for task #{task_id}, moved to PENDING");
     } else {
         tracing::info!("Session complete for task #{task_id}, moved to PENDING");
+        // After a normal (non-interrupted) session finish, decide next signal
+        // based on the current checklist and role. This centralizes the
+        // checkbox->signal transition in the main loop rather than inside
+        // individual checklist operations.
+        let session = zbobr.task_session(task_id);
+        match session.get_checklist().await {
+            Ok(items) => {
+                let has_unchecked = items.iter().any(|i| !i.checked);
+                use zbobr_lib::Signal;
+                let next_signal = match role {
+                    Role::Worker => {
+                        if has_unchecked {
+                            Signal::GoWork
+                        } else {
+                            Signal::GoReview
+                        }
+                    }
+                    Role::Reviewer => {
+                        if has_unchecked {
+                            Signal::GoWork
+                        } else {
+                            Signal::Done
+                        }
+                    }
+                    _ => {
+                        // Planner and other roles don't change signal here.
+                        // Leave as-is.
+                        Signal::GoAsk // placeholder no-op; we'll skip setting below
+                    }
+                };
+
+                // Only set signal for Worker/Reviewer logic above
+                if matches!(role, Role::Worker | Role::Reviewer) {
+                    if let Err(e) = session.set_signal(next_signal).await {
+                        tracing::error!("Failed to set follow-up signal for task {} after session: {e}", task_id);
+                    }
+                }
+            }
+            Err(e) => tracing::error!("Failed to read checklist for task {} after session: {e}", task_id),
+        }
     }
 
     // Shut down server

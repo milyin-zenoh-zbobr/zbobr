@@ -552,38 +552,15 @@ pub trait CommonMcpImpl: Send + Sync {
     async fn check_checklist_item_impl(&self, id: &str, checked: bool) -> String {
         tracing::info!("[{}#{}] check_checklist_item id={} checked={}", self.role_name(), self.session().task_id(), id, checked);
         let item_id = id.to_string();
-        let role = self.role();
         match self.session().modify_task(|task| {
             if let Some(item) = task.checklist.iter_mut().find(|item| item.id == item_id) {
                 item.checked = checked;
             }
         }).await {
             Ok(()) => {
-                // Determine signal based on checklist completion and role
-                let checklist = match self.session().get_checklist().await {
-                    Ok(c) => c,
-                    Err(e) => return format!("Checklist item '{}' checked state updated to {} but error reading checklist: {}", id, checked, e),
-                };
-                let has_unchecked = checklist.iter().any(|i| !i.checked);
-                let signal = if has_unchecked {
-                    match role {
-                        crate::task::Role::Worker => crate::Signal::GoWork,
-                        crate::task::Role::Reviewer => crate::Signal::GoReview,
-                        crate::task::Role::Planner => crate::Signal::GoPlan,
-                    }
-                } else {
-                    match role {
-                        crate::task::Role::Worker => crate::Signal::GoReview,
-                        crate::task::Role::Reviewer => crate::Signal::Done,
-                        crate::task::Role::Planner => crate::Signal::GoWork,
-                    }
-                };
-
-                if let Err(e) = self.session().set_signal(signal).await {
-                    tracing::error!("Failed to update task signal for task {} when changing checklist item {}: {e}", self.session().task_id(), id);
-                    return format!("Checklist item '{}' checked state updated to {} but error updating task state: {}", id, checked, e);
-                }
-
+                // Checklist item state updated; signal transitions are handled by
+                // the main/run loop after a role session completes. Do not set
+                // task signal here to avoid racing state transitions.
                 format!("Checklist item '{}' checked state updated to {}", id, checked)
             }
             Err(e) => format!("Error: {e}"),
