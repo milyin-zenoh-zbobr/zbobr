@@ -28,13 +28,6 @@ fn branch_isolation_instruction() -> String {
     )
 }
 
-/// Inject repository information (task repository and fork repository) into agent instructions.
-/// This ensures agents have the necessary owner context when using GitHub tools.
-fn inject_repo_info(instruction_text: &str, task_repo: &str, fork_repo: &str, fork_owner: &str) -> String {
-    format!(
-        "{instruction_text}\n\n## Repository Information\n\nYour task repository: {task_repo}\nYour fork repository: {fork_repo} (owned by {fork_owner})"
-    )
-}
 
 /// Get the current hostname, or "unknown" if it cannot be determined.
 fn get_hostname() -> String {
@@ -375,13 +368,6 @@ Work autonomously. Do not ask the user for anything unless the task genuinely re
         branch_isolation = branch_isolation_instruction(),
     );
     
-    // Inject repository information if provided
-    if let (Some(task_repo), Some(fork_owner)) = (task_repo, fork_owner) {
-        let task_repo_name = task_repo.split('/').last().unwrap_or(task_repo);
-        let fork_repo = format!("{}/{}", fork_owner, task_repo_name);
-        instructions = inject_repo_info(&instructions, task_repo, &fork_repo, fork_owner);
-    }
-    
     instructions
 }
 
@@ -458,13 +444,6 @@ Work autonomously. Do not ask the user for anything.
         branch_isolation = branch_isolation_instruction(),
     );
     
-    // Inject repository information if provided
-    if let (Some(task_repo), Some(fork_owner)) = (task_repo, fork_owner) {
-        let task_repo_name = task_repo.split('/').last().unwrap_or(task_repo);
-        let fork_repo = format!("{}/{}", fork_owner, task_repo_name);
-        instructions = inject_repo_info(&instructions, task_repo, &fork_repo, fork_owner);
-    }
-    
     instructions
 }
 
@@ -529,13 +508,6 @@ You have read access to the task and repository:
         report_error = merger_tools::REPORT_ERROR,
         branch_isolation = branch_isolation_instruction(),
     );
-    
-    // Inject repository information if provided
-    if let (Some(task_repo), Some(fork_owner)) = (task_repo, fork_owner) {
-        let task_repo_name = task_repo.split('/').last().unwrap_or(task_repo);
-        let fork_repo = format!("{}/{}", fork_owner, task_repo_name);
-        instructions = inject_repo_info(&instructions, task_repo, &fork_repo, fork_owner);
-    }
     
     instructions
 }
