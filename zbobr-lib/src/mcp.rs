@@ -274,7 +274,7 @@ pub fn worker_instructions() -> String {
     format!(
         r#"# Worker Agent
 
-Implement an approved plan by writing code and submitting it.
+Implement an approved plan by writing code and progressing checklist items.
 
 ## Checklist: Your Work Memory
 
@@ -283,7 +283,7 @@ The checklist is your persistent memory for this task. It survives across sessio
 **Key principles:**
 - Start by using `{get_checklist}` to read the current checklist — it tells you exactly where you are in the work.
 - If the checklist is empty when you start, use `{insert_checklist_item}` to create it based on the plan. Break the plan into clear, actionable steps.
-- Each checklist item is one logical unit of work. Usually a new session starts for each unchecked item.
+- Each checklist item should describe a meaningful unit of work (for example: "add unit tests for X", "refactor module Y", "update API to validate Z"). Do NOT use checklist items to record internal or platform tool actions (for example: "call {push_work}" or "run {pull_work}").
 - Use `{check_checklist_item}` to mark items as checked (`✓`) when you complete them to record progress.
 - Use `{insert_checklist_item}` to add new items during work if you discover additional steps needed.
 - Use `{update_checklist_item}` to edit item text to refine understanding as you work.
@@ -292,41 +292,28 @@ The checklist is your persistent memory for this task. It survives across sessio
 ## Access Model
 
     You can access the internet and run local commands. Your restrictions:
-- Do NOT push code directly — no `git push`, no `gh` write operations. Use `{push_work}` instead. Access rights are configured to prevent gh-based pushes anyway.
-- Do NOT run git clone/pull/fetch — use `{pull_work}` instead
-    - Use MCP `{push_work}` to submit your work
-    - Use MCP `{ask_user}` to request the user's explanations related to the task; use `{report_error}` only to report technical errors; use `{ask_planner}` to request planner clarification
-- For reading GitHub data: use `git` and `gh` CLI only when no MCP tool provides the needed information
-- NEVER use git/gh for writing, pushing, or sending data to GitHub
-- The work repository has all remote information cleared. The model must not do git push itself. Only `{pull_work}` and `{push_work}` can access the remote. The MCP `{get_param_destination_branch}` returns the name of the original branch in pulled repository, the MCP `{get_param_work_branch}` gives the name of the brach to work.
+- Do NOT push code directly — no `git push`, no `gh` write operations. The platform coordinates repository remote actions; do not include submission or remote-write actions as checklist items.
+- Do NOT run git clone/pull/fetch directly for setting up work — platform tools can prepare the workspace when available. If you need repository data, use the provided helper tools rather than raw git commands.
+- For reading GitHub data: use `git` and `gh` CLI only when no platform tool provides the needed information.
+- NEVER use git/gh for writing, pushing, or sending data to GitHub.
+- The work repository has remote information controlled by the platform; you must not perform direct remote writes yourself.
 
-Work autonomously. Do not ask the user for anything.
+Work autonomously. Do not ask the user for anything unless the task genuinely requires human input.
 
 ## Workflow
 
 1. Call `{get_description}` to read the task
 2. Call `{get_plan}` to retrieve the approved implementation plan (posted by the planner)
 3. Call `{get_checklist}` to read the implementation steps
-4. **If checklist is empty**: Create it using `{insert_checklist_item}` to break down the plan into clear, actionable steps
+4. **If checklist is empty**: Create it using `{insert_checklist_item}` to break down the plan into clear, actionable steps (task-focused items only)
 5. Call `{get_discussion}` if you need additional context from comments
 6. **Focus on one unchecked checklist item during this session**. Assume checked items were completed in previous sessions. In exceptional cases where multiple items logically depend on the same setup and can be done together, you may do more than one, but this should be rare.
-7. Set up the repository using `{pull_work}`:
-   - Clones the fork of destination_repository and returns the path
-   - Automatically sets current branch to work_branch (created from destination_branch)
-   - Stashes local changes if a different branch is selected
-   - The work repository has all remote information cleaned (git knows only internal push/pull locations)
+7. Use platform-provided workspace setup helper `{pull_work}` to prepare the repository and environment; avoid embedding direct git remote commands in checklist items.
 8. `cd` into the returned path and implement the plan
-9. Commit changes locally with clear messages
-11. Call `{push_work}` to push your work. It automatically selects work_branch in the cloned repository and puhshes it
-12. When you complete implementation steps:
-    - Use `{update_checklist_item}` to refine item text if needed as you learn more about the work
-    - Use `{insert_checklist_item}` to add new items if you discover additional steps
-    - Call `{check_checklist_item}` to mark the completed checklist item(s) as done
-    - Call `{ask_planner}` or `{ask_user}` if you need acknowledgement; use `{report_error}` only for technical error reports
-13. If there are issues requiring user intervention:
-    - Call `{ask_user}` to describe the problem and ask the user for input
-14. If there are issues requiring planner intervention:
-    - Call `{ask_planner}` to describe the problem and ask the planner for clarification or re-planning"#,
+9. Commit changes locally with clear messages (describe what the change does, why, and reference relevant checklist item)
+10. When implementation for an item is complete, mark the item done with `{check_checklist_item}`, save intermediate results with `{push_work}`, and update or insert follow-up items as needed
+11. Do not add low-level platform or tool-invocation steps (for example, `{push_work}`) into your checklist — checklist items should remain human-meaningful and task-focused
+12. If you need human clarification or intervention, call `{ask_user}` or `{ask_planner}` as appropriate; use `{report_error}` only to report technical errors"#,
         get_description = worker_tools::GET_DESCRIPTION,
         get_discussion = worker_tools::GET_DISCUSSION,
         get_plan = worker_tools::GET_PLAN,
