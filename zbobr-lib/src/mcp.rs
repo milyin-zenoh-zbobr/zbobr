@@ -302,8 +302,8 @@ Work autonomously. Do not ask the user for anything.
 
 
 /// Generate hardcoded worker instructions using tool name constants.
-pub fn worker_instructions(task_repo: Option<&str>, fork_owner: Option<&str>) -> String {
-    let mut instructions = format!(
+pub fn worker_instructions(_task_repo: Option<&str>, _fork_owner: Option<&str>) -> String {
+    let instructions = format!(
         r#"# Worker Agent
 
 Implement an approved plan by writing code and progressing checklist items.
@@ -372,8 +372,8 @@ Work autonomously. Do not ask the user for anything unless the task genuinely re
 }
 
 /// Generate hardcoded reviewer instructions using tool name constants.
-pub fn reviewer_instructions(task_repo: Option<&str>, fork_owner: Option<&str>) -> String {
-    let mut instructions = format!(
+pub fn reviewer_instructions(_task_repo: Option<&str>, _fork_owner: Option<&str>) -> String {
+    let instructions = format!(
         r#"# Reviewer Agent
 
 Review the implementation changes and ensure they meet coding standards and task requirements.
@@ -448,8 +448,8 @@ Work autonomously. Do not ask the user for anything.
 }
 
 /// Generate hardcoded merger instructions using tool name constants.
-pub fn merger_instructions(task_repo: Option<&str>, fork_owner: Option<&str>) -> String {
-    let mut instructions = format!(
+pub fn merger_instructions(_task_repo: Option<&str>, _fork_owner: Option<&str>) -> String {
+    let instructions = format!(
         r#"# Merger Agent
 
 Resolve merge conflicts when the destination branch cannot be automatically merged into the work branch.
@@ -677,10 +677,8 @@ pub trait CommonMcpImpl: Send + Sync {
                 if items.iter().any(|item| item.id == item_id) {
                     return format!("Error: Checklist item with id '{}' already exists", id);
                 }
-                if let Some(ref aid) = after {
-                    if !items.iter().any(|item| item.id == *aid) {
-                        return format!("Error: Checklist item with id '{}' not found", aid);
-                    }
+                if let Some(ref aid) = after && !items.iter().any(|item| item.id == *aid) {
+                    return format!("Error: Checklist item with id '{}' not found", aid);
                 }
             }
             Err(e) => return format!("Error: {e}"),
@@ -1969,7 +1967,7 @@ mod tests {
         let new_plan = "New implementation plan";
         let (desc, _, items) = parse_description_with_plan_and_checklist(old_full);
         
-        let serialized = serialize_description_with_plan_and_checklist(&desc, &new_plan, &items);
+        let serialized = serialize_description_with_plan_and_checklist(&desc, new_plan, &items);
         assert!(serialized.contains("New implementation plan"));
         assert!(!serialized.contains("Old plan"));
         assert!(serialized.contains("- [ ] item1: Item"));

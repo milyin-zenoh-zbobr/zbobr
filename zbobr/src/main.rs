@@ -659,13 +659,13 @@ async fn run_role_session(
                 };
 
                 // Only set signal for Worker/Reviewer/Merger logic above
-                if matches!(role, Role::Worker | Role::Reviewer | Role::Merger) {
-                    if let Err(e) = session.set_signal(next_signal).await {
-                        tracing::error!(
-                            "Failed to set follow-up signal for task {} after session: {e}",
-                            task_id
-                        );
-                    }
+                if matches!(role, Role::Worker | Role::Reviewer | Role::Merger)
+                    && let Err(e) = session.set_signal(next_signal).await
+                {
+                    tracing::error!(
+                        "Failed to set follow-up signal for task {} after session: {e}",
+                        task_id
+                    );
                 }
             }
             Err(e) => tracing::error!(

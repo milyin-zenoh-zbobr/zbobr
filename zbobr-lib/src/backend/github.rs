@@ -251,7 +251,7 @@ impl GitHubBackend {
             }
             Err(e) => {
                 tracing::error!("merge-upstream failed for {}: {}", fork_repo, e);
-                return Err(e.into());
+                Err(e.into())
             }
         }
     }
@@ -608,7 +608,7 @@ impl Backend for GitHubBackend {
             if current_body != current_expected {
                 // Conflict detected! Merge the changes
                 let merged = super::merge_concurrent_description_updates(
-                    &current_expected,
+                    current_expected,
                     &current_body,
                     new_description,
                 );
