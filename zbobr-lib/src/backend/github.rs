@@ -276,6 +276,67 @@ impl GitHubBackend {
         .map(|_: serde_json::Value| ())?;
         Ok(())
     }
+
+    /// Create and push a placeholder file for a branch to ensure it has at least one commit.
+    /// This is pushed immediately to the fork.
+    async fn create_and_push_placeholder(
+        &self,
+        work_dir: &std::path::Path,
+        branch_name: &str,
+    ) -> Result<(), ZbobrError> {
+        let zbobr_dir = work_dir.join(".zbobr");
+        let placeholder_path = zbobr_dir.join(branch_name);
+
+        // Create .zbobr directory
+        tokio::fs::create_dir_all(&zbobr_dir)
+            .await
+            .map_err(|e| ZbobrError::Other(format!("Failed to create .zbobr directory: {}", e)))?;
+
+        // Create placeholder file
+        tokio::fs::File::create(&placeholder_path)
+            .await
+            .map_err(|e| ZbobrError::Other(format!("Failed to create placeholder file: {}", e)))?;
+
+        // Stage the file
+        let add_status = tokio::process::Command::new("git")
+            .args(["add", &format!(".zbobr/{}", branch_name)])
+            .current_dir(work_dir)
+            .status()
+            .await
+            .map_err(|e| ZbobrError::Other(format!("Failed to run git add: {}", e)))?;
+
+        if !add_status.success() {
+            return Err(ZbobrError::Other("git add for placeholder failed".to_string()));
+        }
+
+        // Commit the file
+        let commit_msg = format!("chore: add branch placeholder {}", branch_name);
+        let commit_status = tokio::process::Command::new("git")
+            .args(["commit", "-m", &commit_msg])
+            .current_dir(work_dir)
+            .status()
+            .await
+            .map_err(|e| ZbobrError::Other(format!("Failed to run git commit: {}", e)))?;
+
+        if !commit_status.success() {
+            return Err(ZbobrError::Other("git commit for placeholder failed".to_string()));
+        }
+
+        // Push to fork immediately with tracking
+        let push_status = tokio::process::Command::new("git")
+            .args(["push", "-u", "fork", "HEAD"])
+            .current_dir(work_dir)
+            .status()
+            .await
+            .map_err(|e| ZbobrError::Other(format!("Failed to run git push: {}", e)))?;
+
+        if !push_status.success() {
+            return Err(ZbobrError::Other("git push for placeholder failed".to_string()));
+        }
+
+        tracing::info!("Successfully created and pushed placeholder for branch {}", branch_name);
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -940,32 +1001,8 @@ impl Backend for GitHubBackend {
             // reject branches with no commits). The file is named after
             // the branch. It will be removed later when actual changes
             // are committed and pushed.
-            let zbobr_dir = work_dir.join(".zbobr");
-            let placeholder_path = zbobr_dir.join(&branch_name);
-            if let Err(e) = tokio::fs::create_dir_all(&zbobr_dir).await {
-                tracing::warn!("Failed to create .zbobr directory: {}", e);
-            } else {
-                match tokio::fs::File::create(&placeholder_path).await {
-                    Ok(_) => {
-                        // Add and commit the placeholder file
-                        let _ = tokio::process::Command::new("git")
-                            .args(["add", format!(".zbobr/{}", &branch_name).as_str()])
-                            .current_dir(&work_dir)
-                            .status()
-                            .await;
-                        let commit_msg = format!("chore: add branch placeholder {}", &branch_name);
-                        let commit_status = tokio::process::Command::new("git")
-                            .args(["commit", "-m", &commit_msg])
-                            .current_dir(&work_dir)
-                            .status()
-                            .await;
-                        if let Err(e) = commit_status {
-                            tracing::warn!("Failed to commit placeholder file: {}", e);
-                        }
-                    }
-                    Err(e) => tracing::warn!("Failed to create placeholder file: {}", e),
-                }
-            }
+            // Create and immediately push the placeholder to ensure it's on the fork
+            self.create_and_push_placeholder(&work_dir, &branch_name).await?;
         }
 
         Ok(work_dir)
