@@ -207,14 +207,10 @@ mcp_tools! {
 mcp_tools! {
     reviewer_tools,
     GET_DESCRIPTION = "get_description",
-    GET_DISCUSSION = "get_discussion",
     GET_PLAN = "get_plan",
     REPORT_ERROR = "report_error",
     PULL_WORK = "pull_work",
-    GET_CHECKLIST = "get_checklist",
     INSERT_CHECKLIST_ITEM = "insert_checklist_item",
-    UPDATE_CHECKLIST_ITEM = "update_checklist_item",
-    DELETE_CHECKLIST_ITEM = "delete_checklist_item",
     GET_PARAM_DESTINATION_BRANCH = "get_param_destination_branch",
     GET_PARAM_WORK_BRANCH = "get_param_work_branch",
 }
@@ -378,72 +374,29 @@ pub fn reviewer_instructions(_task_repo: Option<&str>, _fork_owner: Option<&str>
 
 Review the implementation changes and ensure they meet coding standards and task requirements.
 
-## Checklist: Review Remarks
-
-The checklist is shared with the worker. It contains both implementation work items and review remarks. Add your review findings as new checklist items to communicate issues that need fixing.
-
-**How to use the checklist:**
-- Start by using `{get_checklist}` to see what's there — both work items and any prior review remarks.
-- Use `{insert_checklist_item}` to add each issue you find. Prefix with `[REVIEW]` to distinguish your remarks from work items.
-- Use `{update_checklist_item}` to clarify or refine your remarks if needed.
-- Use `{delete_checklist_item}` to remove remarks only if they become irrelevant. **Note:** You cannot delete checked items—only unchecked remarks can be removed.
-- The worker will mark your review remarks as done — do not check items yourself.
-
 ## Access Model
 
-You have read-only access to all task information:
-- Use `{get_description}` to understand the original task
-- Use `{get_plan}` to see the implementation plan
-- Use `{get_discussion}` for context and prior comments
-- Use `{pull_work}` to access the work repository and examine changes
-    - Use `{ask_user}` to request the user's explanations related to review findings; use `{report_error}` only to report technical errors
-- You can run local git commands to examine changes, but you cannot push
-
-## Workspace isolation
-
-    {branch_isolation}
-
-Work autonomously. Do not ask the user for anything.
+    You have read-only access to the task description and plan, and access to the repository for inspection:
+    - Use `{get_description}` to understand the original task
+    - Use `{get_plan}` to see the implementation plan
+    - Use `{pull_work}` to access the work repository and examine changes
+    - Use `{insert_checklist_item}` to add a checklist item describing any issues you find
+    - Use `{report_error}` only to report technical errors
 
 ## Workflow
 
 1. Call `{get_description}` to understand the task requirements
-2. Call `{get_plan}` to see what was supposed to be implemented
-3. Call `{get_discussion}` for additional context
-4. Call `{get_checklist}` to see what's been done and what review remarks already exist
-5. Set up the repository using `{pull_work}` to access the implementation
-6. `cd` into the returned path
-7. Use `{get_param_work_branch}` to get the work branch name
-8. Use `{get_param_destination_branch}` to get the target branch name
-9. Compare changes using git:
-   - `git diff <destination_branch>..<work_branch>` to see all changes
-   - `git log <destination_branch>..<work_branch>` to see commits
-10. Review the changes for:
-    - Conformance to the task requirements and plan
-    - Code quality and style adherence
-    - Proper error handling
-    - Test coverage (if applicable)
-    - Documentation completeness
-    - Any potential bugs or issues
-11. For each issue found:
-    - Call `{insert_checklist_item}` to add a review remark (prefix with `[REVIEW]`)
-    - Include specific file names, line numbers, and what needs to be fixed
+2. Call `{get_plan}` to see the agreed implementation
+3. Set up the repository using `{pull_work}` and inspect the changes
+#4. For each issue found, call `{insert_checklist_item}` with a clear title and description explaining the problem and suggested fix
 "#,
         get_description = reviewer_tools::GET_DESCRIPTION,
         get_plan = reviewer_tools::GET_PLAN,
-        get_discussion = reviewer_tools::GET_DISCUSSION,
-        get_checklist = reviewer_tools::GET_CHECKLIST,
-        insert_checklist_item = reviewer_tools::INSERT_CHECKLIST_ITEM,
-        update_checklist_item = reviewer_tools::UPDATE_CHECKLIST_ITEM,
-        delete_checklist_item = reviewer_tools::DELETE_CHECKLIST_ITEM,
         report_error = reviewer_tools::REPORT_ERROR,
         pull_work = reviewer_tools::PULL_WORK,
-        ask_user = worker_tools::ASK_USER,
-        get_param_destination_branch = reviewer_tools::GET_PARAM_DESTINATION_BRANCH,
-        get_param_work_branch = reviewer_tools::GET_PARAM_WORK_BRANCH,
-        branch_isolation = branch_isolation_instruction(),
+    insert_checklist_item = reviewer_tools::INSERT_CHECKLIST_ITEM,
     );
-    
+
     instructions
 }
 
