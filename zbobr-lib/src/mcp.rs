@@ -241,8 +241,8 @@ Work autonomously. Do not ask the user for anything.
 2. Call `{get_plan}` to read an existing plan if there is one
 3. Call `{get_discussion}` for context and prior comments and questions to existing plan
 4. **Set task parameters** that will guide the implementation:
-    - Call `{set_param_destination_repository}` with the target GitHub repository (owner/repo format)
-    - Read destination branch using `{get_param_destination_branch}` (e.g., "main", "develop")
+    - Call `{set_param_destination_repository}` with the target GitHub repository (owner/repo format, without branch name)
+    - Call `{set_param_destination_branch}` (e.g., "main", "develop")
     - Call `{set_param_work_branch_postfix}` with the work branch postfix (e.g., "implement-feature") — the full work branch will be formed from prefix, task id and this postfix
     - Use `{get_param_destination_repository}`, `{get_param_destination_branch}`, `{get_param_work_branch}` to read current values
 5. Pull the destination repository using `{pull_work}` to investigate the codebase, understand the context, and design the plan. This also ensures the repo is cached for the worker later.
@@ -264,6 +264,7 @@ Work autonomously. Do not ask the user for anything.
         get_param_destination_repository = planner_tools::GET_PARAM_DESTINATION_REPOSITORY,
         set_param_destination_repository = planner_tools::SET_PARAM_DESTINATION_REPOSITORY,
         get_param_destination_branch = planner_tools::GET_PARAM_DESTINATION_BRANCH,
+        set_param_destination_branch = planner_tools::SET_PARAM_DESTINATION_BRANCH,
         set_param_work_branch_postfix = planner_tools::SET_PARAM_WORK_BRANCH_POSTFIX,
         get_param_work_branch = planner_tools::GET_PARAM_WORK_BRANCH,
     )
