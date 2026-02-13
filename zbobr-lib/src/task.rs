@@ -876,7 +876,8 @@ impl TaskSession {
 
         // Create PR from work_branch to destination_branch in the fork repo
         if let Err(e) = self.create_pr_for_work_branch(&dest_repo, &work_branch, &dest_branch).await {
-            // Log the error but don't fail the pull_work, let the worker know
+            // Log the error and also notify the user via task discussion, but don't fail the pull_work
+            tracing::error!("Failed to create PR for work branch {}/{} -> {}: {e}", dest_repo, work_branch, dest_branch);
             let hostname = hostname::get()
                 .ok()
                 .and_then(|h| h.into_string().ok())

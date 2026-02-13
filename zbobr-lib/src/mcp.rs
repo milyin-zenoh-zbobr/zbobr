@@ -519,11 +519,13 @@ pub trait CommonMcpImpl: Send + Sync {
         let hostname = get_hostname();
 
         if let Err(e) = self.session().post_message(message, "error", &hostname).await {
+            tracing::error!("Failed to post error message for task {}: {e}", self.session().task_id());
             return format!("Error posting error message: {e}");
         }
 
         // Signal to pause task processing and wait for user response
         if let Err(e) = self.session().set_signal(crate::Signal::GoAsk).await {
+            tracing::error!("Failed to set signal GoAsk for task {} after reporting error: {e}", self.session().task_id());
             return format!("Error reporting error but error pausing task: {e}");
         }
 
@@ -582,6 +584,7 @@ pub trait CommonMcpImpl: Send + Sync {
                 };
 
                 if let Err(e) = self.session().set_signal(signal).await {
+                    tracing::error!("Failed to update task signal for task {} when changing checklist item {}: {e}", self.session().task_id(), id);
                     return format!("Checklist item '{}' checked state updated to {} but error updating task state: {}", id, checked, e);
                 }
 
@@ -706,6 +709,7 @@ pub trait PlannerMcpImpl: CommonMcpImpl {
             Ok(()) => {
                 // Mark plan as ready for worker to implement
                 if let Err(e) = self.session().set_signal(crate::Signal::GoWork).await {
+                    tracing::error!("Failed to set signal GoWork for task {} after posting plan: {e}", self.session().task_id());
                     return format!("Plan posted but error marking task ready for work: {e}");
                 }
                 "Plan posted and task ready for worker implementation".to_string()
@@ -773,11 +777,13 @@ pub trait WorkerMcpImpl: CommonMcpImpl {
         let hostname = get_hostname();
         
         if let Err(e) = self.session().post_message(message, self.role().as_str(), &hostname).await {
+            tracing::error!("Failed to post worker message for task {}: {e}", self.session().task_id());
             return format!("Error posting message: {e}");
         }
         
         // Signal to pause task processing and wait for user response
         if let Err(e) = self.session().set_signal(crate::Signal::GoAsk).await {
+            tracing::error!("Failed to set signal GoAsk for task {} after ask_user: {e}", self.session().task_id());
             return format!("Question posted but error pausing task: {e}");
         }
         "Message posted to user - task paused pending response".to_string()
@@ -788,11 +794,13 @@ pub trait WorkerMcpImpl: CommonMcpImpl {
         let hostname = get_hostname();
         
         if let Err(e) = self.session().post_message(message, self.role().as_str(), &hostname).await {
+            tracing::error!("Failed to post worker->planner message for task {}: {e}", self.session().task_id());
             return format!("Error posting message: {e}");
         }
         
         // Pass task back to planner agent for clarification or re-planning
         if let Err(e) = self.session().set_signal(crate::Signal::GoPlan).await {
+            tracing::error!("Failed to set signal GoPlan for task {} after ask_planner: {e}", self.session().task_id());
             return format!("Message posted but error returning to planner: {e}");
         }
         "Message posted to planner - task returned for clarification".to_string()
