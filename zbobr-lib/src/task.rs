@@ -875,7 +875,15 @@ impl TaskSession {
         }
 
         // Create PR from work_branch to destination_branch in the fork repo
-        if let Err(e) = self.create_pr_for_work_branch(&dest_repo, &work_branch, &dest_branch).await {
+        // Ensure PR creation targets the fork (fork_owner/repo). Pass the fork repo
+        // to create_pr_for_work_branch rather than the real destination repository.
+        let repo_name = dest_repo
+            .split('/')
+            .nth(1)
+            .ok_or_else(|| ZbobrError::Other(format!("Invalid destination_repository format: {}", dest_repo)))?;
+        let fork_repo = format!("{}/{}", self.zbobr.config().fork_owner, repo_name);
+
+        if let Err(e) = self.create_pr_for_work_branch(&fork_repo, &work_branch, &dest_branch).await {
             // Log the error and also notify the user via task discussion, but don't fail the pull_work
             tracing::error!("Failed to create PR for work branch {}/{} -> {}: {e}", dest_repo, work_branch, dest_branch);
             let hostname = hostname::get()
@@ -905,6 +913,20 @@ impl TaskSession {
             work_branch,
             destination_branch
         );
+
+        // Validate that the provided destination_repository is the fork (owner == fork_owner).
+        let owner = destination_repository
+            .split('/')
+            .next()
+            .ok_or_else(|| ZbobrError::Other("Invalid destination_repository format".to_string()))?;
+
+        if owner != self.zbobr.config().fork_owner {
+            return Err(ZbobrError::Other(format!(
+                "create_pr_for_work_branch must be called with fork repository (owner '{}'). got: '{}'",
+                self.zbobr.config().fork_owner,
+                destination_repository
+            )));
+        }
 
         let pr_url = self
             .zbobr
