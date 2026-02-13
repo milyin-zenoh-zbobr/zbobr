@@ -62,6 +62,8 @@ pub struct TomlConfig {
     pub backend: Option<BackendType>,
     pub cli_tool: Option<Tool>,
     pub work_branch_prefix: Option<String>,
+    pub git_user_name: Option<String>,
+    pub git_user_email: Option<String>,
     pub prompts: Option<TomlPrompts>,
 }
 
@@ -111,6 +113,10 @@ pub struct ZbobrConfig {
     pub work_branch_prefix: String,
     /// Base directory for resolving prompt file paths.
     pub prompts_path: Option<PathBuf>,
+    /// Git user name for commits made by the tool.
+    pub git_user_name: String,
+    /// Git user email for commits made by the tool.
+    pub git_user_email: String,
 }
 
 impl Default for ZbobrConfig {
@@ -130,6 +136,8 @@ impl Default for ZbobrConfig {
             reviewer_prompts: vec!["prompts/reviewer.md".into(), "prompts/common.md".into()],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
+            git_user_name: "zbobr".to_string(),
+            git_user_email: "zbobr@example.com".to_string(),
         }
     }
 }
@@ -292,6 +300,20 @@ impl ZbobrConfig {
             .or_else(|| toml.and_then(|t| t.agent_github_token.clone()))
             .unwrap_or_default();
 
+        let git_user_name = env_or(
+            env,
+            "ZBOBR_GIT_USER_NAME",
+            toml.and_then(|t| t.git_user_name.as_deref()),
+            &defaults.git_user_name,
+        );
+
+        let git_user_email = env_or(
+            env,
+            "ZBOBR_GIT_USER_EMAIL",
+            toml.and_then(|t| t.git_user_email.as_deref()),
+            &defaults.git_user_email,
+        );
+
         Ok(Self {
             task_repo,
             fork_owner,
@@ -307,6 +329,8 @@ impl ZbobrConfig {
             reviewer_prompts,
             work_branch_prefix,
             prompts_path,
+            git_user_name,
+            git_user_email,
         })
     }
 
@@ -416,6 +440,8 @@ mod tests {
             reviewer_prompts: vec![],
             work_branch_prefix: "zbobr_fix".to_string(),
             prompts_path: None,
+            git_user_name: "zbobr".to_string(),
+            git_user_email: "zbobr@example.com".to_string(),
         }
     }
 
@@ -529,6 +555,8 @@ mod tests {
             backend: Some(BackendType::Stub),
             cli_tool: Some(Tool::Claude),
             work_branch_prefix: Some("toml_fix".into()),
+            git_user_name: Some("test-user".into()),
+            git_user_email: Some("test@example.com".into()),
             prompts: Some(TomlPrompts {
                 path: Some(PathBuf::from("/opt/prompts")),
                 planner: Some(vec![PathBuf::from("p.md")]),
@@ -552,6 +580,8 @@ mod tests {
         assert_eq!(config.owner_github_token, "toml-owner-token");
         assert_eq!(config.agent_github_token, "toml-agent-token");
         assert_eq!(config.copilot_github_token, "toml-copilot-token");
+        assert_eq!(config.git_user_name, "test-user");
+        assert_eq!(config.git_user_email, "test@example.com");
     }
 
     #[test]

@@ -285,7 +285,13 @@ impl GitHubBackend {
         branch_name: &str,
     ) -> Result<(), ZbobrError> {
         // Create placeholder file and commit it
-        crate::backend::create_placeholder_commit(work_dir, branch_name).await?;
+        crate::backend::create_placeholder_commit(
+            work_dir,
+            branch_name,
+            &self.config.git_user_name,
+            &self.config.git_user_email,
+        )
+        .await?;
 
         // Push to fork immediately with tracking
         let push_status = tokio::process::Command::new("git")
