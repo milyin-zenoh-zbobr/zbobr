@@ -885,7 +885,7 @@ impl TaskSession {
 
         if let Err(e) = self.create_pr_for_work_branch(&fork_repo, &work_branch, &dest_branch).await {
             // Log the error and also notify the user via task discussion, but don't fail the pull_work
-            tracing::error!("Failed to create PR for work branch {}/{} -> {}: {e}", dest_repo, work_branch, dest_branch);
+            tracing::error!("Failed to create PR for work branch {}/{} -> {}: {e}", fork_repo, work_branch, dest_branch);
             let hostname = hostname::get()
                 .ok()
                 .and_then(|h| h.into_string().ok())
@@ -909,10 +909,21 @@ impl TaskSession {
         destination_branch: &str,
     ) -> Result<(), ZbobrError> {
         tracing::info!(
-            "Creating PR from {} to {} in fork",
+            "Creating PR in {} from {} to {}",
+            destination_repository,
             work_branch,
             destination_branch
         );
+
+        // Guard: work_branch must be a branch name or owner:branch, but not a full repo path
+        // (e.g. owner/repo/branch) which is invalid for the Pulls API head field.
+        let slash_count = work_branch.chars().filter(|c| *c == '/').count();
+        if slash_count >= 2 {
+            return Err(ZbobrError::Other(format!(
+                "work_branch has invalid format '{}'. Use a branch name like 'feature/x' or 'owner:branch', not 'owner/repo/branch'.",
+                work_branch
+            )));
+        }
 
         // Validate that the provided destination_repository is the fork (owner == fork_owner).
         let owner = destination_repository
