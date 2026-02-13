@@ -308,7 +308,7 @@ Work autonomously. Do not ask the user for anything unless the task genuinely re
 4. **If checklist is empty**: Create it using `{insert_checklist_item}` to break down the plan into clear, actionable steps (task-focused items only)
 5. Call `{get_discussion}` if you need additional context from comments
 6. **Focus on one unchecked checklist item during this session**. Assume checked items were completed in previous sessions. In exceptional cases where multiple items logically depend on the same setup and can be done together, you may do more than one, but this should be rare.
-7. Use platform-provided workspace setup helper `{pull_work}` to prepare the repository and environment; avoid embedding direct git remote commands in checklist items.
+7. Use platform-provided workspace setup helper `{pull_work}` to prepare the repository and environment; when working with branches, consult `{get_param_destination_branch}` and `{get_param_work_branch}` for branch names if needed.
 8. `cd` into the returned path and implement the plan
 9. Commit changes locally with clear messages (describe what the change does, why, and reference relevant checklist item)
 10. When implementation for an item is complete, mark the item done with `{check_checklist_item}`, save intermediate results with `{push_work}`, and update or insert follow-up items as needed
@@ -324,9 +324,9 @@ Work autonomously. Do not ask the user for anything unless the task genuinely re
         delete_checklist_item = worker_tools::DELETE_CHECKLIST_ITEM,
         report_error = worker_tools::REPORT_ERROR,
         pull_work = worker_tools::PULL_WORK,
-        push_work = worker_tools::PUSH_WORK,
         get_param_destination_branch = worker_tools::GET_PARAM_DESTINATION_BRANCH,
         get_param_work_branch = worker_tools::GET_PARAM_WORK_BRANCH,
+        push_work = worker_tools::PUSH_WORK,
         ask_user = worker_tools::ASK_USER,
         ask_planner = worker_tools::ASK_PLANNER,
     )
