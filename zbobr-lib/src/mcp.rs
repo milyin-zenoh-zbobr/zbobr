@@ -180,7 +180,6 @@ mcp_tools! {
     REPORT_ERROR = "report_error",
     ASK_USER = "ask_user",
     ASK_PLANNER = "ask_planner",
-    CREATE_BRANCH_NAME = "create_branch_name",
     PULL_WORK = "pull_work",
     PUSH_WORK = "push_work",
     GET_CHECKLIST = "get_checklist",
@@ -318,8 +317,7 @@ Work autonomously. Do not ask the user for anything.
    - Stashes local changes if a different branch is selected
    - The work repository has all remote information cleaned (git knows only internal push/pull locations)
 8. `cd` into the returned path and implement the plan
-9. **REQUIRED**: Create a branch using `git checkout -b <name>` where `<name>` **must** come from `{create_branch_name}` (e.g. with short_name="implementation"). Do NOT use arbitrary branch names.
-10. Commit changes locally with clear messages
+9. Commit changes locally with clear messages
 11. Call `{push_work}` to push your work. It automatically selects work_branch in the cloned repository and puhshes it
 12. When you complete implementation steps:
     - Use `{update_checklist_item}` to refine item text if needed as you learn more about the work
@@ -339,7 +337,6 @@ Work autonomously. Do not ask the user for anything.
         check_checklist_item = worker_tools::CHECK_CHECKLIST_ITEM,
         delete_checklist_item = worker_tools::DELETE_CHECKLIST_ITEM,
         report_error = worker_tools::REPORT_ERROR,
-        create_branch_name = worker_tools::CREATE_BRANCH_NAME,
         pull_work = worker_tools::PULL_WORK,
         push_work = worker_tools::PUSH_WORK,
         get_param_destination_branch = worker_tools::GET_PARAM_DESTINATION_BRANCH,
@@ -806,10 +803,6 @@ pub trait WorkerMcpImpl: CommonMcpImpl {
         "Message posted to planner - task returned for clarification".to_string()
     }
 
-    async fn create_branch_name_impl(&self, short_name: &str) -> String {
-        tracing::info!("[worker#{}] create_branch_name short_name={}", self.session().task_id(), short_name);
-        self.session().create_branch_name(short_name)
-    }
 
     async fn pull_work_impl(&self) -> String {
         tracing::info!("[worker#{}] pull_work", self.session().task_id());
@@ -1041,13 +1034,6 @@ impl WorkerMcp {
     #[tool(description = "Get the current implementation plan for this task")]
     async fn get_plan(&self) -> String {
         self.get_plan_impl().await
-    }
-
-    #[tool(
-        description = "Generate a branch name with the proper prefix for this task. Use the returned name with 'git checkout -b <name>' to create the branch locally."
-    )]
-    async fn create_branch_name(&self, Parameters(params): Parameters<ShortNameParam>) -> String {
-        self.create_branch_name_impl(&params.short_name).await
     }
 
     #[tool(
