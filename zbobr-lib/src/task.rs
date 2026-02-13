@@ -427,7 +427,7 @@ impl TaskSession {
     /// Create a branch name with the proper prefix for this task.
     pub fn create_branch_name(&self, short_name: &str) -> String {
         format!(
-            "{}/{}/{}",
+            "{}-{}-{}",
             self.zbobr.config().work_branch_prefix,
             self.task_id,
             short_name
@@ -437,7 +437,7 @@ impl TaskSession {
     /// Check whether a branch name starts with this task's prefix.
     pub fn validate_branch_prefix(&self, branch: &str) -> bool {
         let prefix = format!(
-            "{}/{}/",
+            "{}-{}-",
             self.zbobr.config().work_branch_prefix,
             self.task_id
         );
