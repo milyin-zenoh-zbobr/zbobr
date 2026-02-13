@@ -874,6 +874,21 @@ impl TaskSession {
             tracing::info!("Removed 'fork' remote");
         }
 
+        // Push the work branch to the remote so it exists before creating the PR
+        tracing::info!("Pushing work branch '{}' to remote", work_branch);
+        let push_status = tokio::process::Command::new("git")
+            .args(["push", "-u", "origin", &work_branch])
+            .current_dir(&path)
+            .status()
+            .await?;
+
+        if !push_status.success() {
+            return Err(ZbobrError::Other(format!(
+                "Failed to push work branch '{}' to remote",
+                work_branch
+            )));
+        }
+
         // Create PR from work_branch to destination_branch in the fork repo
         // Ensure PR creation targets the fork (fork_owner/repo). Pass the fork repo
         // to create_pr_for_work_branch rather than the real destination repository.
