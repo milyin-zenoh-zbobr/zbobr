@@ -838,15 +838,20 @@ impl TaskSession {
 
         // No tracking required: local path layout is workspace/task#<id>/<repo>
 
-        // Create the work branch from destination_branch if it doesn't exist
-        let create_branch = tokio::process::Command::new("git")
-            .args(["checkout", "-b", &work_branch])
+        // Create the work branch from destination_branch if it doesn't exist.
+        // First check whether the branch already exists locally to avoid an error
+        // from `git checkout -b` when the branch is present.
+        let branch_ref = format!("refs/heads/{}", work_branch);
+        let exists = tokio::process::Command::new("git")
+            .args(["show-ref", "--verify", &branch_ref])
             .current_dir(&path)
             .status()
-            .await?;
+            .await
+            .map(|s| s.success())
+            .unwrap_or(false);
 
-        if !create_branch.success() {
-            // Branch might already exist, try to checkout
+        if exists {
+            // Branch exists locally; simply checkout
             let checkout_status = tokio::process::Command::new("git")
                 .args(["checkout", &work_branch])
                 .current_dir(&path)
@@ -855,7 +860,21 @@ impl TaskSession {
 
             if !checkout_status.success() {
                 return Err(ZbobrError::Other(format!(
-                    "Failed to create or checkout work branch '{}'",
+                    "Failed to checkout existing work branch '{}'",
+                    work_branch
+                )));
+            }
+        } else {
+            // Branch does not exist locally; create it from current HEAD (destination branch)
+            let create_branch = tokio::process::Command::new("git")
+                .args(["checkout", "-b", &work_branch])
+                .current_dir(&path)
+                .status()
+                .await?;
+
+            if !create_branch.success() {
+                return Err(ZbobrError::Other(format!(
+                    "Failed to create work branch '{}'",
                     work_branch
                 )));
             }
