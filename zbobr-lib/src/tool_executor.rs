@@ -162,6 +162,14 @@ impl ToolExecutor for CopilotExecutor {
     }
 }
 
+/// Return the appropriate permission mode string for Claude based on role.
+fn permission_mode_for_role(role: Role) -> &'static str {
+    match role {
+        Role::Planner => "plan",
+        _ => "dontAsk",
+    }
+}
+
 /// Executor for Claude CLI.
 pub struct ClaudeExecutor;
 
@@ -201,13 +209,15 @@ impl ToolExecutor for ClaudeExecutor {
         tracing::info!("MCP endpoint: {mcp_url}");
         tracing::debug!("MCP config JSON: {}", mcp_config_str);
 
+        let perm_mode = permission_mode_for_role(role);
+
         let args = [
             "--model",
             model_name,
             "--additional-mcp-config",
             &mcp_config_str,
             "--permission-mode",
-            "dontAsk",
+            perm_mode,
             "--tools",
             "default",
             "-p",
@@ -267,6 +277,18 @@ impl ToolExecutor for ClaudeExecutor {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::task::Role;
+
+    #[test]
+    fn claude_permission_mode_selection() {
+        assert_eq!(permission_mode_for_role(Role::Planner), "plan");
+        assert_eq!(permission_mode_for_role(Role::Worker), "dontAsk");
     }
 }
 
