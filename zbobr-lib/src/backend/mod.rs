@@ -8,6 +8,21 @@ use async_trait::async_trait;
 use crate::{Model, Parameter, Signal, Stage, Task, Tool, ZbobrError};
 use crate::task::ChecklistItem;
 
+// Replace characters that are unsafe or invalid in filenames with '_'.
+// Allows ASCII alphanumerics, '-', '_', and '.'.
+fn sanitize_filename(name: &str) -> String {
+    name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
 // -- Plan and Checklist parsing and serialization helpers --
 
 const PARAMETERS_SEPARATOR: &str = "\n\n---PARAMETERS---\n";
@@ -309,7 +324,8 @@ pub async fn create_placeholder_commit(
     branch_name: &str,
 ) -> Result<(), ZbobrError> {
     let zbobr_dir = work_dir.join(".zbobr");
-    let placeholder_path = zbobr_dir.join(branch_name);
+    let sanitized_branch = sanitize_filename(branch_name);
+    let placeholder_path = zbobr_dir.join(&sanitized_branch);
 
     // Create .zbobr directory
     tokio::fs::create_dir_all(&zbobr_dir)
@@ -358,7 +374,7 @@ pub async fn create_placeholder_commit(
 
     // Stage the file
     let add_status = tokio::process::Command::new("git")
-        .args(["add", &format!(".zbobr/{}", branch_name)])
+        .args(["add", &format!(".zbobr/{}", sanitized_branch)])
         .current_dir(work_dir)
         .status()
         .await
