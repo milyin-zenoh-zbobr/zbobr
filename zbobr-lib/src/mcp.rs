@@ -729,12 +729,18 @@ pub trait PlannerMcpImpl: CommonMcpImpl {
             task.plan = plan_text;
         }).await {
             Ok(()) => {
-                // Mark plan as ready for worker to implement
-                if let Err(e) = self.session().set_signal(crate::Signal::GoWork).await {
-                    tracing::error!("Failed to set signal GoWork for task {} after posting plan: {e}", self.session().task_id());
-                    return format!("Plan posted but error marking task ready for work: {e}");
+                // Mark plan as ready for worker to implement according to configuration
+                let config = self.session().config();
+                if config.planner_auto_go_work {
+                    if let Err(e) = self.session().set_signal(crate::Signal::GoWork).await {
+                        tracing::error!("Failed to set signal GoWork for task {} after posting plan: {e}", self.session().task_id());
+                        return format!("Plan posted but error marking task ready for work: {e}");
+                    }
+                    "Plan posted and task ready for worker implementation".to_string()
+                } else {
+                    tracing::info!("planner_auto_go_work disabled; not setting GoWork for task {}", self.session().task_id());
+                    "Plan posted (not signaled for work due to configuration)".to_string()
                 }
-                "Plan posted and task ready for worker implementation".to_string()
             }
             Err(e) => format!("Error updating task: {e}"),
         }
@@ -1695,6 +1701,7 @@ mod tests {
             prompts_path: None,
             git_user_name: "Test User".to_string(),
             git_user_email: "test@example.com".to_string(),
+            planner_auto_go_work: true,
         };
         let zbobr = Zbobr::new(config).unwrap();
         let admin = AdminMcp::new(zbobr);
@@ -1732,6 +1739,7 @@ mod tests {
             prompts_path: None,
             git_user_name: "Test User".to_string(),
             git_user_email: "test@example.com".to_string(),
+            planner_auto_go_work: true,
         };
         let zbobr = Zbobr::new(config).unwrap();
         let planner = PlannerMcp::new(zbobr, 123);
@@ -1769,6 +1777,7 @@ mod tests {
             prompts_path: None,
             git_user_name: "Test User".to_string(),
             git_user_email: "test@example.com".to_string(),
+            planner_auto_go_work: true,
         };
         let zbobr = Zbobr::new(config).unwrap();
         let worker = WorkerMcp::new(zbobr, 123);

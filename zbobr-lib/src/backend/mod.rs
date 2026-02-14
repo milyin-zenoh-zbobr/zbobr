@@ -66,23 +66,32 @@ pub fn parse_description_full(full_text: &str) -> (String, std::collections::Has
         full_text.to_string()
     };
 
-    // First split by checklist
-    let parts: Vec<&str> = normalized.split(CHECKLIST_SEPARATOR).collect();
-    
+    // First split by checklist (accept both single- and double-newline variants)
+    let mut parts: Vec<&str> = normalized.split(CHECKLIST_SEPARATOR).collect();
+    if parts.len() == 1 && normalized.contains("\n---CHECKLIST---\n") {
+        parts = normalized.split("\n---CHECKLIST---\n").collect();
+    }
+
     let (before_checklist, checklist_text) = match parts.len() {
         1 => (parts[0], ""),
         _ => (parts[0], parts[1]),
     };
-    
-    // Now split by plan separator
-    let plan_parts: Vec<&str> = before_checklist.split(PLAN_SEPARATOR).collect();
+
+    // Now split by plan separator (accept single- and double-newline variants)
+    let mut plan_parts: Vec<&str> = before_checklist.split(PLAN_SEPARATOR).collect();
+    if plan_parts.len() == 1 && before_checklist.contains("\n---PLAN---\n") {
+        plan_parts = before_checklist.split("\n---PLAN---\n").collect();
+    }
     let (before_plan, plan) = match plan_parts.len() {
         1 => (plan_parts[0], ""),
         _ => (plan_parts[0], plan_parts[1].trim()),
     };
-    
-    // Now split by parameters separator
-    let param_parts: Vec<&str> = before_plan.split(PARAMETERS_SEPARATOR).collect();
+
+    // Now split by parameters separator (accept single- and double-newline variants)
+    let mut param_parts: Vec<&str> = before_plan.split(PARAMETERS_SEPARATOR).collect();
+    if param_parts.len() == 1 && before_plan.contains("\n---PARAMETERS---\n") {
+        param_parts = before_plan.split("\n---PARAMETERS---\n").collect();
+    }
     let (description, params_text) = match param_parts.len() {
         1 => (param_parts[0].to_string(), ""),
         _ => (param_parts[0].to_string(), param_parts[1].trim()),

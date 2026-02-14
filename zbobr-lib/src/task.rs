@@ -431,6 +431,10 @@ pub struct TaskSession {
 }
 
 impl TaskSession {
+    /// Access the resolved configuration for this session.
+    pub fn config(&self) -> &crate::config::ZbobrConfig {
+        self.zbobr.config()
+    }
     pub(crate) fn new(zbobr: Zbobr, task_id: u64) -> Self {
         Self { zbobr, task_id }
     }

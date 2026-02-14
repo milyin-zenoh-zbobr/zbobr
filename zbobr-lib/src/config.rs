@@ -66,6 +66,9 @@ pub struct TomlConfig {
     pub git_user_name: Option<String>,
     pub git_user_email: Option<String>,
     pub prompts: Option<TomlPrompts>,
+    /// Whether planner should automatically set the go_work signal after posting a plan.
+    /// Defaults to true when unspecified.
+    pub planner_auto_go_work: Option<bool>,
 }
 
 impl TomlConfig {
@@ -120,6 +123,9 @@ pub struct ZbobrConfig {
     pub git_user_name: String,
     /// Git user email for commits made by the tool.
     pub git_user_email: String,
+    /// Whether planner should automatically set the go_work signal after posting a plan.
+    /// Defaults to true when unspecified.
+    pub planner_auto_go_work: bool,
 }
 
 impl Default for ZbobrConfig {
@@ -142,6 +148,7 @@ impl Default for ZbobrConfig {
             prompts_path: None,
             git_user_name: String::new(),
             git_user_email: String::new(),
+            planner_auto_go_work: true,
         }
     }
 }
@@ -318,6 +325,12 @@ impl ZbobrConfig {
             .or_else(|| toml.and_then(|t| t.git_user_email.clone()))
             .unwrap_or_default();
 
+        let planner_auto_go_work = env
+            .var("ZBOBR_PLANNER_AUTO_GO_WORK")
+            .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"))
+            .or_else(|| toml.and_then(|t| t.planner_auto_go_work))
+            .unwrap_or(true);
+
         Ok(Self {
             task_repo,
             fork_owner,
@@ -336,6 +349,7 @@ impl ZbobrConfig {
             prompts_path,
             git_user_name,
             git_user_email,
+            planner_auto_go_work,
         })
     }
 
@@ -462,6 +476,7 @@ mod tests {
             prompts_path: None,
             git_user_name: "zbobr".to_string(),
             git_user_email: "zbobr@example.com".to_string(),
+            planner_auto_go_work: true,
         }
     }
 
@@ -584,6 +599,7 @@ mod tests {
                 reviewer: Some(vec![PathBuf::from("r.md")]),
                 merger: Some(vec![PathBuf::from("m.md")]),
             }),
+            planner_auto_go_work: None,
         };
 
         let config = ZbobrConfig::build_with_env(Some(&toml), &env).unwrap();
