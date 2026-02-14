@@ -159,7 +159,7 @@ impl AdminClient {
     }
 }
 
-#[ignore] // TODO: Re-enable when logic is finalized
+#[ignore] // TODO: Re-enable when logic is finalized. Reason: this blackbox test depends on spawning the built `zbobr` binary and an Admin MCP endpoint which CI does not provide; it uses timing-based waits and is fragile. Re-enable after implementing an in-process test harness or properly mocking the Admin MCP. Expected behavior: planner posts an "Implementation Plan" to discussion and the task transitions to GoWorking and then Done. Reproduction steps: build the zbobr binary (cargo build --bin zbobr), ensure the binary is discoverable by the test executable, then run this test locally.
 #[tokio::test]
 async fn test_blackbox_process_flow() -> anyhow::Result<()> {
     // 1. Setup workspace
