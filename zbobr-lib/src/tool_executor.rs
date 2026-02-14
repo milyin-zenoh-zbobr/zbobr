@@ -313,7 +313,7 @@ impl ToolExecutor for StubExecutor {
 
         let exe = std::env::current_exe()?;
         // Assume zbobr-stub is next to zbobr executable
-        let stub_exe = exe.parent().unwrap().join("zbobr-stub");
+        let stub_exe = exe.parent().ok_or_else(|| anyhow::anyhow!("failed to locate executable parent"))?.join("zbobr-stub");
 
         let mut child = tokio::process::Command::new(stub_exe)
             .args([
