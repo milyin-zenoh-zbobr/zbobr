@@ -316,10 +316,45 @@ pub async fn create_placeholder_commit(
         .await
         .map_err(|e| ZbobrError::Other(format!("Failed to create .zbobr directory: {}", e)))?;
 
-    // Create placeholder file
-    tokio::fs::File::create(&placeholder_path)
-        .await
-        .map_err(|e| ZbobrError::Other(format!("Failed to create placeholder file: {}", e)))?;
+    // Create placeholder file. On error, emit extended diagnostics to help
+    // debug missing directories, permission issues, or odd filesystem states.
+    match tokio::fs::File::create(&placeholder_path).await {
+        Ok(_) => {}
+        Err(e) => {
+            let kind = e.kind();
+            let raw = e.raw_os_error();
+
+            // Check whether .zbobr exists and whether work_dir looks writable
+            let zbobr_exists = tokio::fs::metadata(&zbobr_dir).await.is_ok();
+            let work_dir_meta = tokio::fs::metadata(work_dir).await;
+            let work_dir_readonly = work_dir_meta
+                .as_ref()
+                .map(|m| m.permissions().readonly())
+                .unwrap_or(false);
+
+            tracing::error!(
+                error=%e,
+                kind=?kind,
+                raw_os_error=?raw,
+                placeholder_path=%placeholder_path.display(),
+                work_dir=%work_dir.display(),
+                zbobr_exists=%zbobr_exists,
+                work_dir_readonly=%work_dir_readonly,
+                "Failed to create placeholder file with extended diagnostics"
+            );
+
+            return Err(ZbobrError::Other(format!(
+                "Failed to create placeholder file: {} — attempted path: {} — work_dir: {} — .zbobr exists: {} — work_dir_readonly: {} — kind: {:?} — raw_os_error: {:?}",
+                e,
+                placeholder_path.display(),
+                work_dir.display(),
+                zbobr_exists,
+                work_dir_readonly,
+                kind,
+                raw
+            )));
+        }
+    }
 
     // Stage the file
     let add_status = tokio::process::Command::new("git")
