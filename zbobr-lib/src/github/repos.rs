@@ -361,7 +361,20 @@ impl Zbobr {
             )));
         }
 
-        let branch_name = format!("fix{task_id}/implementation");
+        // Determine current branch name from HEAD so we push the actual
+        // working branch instead of relying on a hardcoded name.
+        let branch_name = {
+            let out = tokio::process::Command::new("git")
+                .args(["rev-parse", "--abbrev-ref", "HEAD"])
+                .current_dir(&work_dir)
+                .output()
+                .await
+                .map_err(|e| ZbobrError::Other(format!("Failed to determine current branch: {}", e)))?;
+            if !out.status.success() {
+                return Err(ZbobrError::Other("Failed to determine current branch".to_string()));
+            }
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
 
         // Push to fork
         tracing::info!("Pushing {branch_name} to fork");

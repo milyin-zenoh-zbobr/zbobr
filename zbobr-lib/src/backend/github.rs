@@ -939,40 +939,6 @@ impl Backend for GitHubBackend {
             }
         }
 
-        // Create feature branch from the requested branch
-        let branch_name = format!("fix{task_id}/implementation");
-        let branch_exists = tokio::process::Command::new("git")
-            .args(["rev-parse", "--verify", &branch_name])
-            .current_dir(&work_dir)
-            .output()
-            .await?;
-
-        if branch_exists.status.success() {
-            let _ = tokio::process::Command::new("git")
-                .args(["checkout", &branch_name])
-                .current_dir(&work_dir)
-                .status()
-                .await?;
-        } else {
-            let status = tokio::process::Command::new("git")
-                .args(["checkout", "-b", &branch_name])
-                .current_dir(&work_dir)
-                .status()
-                .await?;
-            if !status.success() {
-                return Err(ZbobrError::Other(format!(
-                    "Failed to create branch {branch_name}"
-                )));
-            }
-            // Create a zero-sized placeholder file inside .zbobr to ensure
-            // the branch has at least one commit (some upstream PR APIs
-            // reject branches with no commits). The file is named after
-            // the branch. It will be removed later when actual changes
-            // are committed and pushed.
-            // Create and immediately push the placeholder to ensure it's on the fork
-            self.create_and_push_placeholder(&work_dir, &branch_name).await?;
-        }
-
         Ok(work_dir)
     }
 
@@ -1084,7 +1050,21 @@ impl Backend for GitHubBackend {
             )));
         }
 
-        let branch_name = format!("fix{task_id}/implementation");
+        // Determine current branch name from HEAD rather than using a hardcoded
+        // branch. This ensures we push/create a PR for whatever branch the
+        // worker actually checked out (for example the configured work branch).
+        let branch_name = {
+            let out = tokio::process::Command::new("git")
+                .args(["rev-parse", "--abbrev-ref", "HEAD"])
+                .current_dir(&work_dir)
+                .output()
+                .await
+                .map_err(|e| ZbobrError::Other(format!("Failed to determine current branch: {}", e)))?;
+            if !out.status.success() {
+                return Err(ZbobrError::Other("Failed to determine current branch".to_string()));
+            }
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
 
         // Push to fork
         // If a placeholder file exists for this branch and there are local
