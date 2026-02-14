@@ -13,7 +13,7 @@ fn format_command_for_log(cmd_name: &str, args: &[&str], task_dir: &Path) -> Str
         cmd_name,
         args.iter()
             .map(|arg| {
-                if arg.contains(|c: char| c.is_whitespace() || c == '"' || c == '\'') {
+                if arg.chars().any(|c: char| c.is_whitespace() || c == '"' || c == '\'') {
                     format!("\"{}\"", arg.replace('"', "\\\""))
                 } else {
                     arg.to_string()
