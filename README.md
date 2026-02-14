@@ -119,6 +119,8 @@ These are orchestrator-owned and universal—same across all task projects:
 
 **Labels:**
 - `tool:<name>` — Specifies which AI tool to use (e.g., `tool:copilot`, `tool:claude`, `tool:stub`)
+
+Note: When `tool:claude` is selected, planner sessions run Claude with `--permission-mode plan` to enable planning mode; worker sessions keep the default `--permission-mode dontAsk`.
 - `model:<name>` — Specifies which AI model to use (e.g., `model:gpt-5-mini`, `model:claude-opus-4.6`)
 - `done` — Issue implementation is complete
 

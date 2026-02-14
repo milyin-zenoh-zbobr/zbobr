@@ -18,6 +18,8 @@ fork_owner = "{{FORK_OWNER}}"
 
 # CLI tool: "copilot", "claude", or "stub"
 # cli_tool = "copilot"
+# Note: Planner sessions use Claude's planning mode when `tool:claude` is selected by using
+# `--permission-mode plan` for planner runs; workers continue to use `--permission-mode dontAsk` by default.
 
 # Prefix for work branches
 # work_branch_prefix = "zbobr_fix"
