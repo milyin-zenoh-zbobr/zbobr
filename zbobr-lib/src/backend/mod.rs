@@ -25,9 +25,9 @@ fn sanitize_filename(name: &str) -> String {
 
 // -- Plan and Checklist parsing and serialization helpers --
 
-const PARAMETERS_SEPARATOR: &str = "\n\n---PARAMETERS---\n";
-const PLAN_SEPARATOR: &str = "\n\n---PLAN---\n";
-const CHECKLIST_SEPARATOR: &str = "\n\n---CHECKLIST---\n";
+const PARAMETERS_SEPARATOR: &str = "\n---PARAMETERS---\n";
+const PLAN_SEPARATOR: &str = "\n---PLAN---\n";
+const CHECKLIST_SEPARATOR: &str = "\n---CHECKLIST---\n";
 
 /// Parse parameters from the PARAMETERS section.
 /// Returns a map of parameter names to values.
