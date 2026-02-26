@@ -220,22 +220,6 @@ impl FilesystemRepoBackend {
 
         Ok(pr_path.to_string_lossy().to_string())
     }
-
-    /// Get the current branch name in a git working directory.
-    async fn current_branch(work_dir: &Path) -> anyhow::Result<String> {
-        let out = tokio::process::Command::new("git")
-            .args(["rev-parse", "--abbrev-ref", "HEAD"])
-            .current_dir(work_dir)
-            .output()
-            .await
-            .context("Failed to determine current branch")?;
-
-        if !out.status.success() {
-            anyhow::bail!("Failed to determine current branch");
-        }
-
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
-    }
 }
 
 /// Simple timestamp without pulling in chrono crate.
@@ -492,24 +476,5 @@ impl FilesystemRepoBackend {
         }
 
         Ok(())
-    }
-
-    /// Get the default branch of origin remote.
-    async fn default_branch(work_dir: &Path) -> anyhow::Result<String> {
-        let out = tokio::process::Command::new("git")
-            .args(["symbolic-ref", "refs/remotes/origin/HEAD", "--short"])
-            .current_dir(work_dir)
-            .output()
-            .await
-            .context("Failed to determine default branch")?;
-
-        if !out.status.success() {
-            anyhow::bail!("Failed to determine default branch");
-        }
-
-        let full_ref = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        // Strip "origin/" prefix
-        let branch = full_ref.strip_prefix("origin/").unwrap_or(&full_ref);
-        Ok(branch.to_string())
     }
 }
