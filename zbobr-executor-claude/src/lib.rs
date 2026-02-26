@@ -15,6 +15,21 @@ pub struct ClaudeExecutor {
     pub config: ZbobrExecutorClaudeConfig,
 }
 
+fn set_github_envs(cmd: &mut tokio::process::Command, agent_github_token: &str, copilot_github_token: &str) {
+    tracing::info!("Setting GH_TOKEN for agent and COPILOT_GITHUB_TOKEN for copilot");
+    if !agent_github_token.is_empty() {
+        cmd.env("GH_TOKEN", agent_github_token)
+            .env("GITHUB_TOKEN", agent_github_token);
+    } else {
+        tracing::debug!("Not setting GH_TOKEN/GITHUB_TOKEN - preserving environment");
+    }
+    if !copilot_github_token.is_empty() {
+        cmd.env("COPILOT_GITHUB_TOKEN", copilot_github_token);
+    } else {
+        tracing::debug!("Not setting COPILOT_GITHUB_TOKEN - preserving environment");
+    }
+}
+
 #[async_trait]
 impl ToolExecutor for ClaudeExecutor {
     async fn execute(
@@ -75,11 +90,8 @@ impl ToolExecutor for ClaudeExecutor {
             format_command_for_log("claude", &args, work_dir)
         );
 
-        // Set GitHub tokens for claude agent process
-        tracing::info!("Setting GH_TOKEN for agent and COPILOT_GITHUB_TOKEN for copilot");
-        cmd.env("GH_TOKEN", agent_github_token)
-            .env("GITHUB_TOKEN", agent_github_token)
-            .env("COPILOT_GITHUB_TOKEN", copilot_github_token);
+        // Set GitHub tokens for claude agent process (only set when non-empty to avoid overwriting host env)
+        set_github_envs(&mut cmd, agent_github_token, copilot_github_token);
 
         let mut child = cmd.spawn()?;
 
@@ -117,5 +129,35 @@ impl ToolExecutor for ClaudeExecutor {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_set_github_envs_preserves_parent_when_empty() {
+        let mut cmd = tokio::process::Command::new("sh");
+        cmd.arg("-c").arg("printf \"%s|%s|%s\" \"$GH_TOKEN\" \"$GITHUB_TOKEN\" \"$COPILOT_GITHUB_TOKEN\"");
+
+        // simulate parent env present on the Command
+        cmd.env("GH_TOKEN", "parent_gh").env("GITHUB_TOKEN", "parent_gh").env("COPILOT_GITHUB_TOKEN", "parent_copilot");
+
+        set_github_envs(&mut cmd, "", "");
+        let output = cmd.output().await.expect("failed to run");
+        let out = String::from_utf8_lossy(&output.stdout);
+        assert_eq!(out, "parent_gh|parent_gh|parent_copilot");
+    }
+
+    #[tokio::test]
+    async fn test_set_github_envs_overrides_when_non_empty() {
+        let mut cmd = tokio::process::Command::new("sh");
+        cmd.arg("-c").arg("printf \"%s|%s|%s\" \"$GH_TOKEN\" \"$GITHUB_TOKEN\" \"$COPILOT_GITHUB_TOKEN\"");
+
+        set_github_envs(&mut cmd, "agent_gh", "agent_copilot");
+        let output = cmd.output().await.expect("failed to run");
+        let out = String::from_utf8_lossy(&output.stdout);
+        assert_eq!(out, "agent_gh|agent_gh|agent_copilot");
     }
 }
