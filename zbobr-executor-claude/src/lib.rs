@@ -57,7 +57,7 @@ impl ToolExecutor for ClaudeExecutor {
             "--additional-mcp-config",
             &mcp_config_str,
             "--permission-mode",
-            "dontAsk",
+            "plan",
             "--tools",
             "default",
             "-p",
