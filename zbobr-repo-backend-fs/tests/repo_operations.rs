@@ -130,7 +130,26 @@ async fn test_clone_nonexistent_branch() {
         .clone_and_setup(&src, "nonexistent-branch", &ws)
         .await;
 
-    assert!(result.is_err(), "cloning nonexistent branch should fail");
+    // When worktrees are enabled, nonexistent branches are created automatically from HEAD.
+    // This is useful for on-demand branch creation.
+    assert!(result.is_ok(), "cloning nonexistent branch should succeed and create branch");
+
+    // Verify the worktree exists
+    let repo_name = Path::new(&src).file_name().unwrap().to_str().unwrap();
+    let worktree_path = ws.join(repo_name);
+    assert!(worktree_path.exists(), "worktree should exist");
+
+    // Verify we're on the new branch
+    let output = std::process::Command::new("git")
+        .args(["symbolic-ref", "--short", "HEAD"])
+        .current_dir(&worktree_path)
+        .output()
+        .expect("failed to get current branch");
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    assert_eq!(
+        branch, "nonexistent-branch",
+        "worktree should be on the new branch"
+    );
 }
 
 // ---------------------------------------------------------------------------
