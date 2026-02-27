@@ -2,7 +2,10 @@ mod common;
 
 use std::path::Path;
 
-use common::{create_test_setup, create_work_branch, git_command, source_repo_str, workspace_path};
+use common::{
+    create_test_setup, create_test_setup_with_worktrees, create_work_branch, git_command,
+    source_repo_str, workspace_path,
+};
 
 /// Deserialize PR YAML files in test assertions (mirrors the private `PrFile`).
 #[derive(Debug, serde::Deserialize)]
@@ -56,7 +59,7 @@ async fn test_clone_and_setup() {
 
     let clone_dir = setup
         .backend
-        .clone_and_setup(&src, "main", &ws)
+        .clone_and_setup(&src, "main", "main", &ws)
         .await
         .expect("clone_and_setup should succeed");
 
@@ -83,14 +86,14 @@ async fn test_clone_and_setup_existing_dir() {
     // First clone
     let dir1 = setup
         .backend
-        .clone_and_setup(&src, "main", &ws)
+        .clone_and_setup(&src, "main", "main", &ws)
         .await
         .expect("first clone should succeed");
 
     // Second clone — should fetch instead of re-cloning
     let dir2 = setup
         .backend
-        .clone_and_setup(&src, "main", &ws)
+        .clone_and_setup(&src, "main", "main", &ws)
         .await
         .expect("second clone should succeed");
 
@@ -127,10 +130,29 @@ async fn test_clone_nonexistent_branch() {
 
     let result = setup
         .backend
-        .clone_and_setup(&src, "nonexistent-branch", &ws)
+        .clone_and_setup(&src, "nonexistent-branch", "main", &ws)
         .await;
 
-    assert!(result.is_err(), "cloning nonexistent branch should fail");
+    // Nonexistent branches are created automatically from the current HEAD.
+    assert!(
+        result.is_ok(),
+        "cloning nonexistent branch should succeed and create branch"
+    );
+
+    let repo_name = Path::new(&src).file_name().unwrap().to_str().unwrap();
+    let worktree_path = ws.join(repo_name);
+    assert!(worktree_path.exists(), "worktree should exist");
+
+    let output = std::process::Command::new("git")
+        .args(["symbolic-ref", "--short", "HEAD"])
+        .current_dir(&worktree_path)
+        .output()
+        .expect("failed to get current branch");
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    assert_eq!(
+        branch, "nonexistent-branch",
+        "worktree should be on the new branch"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -146,7 +168,7 @@ async fn test_setup_fork_remote_and_push() {
     // Clone
     let clone_dir = setup
         .backend
-        .clone_and_setup(&src, "main", &ws)
+        .clone_and_setup(&src, "main", "main", &ws)
         .await
         .expect("clone should succeed");
 
@@ -210,7 +232,7 @@ async fn test_create_pr_in_fork() {
 }
 
 #[tokio::test]
-async fn test_push_and_create_pr() {
+async fn test_push_branch_and_create_pr() {
     let setup = create_test_setup().await;
     let ws = workspace_path(&setup, "pr_push_test");
     let src = source_repo_str(&setup);
@@ -218,18 +240,28 @@ async fn test_push_and_create_pr() {
     // Clone and create work branch
     let clone_dir = setup
         .backend
-        .clone_and_setup(&src, "main", &ws)
+        .clone_and_setup(&src, "main", "main", &ws)
         .await
         .expect("clone should succeed");
 
     create_work_branch(&clone_dir, "pr-branch").await;
 
-    // Push and create PR
+    setup
+        .backend
+        .setup_fork_remote_and_push(&clone_dir, &src, "pr-branch")
+        .await
+        .expect("setup_fork_remote_and_push should succeed");
+
+    let repo_name = Path::new(&src)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("repo name");
+
     let pr_path = setup
         .backend
-        .push_and_create_pr(&src, &ws, "PR Title", "PR Body")
+        .create_pr_in_fork(repo_name, "pr-branch", "main", "PR Title", "PR Body")
         .await
-        .expect("push_and_create_pr should succeed");
+        .expect("create_pr_in_fork should succeed");
 
     // Verify PR file
     let content = tokio::fs::read_to_string(&pr_path)
@@ -354,25 +386,26 @@ async fn test_pr_id_separate_repos() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn test_push_and_create_pr_no_work_dir() {
+async fn test_ensure_branch_and_pr_no_work_dir() {
     let setup = create_test_setup().await;
     let src = source_repo_str(&setup);
 
     let result = setup
         .backend
-        .push_and_create_pr(
+        .ensure_branch_and_pr(
             &src,
             Path::new("/tmp/nonexistent_zbobr_test"),
+            "feature-branch",
+            "main",
             "title",
-            "body",
         )
         .await;
 
     assert!(result.is_err(), "should fail when work dir does not exist");
     let err = result.unwrap_err().to_string();
     assert!(
-        err.contains("does not exist"),
-        "error should mention 'does not exist', got: {err}"
+        err.contains("Work directory does not exist"),
+        "error should mention missing work directory, got: {err}"
     );
 }
 
@@ -401,7 +434,7 @@ async fn test_full_workflow() {
     // Step 1: Clone
     let clone_dir = setup
         .backend
-        .clone_and_setup(&src, "main", &ws)
+        .clone_and_setup(&src, "main", "main", &ws)
         .await
         .expect("clone should succeed");
 
@@ -416,11 +449,22 @@ async fn test_full_workflow() {
         .expect("push should succeed");
 
     // Step 4: Create PR
+    let repo_name = Path::new(&src)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("repo name");
+
     let pr_path = setup
         .backend
-        .push_and_create_pr(&src, &ws, "Feature 42", "Implements feature #42")
+        .create_pr_in_fork(
+            repo_name,
+            "zbobr-42-feature",
+            "main",
+            "Feature 42",
+            "Implements feature #42",
+        )
         .await
-        .expect("push_and_create_pr should succeed");
+        .expect("create_pr_in_fork should succeed");
 
     // Step 5: Parse PR back
     let (repo, branch) = setup
@@ -429,7 +473,7 @@ async fn test_full_workflow() {
         .await
         .expect("parse_pr should succeed");
 
-    assert_eq!(repo, src, "parsed repo should match source repo");
+    assert_eq!(repo, repo_name, "parsed repo should match repo name");
     assert_eq!(branch, "zbobr-42-feature");
 
     // Step 6: Verify branch exists in bare repo
@@ -442,4 +486,60 @@ async fn test_full_workflow() {
         branches.contains("zbobr-42-feature"),
         "feature branch should exist in bare repo"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Worktree operations
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_clone_and_setup_with_worktrees() {
+    let setup = create_test_setup_with_worktrees().await;
+    let ws = workspace_path(&setup, "worktree_test");
+    let src = source_repo_str(&setup);
+
+    let worktree_path = setup
+        .backend
+        .clone_and_setup(&src, "main", "main", &ws)
+        .await
+        .expect("clone_and_setup should succeed");
+
+    assert!(worktree_path.join(".git").exists(), ".git should exist in worktree");
+    assert!(
+        worktree_path.join("README.md").exists(),
+        "README.md should exist in worktree"
+    );
+
+    let branch = git_command(&worktree_path, &["rev-parse", "--abbrev-ref", "HEAD"]).await;
+    assert_eq!(branch, "main");
+}
+
+#[tokio::test]
+async fn test_multiple_worktrees_same_repo() {
+    let setup = create_test_setup_with_worktrees().await;
+    let src = source_repo_str(&setup);
+
+    let ws1 = workspace_path(&setup, "worktree1");
+    let ws2 = workspace_path(&setup, "worktree2");
+
+    let wt1 = setup
+        .backend
+        .clone_and_setup(&src, "main", "main", &ws1)
+        .await
+        .expect("first worktree should succeed");
+
+    let wt2 = setup
+        .backend
+        .clone_and_setup(&src, "feature", "main", &ws2)
+        .await
+        .expect("second worktree should succeed");
+
+    assert_ne!(wt1, wt2, "worktrees should be in different paths");
+    assert!(wt1.exists(), "first worktree should exist");
+    assert!(wt2.exists(), "second worktree should exist");
+
+    let branch1 = git_command(&wt1, &["rev-parse", "--abbrev-ref", "HEAD"]).await;
+    let branch2 = git_command(&wt2, &["rev-parse", "--abbrev-ref", "HEAD"]).await;
+    assert_eq!(branch1, "main");
+    assert_eq!(branch2, "feature");
 }

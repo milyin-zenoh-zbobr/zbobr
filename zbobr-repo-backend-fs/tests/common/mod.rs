@@ -76,6 +76,7 @@ pub async fn create_test_setup() -> TestSetup {
         None,
         zbobr_repo_backend_fs::ZbobrRepoBackendFsArgs {
             repos_dir: Some(repos_dir.to_path_buf()),
+            repos_base_dir: None,
         },
         base,
     )
@@ -89,6 +90,66 @@ pub async fn create_test_setup() -> TestSetup {
     }
 }
 
+/// Create a fresh test setup with worktrees enabled.
+pub async fn create_test_setup_with_worktrees() -> TestSetup {
+    let tmp = TempDir::new().expect("failed to create temp dir");
+    let base = tmp.path();
+
+    let bare_repo = base.join("source.git");
+    let staging = base.join("staging");
+    let repos_dir = base.join("repos");
+    let repos_base_dir = base.join("repos_base");
+
+    // 1. Create bare repo
+    git_command_status(&base, &["init", "--bare", bare_repo.to_str().unwrap()]).await;
+
+    // 2. Clone bare repo into staging area
+    git_command_status(
+        &base,
+        &[
+            "clone",
+            bare_repo.to_str().unwrap(),
+            staging.to_str().unwrap(),
+        ],
+    )
+    .await;
+
+    // 3. Configure git user in staging
+    git_command_status(&staging, &["config", "user.name", "Test User"]).await;
+    git_command_status(&staging, &["config", "user.email", "test@test.com"]).await;
+
+    // 4. Create initial commit on main
+    git_command_status(&staging, &["checkout", "-b", "main"]).await;
+    tokio::fs::write(staging.join("README.md"), "# Test Repo\n")
+        .await
+        .expect("write README.md");
+    git_command_status(&staging, &["add", "README.md"]).await;
+    git_command_status(&staging, &["commit", "-m", "initial commit"]).await;
+
+    // 5. Push main to bare repo
+    git_command_status(&staging, &["push", "-u", "origin", "main"]).await;
+
+    // 6. Set bare repo HEAD to point to main
+    git_command_status(&bare_repo, &["symbolic-ref", "HEAD", "refs/heads/main"]).await;
+
+    // 7. Create backend with worktrees enabled
+    let backend = FilesystemRepoBackend::new(
+        None,
+        zbobr_repo_backend_fs::ZbobrRepoBackendFsArgs {
+            repos_dir: Some(repos_dir.to_path_buf()),
+            repos_base_dir: Some(repos_base_dir.to_path_buf()),
+        },
+        base,
+    )
+    .expect("failed to create fs backend with worktrees");
+
+    TestSetup {
+        _tmp: tmp,
+        source_repo: bare_repo,
+        repos_dir,
+        backend: Arc::new(backend),
+    }
+}
 /// Run a git command, assert success, and return trimmed stdout.
 pub async fn git_command(dir: &Path, args: &[&str]) -> String {
     let output = tokio::process::Command::new("git")

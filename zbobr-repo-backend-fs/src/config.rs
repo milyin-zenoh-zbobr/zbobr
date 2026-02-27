@@ -8,6 +8,8 @@ use zbobr_utility::{config_struct, resolve_path};
 pub struct ZbobrRepoBackendFs {
     #[arg(long)]
     pub repos_dir: PathBuf,
+    #[arg(long)]
+    pub repos_base_dir: Option<PathBuf>,
 }
 
 /// Resolved configuration for the filesystem repo backend.
@@ -15,6 +17,7 @@ impl Default for ZbobrRepoBackendFsConfig {
     fn default() -> Self {
         Self {
             repos_dir: PathBuf::from("./repos"),
+            repos_base_dir: None,
         }
     }
 }
@@ -35,7 +38,12 @@ impl ZbobrRepoBackendFsConfig {
             .map(|p| resolve_path(p, config_dir))
             .unwrap_or(defaults.repos_dir);
 
-        Self { repos_dir }
+        let repos_base_dir = merged.repos_base_dir.map(|p| resolve_path(p, config_dir));
+
+        Self {
+            repos_dir,
+            repos_base_dir,
+        }
     }
 
     /// Validate that all required fields are set.
