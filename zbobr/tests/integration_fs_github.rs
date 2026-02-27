@@ -210,6 +210,68 @@ async fn test_fs_github_repo_backend_merging_cross_org() {
 }
 
 // ---------------------------------------------------------------------------
+// Signal and flag preservation tests
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_fs_github_signal_preserved_during_stage() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_signal_preserved_during_stage(&env).await;
+}
+
+#[tokio::test]
+async fn test_fs_github_signal_preserved_through_transition() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_signal_preserved_through_transition(&env).await;
+}
+
+#[tokio::test]
+async fn test_fs_github_signal_preserved_with_conflict_flag() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_signal_preserved_with_conflict_flag(&env).await;
+}
+
+#[tokio::test]
+async fn test_fs_github_conflict_flag_cleared_preserves_signal() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_conflict_flag_cleared_preserves_signal(&env).await;
+}
+
+#[tokio::test]
+#[ignore = "GitHub-backed test; requires zbobr_github_test.toml"]
+async fn test_fs_github_go_review_survives_merge_conflict() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_go_review_survives_merge_conflict(&env).await;
+}
+
+#[tokio::test]
+async fn test_fs_github_pause_flag_blocks_processing() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_pause_flag_blocks_processing(&env).await;
+}
+
+#[tokio::test]
+async fn test_fs_github_pause_flag_cleared_allows_processing() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_pause_flag_cleared_allows_processing(&env).await;
+}
+
+#[tokio::test]
+#[ignore = "GitHub-backed test; requires zbobr_github_test.toml"]
+async fn test_fs_github_stage_can_modify_signal() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_stage_can_modify_signal(&env).await;
+}
+
+// ---------------------------------------------------------------------------
 // Confirm flag behaviour
 // ---------------------------------------------------------------------------
 

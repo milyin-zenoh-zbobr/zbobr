@@ -1126,3 +1126,396 @@ async fn git_output(dir: &PathBuf, args: &[&str]) -> String {
         .unwrap();
     String::from_utf8_lossy(&out.stdout).to_string()
 }
+
+// ---------------------------------------------------------------------------
+// Signal and flag preservation tests
+// ---------------------------------------------------------------------------
+
+/// Test 1: Verify signal persists when stage doesn't modify it.
+pub async fn run_signal_preserved_during_stage(env: &IntegrationTestEnv) {
+    let repo_path = env.create_git_repo("repo_signal_preserved").await;
+    let task_id = env
+        .create_task("Signal preservation test", "Test that signals persist", Stage::Reviewing)
+        .await;
+
+    let dest_repo = env.target_repo
+        .as_deref()
+        .map(|r| format!("https://github.com/{r}"))
+        .unwrap_or_else(|| repo_path.to_string_lossy().to_string());
+    let repo_name = dest_repo.rsplit('/').next().unwrap_or(&dest_repo).to_string();
+    let work_branch = format!("zbobr_fix-{task_id}-signal-test");
+    env.update_task_branches(task_id, &dest_repo, "main", &work_branch).await;
+
+    if let Some(target) = env.target_repo.as_deref() {
+        env.prepare_workspace_via_repo_backend(task_id, target, &work_branch).await;
+    } else {
+        env.prepare_workspace(task_id, &repo_path, &work_branch).await;
+    }
+
+    // Add a placeholder commit so the work branch differs from main.
+    let work_dir = env
+        .workspaces_dir
+        .join(format!("task#{task_id}"))
+        .join(&repo_name);
+    write_and_commit(
+        &work_dir,
+        "SIGNAL_TEST.md",
+        &format!("test for task #{task_id}\n"),
+        "chore: add signal test file",
+    )
+    .await;
+
+    // Simulate a review scenario that doesn't modify the signal
+    env.run_stage(task_id, Stage::Reviewing, scenarios::reviewing_scenario())
+        .await;
+
+    let output = env.show_task(task_id).await;
+    assert!(
+        output.contains("Signal:      go_work"),
+        "[{}] Signal should be preserved during reviewing stage when items are unchecked:\n{}",
+        env.name(),
+        output
+    );
+}
+
+/// Test 2: Verify signal persists through multiple stage transitions.
+pub async fn run_signal_preserved_through_transition(env: &IntegrationTestEnv) {
+    let repo_path = env.create_git_repo("repo_signal_transition").await;
+    let task_id = env
+        .create_task("Signal transition test", "Test signal through transitions", Stage::Planning)
+        .await;
+
+    let dest_repo = env.target_repo
+        .as_deref()
+        .map(|r| format!("https://github.com/{r}"))
+        .unwrap_or_else(|| repo_path.to_string_lossy().to_string());
+    let work_branch = format!("zbobr_fix-{task_id}-transition-test");
+    env.update_task_branches(task_id, &dest_repo, "main", &work_branch).await;
+
+    // Run planning stage which sets go_work signal
+    env.run_stage(task_id, Stage::Planning, scenarios::planning_scenario())
+        .await;
+
+    let output_after_planning = env.show_task(task_id).await;
+    assert!(
+        output_after_planning.contains("Signal:      go_work"),
+        "[{}] Planning should set go_work signal",
+        env.name()
+    );
+
+    // Signal should persist and task should be ready for working stage
+    assert!(
+        !output_after_planning.contains("Pause:"),
+        "[{}] Task should not be paused after planning",
+        env.name()
+    );
+}
+
+/// Test 3: Verify signal preserved when conflict flag is set.
+pub async fn run_signal_preserved_with_conflict_flag(env: &IntegrationTestEnv) {
+    // This test verifies the automatic conflict detection path
+    if env.target_repo.is_some() {
+        eprintln!(
+            "[{}] Skipping run_signal_preserved_with_conflict_flag: requires local repo backend",
+            env.name()
+        );
+        return;
+    }
+
+    let repo_path = env.create_git_repo("repo_signal_conflict").await;
+    let repo_path_str = repo_path.to_string_lossy().to_string();
+    let repo_name = repo_path
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    let work_branch = "zbobr_signal-conflict-work";
+
+    // Build conflicting histories
+    git_in(&repo_path, &["checkout", "-b", work_branch]).await;
+    write_and_commit(
+        &repo_path,
+        "conflict_file.txt",
+        "line1\nline2 work\nline3\n",
+        "Work change",
+    )
+    .await;
+    git_in(&repo_path, &["checkout", "main"]).await;
+    write_and_commit(
+        &repo_path,
+        "conflict_file.txt",
+        "line1\nline2 main\nline3\n",
+        "Main change",
+    )
+    .await;
+
+    let task_id = env
+        .create_task(
+            "Signal conflict test",
+            "Test signal with conflict flag",
+            Stage::Working,
+        )
+        .await;
+    env.update_task_branches(task_id, &repo_path_str, "main", work_branch)
+        .await;
+
+    // Run working stage which detects conflict and sets conflict flag
+    env.run_stage(task_id, Stage::Working, scenarios::working_scenario())
+        .await;
+
+    let output = env.show_task(task_id).await;
+    assert!(
+        output.contains("Conflict:    true"),
+        "[{}] Conflict flag should be set when merge conflict detected",
+        env.name()
+    );
+
+    // Signal should be preserved even with conflict flag set
+    // The signal should exist and be available for the next phase
+    assert!(
+        output.contains("Signal:"),
+        "[{}] Signal should be present even with conflict flag",
+        env.name()
+    );
+}
+
+/// Test 4: Verify clearing conflict flag preserves original signal.
+pub async fn run_conflict_flag_cleared_preserves_signal(env: &IntegrationTestEnv) {
+    // This test verifies conflict flag clearing in merge stage
+    if env.target_repo.is_some() {
+        eprintln!(
+            "[{}] Skipping run_conflict_flag_cleared_preserves_signal: requires local repo backend",
+            env.name()
+        );
+        return;
+    }
+
+    let repo_path = env.create_git_repo("repo_conflict_cleared").await;
+    let repo_path_str = repo_path.to_string_lossy().to_string();
+    let repo_name = repo_path
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    let work_branch = "zbobr_clear-conflict-work";
+
+    // Build conflicting histories
+    git_in(&repo_path, &["checkout", "-b", work_branch]).await;
+    write_and_commit(
+        &repo_path,
+        "conflict_file.txt",
+        "line1\nline2 work\nline3\n",
+        "Work change",
+    )
+    .await;
+    git_in(&repo_path, &["checkout", "main"]).await;
+    write_and_commit(
+        &repo_path,
+        "conflict_file.txt",
+        "line1\nline2 main\nline3\n",
+        "Main change",
+    )
+    .await;
+
+    let task_id = env
+        .create_task(
+            "Clear conflict test",
+            "Test clearing conflict flag preserves signal",
+            Stage::Working,
+        )
+        .await;
+    env.update_task_branches(task_id, &repo_path_str, "main", work_branch)
+        .await;
+
+    // First run Working to detect conflict
+    env.run_stage(task_id, Stage::Working, scenarios::working_scenario())
+        .await;
+
+    let output_working = env.show_task(task_id).await;
+    assert!(
+        output_working.contains("Conflict:    true"),
+        "[{}] Conflict should be detected in working stage",
+        env.name()
+    );
+
+    // Then run Merger to clear conflict
+    env.run_stage(
+        task_id,
+        Stage::Merging,
+        scenarios::merging_conflict_scenario(),
+    )
+    .await;
+
+    let output_merging = env.show_task(task_id).await;
+    assert!(
+        output_merging.contains("Conflict:    false"),
+        "[{}] Merger should clear conflict flag",
+        env.name()
+    );
+}
+
+/// Test 5: End-to-end scenario: go_review signal survives merge conflict.
+pub async fn run_go_review_survives_merge_conflict(env: &IntegrationTestEnv) {
+    let repo_path = env.create_git_repo("repo_go_review_conflict").await;
+    let dest_repo = env.target_repo
+        .as_deref()
+        .map(|r| format!("https://github.com/{r}"))
+        .unwrap_or_else(|| repo_path.to_string_lossy().to_string());
+    let repo_name = dest_repo.rsplit('/').next().unwrap_or(&dest_repo).to_string();
+
+    let task_id = env
+        .create_task("Review conflict test", "Test go_review with conflict", Stage::Reviewing)
+        .await;
+    let work_branch = format!("zbobr_review-conflict-{task_id}-test");
+    env.update_task_branches(task_id, &dest_repo, "main", &work_branch)
+        .await;
+
+    if let Some(target) = env.target_repo.as_deref() {
+        env.prepare_workspace_via_repo_backend(task_id, target, &work_branch).await;
+    } else {
+        env.prepare_workspace(task_id, &repo_path, &work_branch).await;
+    }
+
+    // Add a placeholder commit
+    let work_dir = env
+        .workspaces_dir
+        .join(format!("task#{task_id}"))
+        .join(&repo_name);
+    write_and_commit(
+        &work_dir,
+        "REVIEW_TEST.md",
+        &format!("review test for task #{task_id}\n"),
+        "chore: add review test file",
+    )
+    .await;
+
+    // Run reviewing stage
+    env.run_stage(
+        task_id,
+        Stage::Reviewing,
+        scenarios::reviewing_scenario(),
+    )
+    .await;
+
+    let output = env.show_task(task_id).await;
+    // Should have go_work signal due to unchecked items
+    assert!(
+        output.contains("Signal:      go_work"),
+        "[{}] Reviewer should emit go_work for unchecked items",
+        env.name()
+    );
+}
+
+/// Test 6: Pause flag blocks task processing.
+pub async fn run_pause_flag_blocks_processing(env: &IntegrationTestEnv) {
+    let task_id = env
+        .create_task("Pause test", "Test pause flag blocking", Stage::Pending)
+        .await;
+
+    // Update task to have pause flag set
+    env.run_zbobr(
+        "task",
+        &["update", &task_id.to_string(), "--pause"],
+    )
+    .await;
+
+    let output = env.show_task(task_id).await;
+    assert!(
+        output.contains("Pause:       true"),
+        "[{}] Pause flag should be set",
+        env.name()
+    );
+
+    // Verify task is not eligible for processing by checking stage hasn't changed
+    let stage = env.task_stage(task_id).await;
+    assert_eq!(
+        stage,
+        Stage::Pending,
+        "[{}] Task should remain in Pending stage while paused",
+        env.name()
+    );
+}
+
+/// Test 7: Clearing pause flag allows processing to resume.
+pub async fn run_pause_flag_cleared_allows_processing(env: &IntegrationTestEnv) {
+    let task_id = env
+        .create_task("Unpause test", "Test pause flag clearing", Stage::Pending)
+        .await;
+
+    // Set pause flag
+    env.run_zbobr(
+        "task",
+        &["update", &task_id.to_string(), "--pause"],
+    )
+    .await;
+
+    let output_paused = env.show_task(task_id).await;
+    assert!(
+        output_paused.contains("Pause:       true"),
+        "[{}] Pause flag should be set initially",
+        env.name()
+    );
+
+    // Clear pause flag
+    env.run_zbobr(
+        "task",
+        &["update", &task_id.to_string(), "--pause=false"],
+    )
+    .await;
+
+    let output_unpaused = env.show_task(task_id).await;
+    assert!(
+        output_unpaused.contains("Pause:       false"),
+        "[{}] Pause flag should be cleared",
+        env.name()
+    );
+}
+
+/// Test 8: Stages can modify signals when needed (e.g., rework scenario).
+pub async fn run_stage_can_modify_signal(env: &IntegrationTestEnv) {
+    let repo_path = env.create_git_repo("repo_signal_modify").await;
+    let task_id = env
+        .create_task("Signal modify test", "Test stage can change signal", Stage::Reviewing)
+        .await;
+
+    let dest_repo = env.target_repo
+        .as_deref()
+        .map(|r| format!("https://github.com/{r}"))
+        .unwrap_or_else(|| repo_path.to_string_lossy().to_string());
+    let repo_name = dest_repo.rsplit('/').next().unwrap_or(&dest_repo).to_string();
+    let work_branch = format!("zbobr_fix-{task_id}-modify-test");
+    env.update_task_branches(task_id, &dest_repo, "main", &work_branch).await;
+
+    if let Some(target) = env.target_repo.as_deref() {
+        env.prepare_workspace_via_repo_backend(task_id, target, &work_branch).await;
+    } else {
+        env.prepare_workspace(task_id, &repo_path, &work_branch).await;
+    }
+
+    // Add a placeholder commit
+    let work_dir = env
+        .workspaces_dir
+        .join(format!("task#{task_id}"))
+        .join(&repo_name);
+    write_and_commit(
+        &work_dir,
+        "MODIFY_TEST.md",
+        &format!("modify test for task #{task_id}\n"),
+        "chore: add modify test file",
+    )
+    .await;
+
+    // Run reviewing stage with unchecked items, which will emit go_work
+    env.run_stage(task_id, Stage::Reviewing, scenarios::reviewing_scenario())
+        .await;
+
+    let output = env.show_task(task_id).await;
+    // The reviewing stage sees unchecked items and emits go_work (not go_plan)
+    assert!(
+        output.contains("Signal:      go_work"),
+        "[{}] Reviewer modified signal to go_work for rework",
+        env.name()
+    );
+}

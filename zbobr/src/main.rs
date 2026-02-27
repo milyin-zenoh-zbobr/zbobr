@@ -1180,19 +1180,6 @@ async fn run_role_session(
     };
     zbobr.set_task_stage(task_id, stage).await?;
 
-    // Clear any existing signal when a non-merger session starts so signal labels are removed.
-    // For merger sessions, preserve the signal so it survives the merge resolution
-    // and can be dispatched on the next iteration.
-    if role != Role::Merger
-        && let Err(e) = zbobr.set_task_signal(task_id, None).await
-    {
-        tracing::warn!(
-            "Failed to clear signal for task {} when starting session: {}",
-            task_id,
-            e
-        );
-    }
-
     // Create task directory within workspaces
     let task_dir = zbobr.config().workspaces.join(format!("task#{task_id}"));
     tokio::fs::create_dir_all(&task_dir).await?;
