@@ -221,6 +221,15 @@ impl IntegrationTestEnv {
             .unwrap_or_else(|| panic!("[{}] Unknown stage '{stage_value}'", self.name))
     }
 
+    pub async fn update_task_signal(&self, task_id: u64, signal: &str) {
+        let task_id_str = task_id.to_string();
+        self.run_zbobr(
+            "task",
+            &["update", &task_id_str, "--signal", signal],
+        )
+        .await;
+    }
+
     // -----------------------------------------------------------------------
     // Git utilities
     // -----------------------------------------------------------------------

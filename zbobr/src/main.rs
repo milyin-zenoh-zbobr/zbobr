@@ -1180,6 +1180,16 @@ async fn run_role_session(
     };
     zbobr.set_task_stage(task_id, stage).await?;
 
+    // Save the signal before clearing it. If a merge conflict is detected later,
+    // we need to restore it so it survives the merge resolution and can be
+    // dispatched on the next iteration (per transitions.dot).
+    let saved_signal = if role != Role::Merger {
+        let task = zbobr.get_task(task_id).await?;
+        task.signal
+    } else {
+        None
+    };
+
     // Clear any existing signal when a non-merger session starts so signal labels are removed.
     // For merger sessions, preserve the signal so it survives the merge resolution
     // and can be dispatched on the next iteration.
@@ -1317,6 +1327,15 @@ async fn run_role_session(
                 .set_task_stage(task_id, Stage::Pending)
                 .await
                 .context("Failed to reset stage to Pending after conflict")?;
+            // Restore the signal that was cleared at session start. The Merger will
+            // preserve it, and when merging is done, it will be available for the next
+            // dispatcher iteration (per transitions.dot).
+            if let Some(signal) = saved_signal {
+                zbobr
+                    .set_task_signal(task_id, Some(signal))
+                    .await
+                    .context("Failed to restore signal after conflict detection")?;
+            }
             return Ok(());
         }
     }

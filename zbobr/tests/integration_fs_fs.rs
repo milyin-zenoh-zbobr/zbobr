@@ -90,6 +90,13 @@ async fn test_fs_fs_conflict_detection() {
 }
 
 #[tokio::test]
+async fn test_fs_fs_signal_preservation_during_conflict() {
+    let _guard = TEST_LOCK.lock().await;
+    let Some(env) = get_env().await else { return };
+    test_helpers::run_signal_preservation_during_conflict(&env).await;
+}
+
+#[tokio::test]
 async fn test_fs_fs_reviewing_approval() {
     let _guard = TEST_LOCK.lock().await;
     let Some(env) = get_env().await else { return };

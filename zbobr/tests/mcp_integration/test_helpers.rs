@@ -519,8 +519,105 @@ pub async fn run_conflict_detection(env: &IntegrationTestEnv) {
 }
 
 // ---------------------------------------------------------------------------
-// Repo backend — same-org clone
+// Signal Preservation During Conflict Resolution
 // ---------------------------------------------------------------------------
+
+/// Test that when a conflict is detected during a role session (e.g., Worker),
+/// the task's signal is preserved and restored after the Merger completes.
+/// This verifies the fix for https://github.com/milyin-zenoh-zbobr/zbobr/issues/...
+pub async fn run_signal_preservation_during_conflict(env: &IntegrationTestEnv) {
+    if env.target_repo.is_some() {
+        eprintln!(
+            "[{}] Skipping run_signal_preservation_during_conflict: requires local repo backend",
+            env.name()
+        );
+        return;
+    }
+
+    let repo_path = env.create_git_repo("repo_signal_preservation").await;
+    let repo_path_str = repo_path.to_string_lossy().to_string();
+    let work_branch = "zbobr_signal-preserve-work";
+
+    // Build conflicting histories: both main and work_branch add different
+    // content to a file after their common ancestor.
+    git_in(&repo_path, &["checkout", "-b", work_branch]).await;
+    write_and_commit(
+        &repo_path,
+        "conflict_file.txt",
+        "line1\nline2 work\nline3\n",
+        "Work change",
+    )
+    .await;
+    git_in(&repo_path, &["checkout", "main"]).await;
+    write_and_commit(
+        &repo_path,
+        "conflict_file.txt",
+        "line1\nline2 main\nline3\n",
+        "Main change",
+    )
+    .await;
+
+    let task_id = env
+        .create_task(
+            "Signal Preservation Test",
+            "Test that signal is preserved during merge conflict resolution",
+            Stage::Working,
+        )
+        .await;
+
+    env.update_task_branches(task_id, &repo_path_str, "main", work_branch)
+        .await;
+    
+    // Set the task to have a go_work signal BEFORE running the worker
+    env.update_task_signal(task_id, "go_work").await;
+
+    // Run the Worker stage. The dispatcher will:
+    // 1. Start a Worker session
+    // 2. Clear the signal at session start
+    // 3. Attempt `git merge main`
+    // 4. Detect the conflict
+    // 5. Set conflict=true and restore the signal (the fix)
+    // 6. Exit successfully
+    env.run_stage(task_id, Stage::Working, scenarios::working_scenario())
+        .await;
+
+    let output = env.show_task(task_id).await;
+    assert!(
+        output.contains("Conflict:    true"),
+        "[{}] Conflict flag should be set after automatic conflict detection:\n{output}",
+        env.name()
+    );
+    assert!(
+        output.contains("Signal:      go_work"),
+        "[{}] Signal should be preserved (restored) after conflict detection:\n{output}",
+        env.name()
+    );
+
+    // Run the Merger stage to resolve the conflict
+    env.run_stage(
+        task_id,
+        Stage::Merging,
+        scenarios::merging_conflict_scenario(),
+    )
+    .await;
+
+    let output = env.show_task(task_id).await;
+    assert!(
+        output.contains("Conflict:    false"),
+        "[{}] Conflict flag should be cleared after Merger session:\n{output}",
+        env.name()
+    );
+    
+    // CRITICAL: The signal should STILL be present after Merger finishes!
+    // This is the key requirement: the signal must be available for the next
+    // dispatcher iteration to route the task to the correct stage.
+    assert!(
+        output.contains("Signal:      go_work"),
+        "[{}] Signal should be preserved after Merger completes:\n{output}",
+        env.name()
+    );
+}
+
 
 /// A well-known public repository owned by a different organisation than any
 /// typical test user.  Used by the cross-org tests to exercise the fork
