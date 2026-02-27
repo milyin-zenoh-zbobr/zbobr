@@ -16,8 +16,7 @@ use tokio::sync::OnceCell;
 use mcp_integration::IntegrationTestEnv;
 use mcp_integration::env::{RepoBackendArgs, TaskBackendArgs};
 use mcp_integration::github_config::GitHubTestConfig;
-use mcp_integration::{scenarios, test_helpers};
-use zbobr_dispatcher::Stage;
+use mcp_integration::test_helpers;
 
 // panicking version: missing configuration is considered an error
 static ENV: OnceCell<Arc<IntegrationTestEnv>> = OnceCell::const_new();
@@ -55,7 +54,7 @@ async fn get_env() -> Arc<IntegrationTestEnv> {
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// Basic workflow tests
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -123,11 +122,7 @@ async fn test_fs_github_reviewing_approval() {
 }
 
 // ---------------------------------------------------------------------------
-// GitHub repo backend tests — exercise clone_and_setup() with a real GitHub
-// repository.  These require env.target_repo to be set (populated from
-// [tasks.github].task_repo in zbobr_github_test.toml).  Since fork_owner and
-// the target repo owner are the same organisation, same-org mode is used: no
-// fork is created and there is no "fork" remote in the workspace.
+// GitHub repo backend tests — same-org (no fork remote expected)
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -135,72 +130,7 @@ async fn test_fs_github_reviewing_approval() {
 async fn test_fs_github_repo_backend_clone() {
     let _guard = TEST_LOCK.lock().await;
     let env = get_env().await;
-
-    let target = match env.target_repo.as_deref() {
-        Some(t) => t,
-        None => {
-            eprintln!("[{}] Skipping: target_repo not configured (add [tasks.github] to zbobr_github_test.toml)", env.name());
-            return;
-        }
-    };
-
-    let task_id = env
-        .create_task("Clone test", "Test clone_and_setup via repo backend", Stage::Pending)
-        .await;
-    let work_branch = format!("zbobr_fix-{task_id}-clone-test");
-    env.update_task_branches(task_id, target, "main", &work_branch).await;
-
-    // Clone via the GitHub repo backend (exercises clone_and_setup)
-    env.run_zbobr("task", &["clone", &task_id.to_string()]).await;
-
-    let repo_name = target.rsplit('/').next().unwrap_or(target);
-    let workspace_dir = env.workspaces_dir.join(format!("task#{task_id}")).join(repo_name);
-
-    assert!(
-        workspace_dir.exists(),
-        "[{}] Workspace directory missing after clone: {}",
-        env.name(),
-        workspace_dir.display()
-    );
-    assert!(
-        workspace_dir.join(".git").exists(),
-        "[{}] Workspace is not a git repository",
-        env.name()
-    );
-
-    // Verify origin remote points to the target repo
-    let origin_url = tokio::process::Command::new("git")
-        .args(["remote", "get-url", "origin"])
-        .current_dir(&workspace_dir)
-        .output()
-        .await
-        .expect("failed to run git remote get-url origin");
-    assert!(
-        origin_url.status.success(),
-        "[{}] origin remote not found in workspace",
-        env.name()
-    );
-    let origin = String::from_utf8_lossy(&origin_url.stdout);
-    assert!(
-        origin.contains(repo_name),
-        "[{}] origin remote '{}' does not contain repo name '{}'",
-        env.name(),
-        origin.trim(),
-        repo_name
-    );
-
-    // Verify there is NO fork remote (same-org mode)
-    let fork_check = tokio::process::Command::new("git")
-        .args(["remote", "get-url", "fork"])
-        .current_dir(&workspace_dir)
-        .output()
-        .await
-        .expect("failed to run git remote get-url fork");
-    assert!(
-        !fork_check.status.success(),
-        "[{}] Unexpected fork remote found in same-org workspace",
-        env.name()
-    );
+    test_helpers::run_repo_backend_clone(&env).await;
 }
 
 #[tokio::test]
@@ -208,30 +138,7 @@ async fn test_fs_github_repo_backend_clone() {
 async fn test_fs_github_repo_backend_planning() {
     let _guard = TEST_LOCK.lock().await;
     let env = get_env().await;
-
-    let target = match env.target_repo.as_deref() {
-        Some(t) => t,
-        None => {
-            eprintln!("[{}] Skipping: target_repo not configured", env.name());
-            return;
-        }
-    };
-
-    let task_id = env
-        .create_task("Repo backend planning", "Dummy task description", Stage::Pending)
-        .await;
-    let work_branch = format!("zbobr_fix-{task_id}-plan-test");
-    env.update_task_branches(task_id, target, "main", &work_branch).await;
-    env.prepare_workspace_via_repo_backend(task_id, target, &work_branch).await;
-
-    env.run_stage(task_id, Stage::Planning, scenarios::planning_scenario()).await;
-
-    let output = env.show_task(task_id).await;
-    assert!(
-        output.contains("Signal:      go_work"),
-        "[{}] Planner should emit go_work after posting plan",
-        env.name()
-    );
+    test_helpers::run_repo_backend_planning(&env).await;
 }
 
 #[tokio::test]
@@ -239,30 +146,7 @@ async fn test_fs_github_repo_backend_planning() {
 async fn test_fs_github_repo_backend_working() {
     let _guard = TEST_LOCK.lock().await;
     let env = get_env().await;
-
-    let target = match env.target_repo.as_deref() {
-        Some(t) => t,
-        None => {
-            eprintln!("[{}] Skipping: target_repo not configured", env.name());
-            return;
-        }
-    };
-
-    let task_id = env
-        .create_task("Repo backend working", "Dummy task description", Stage::Working)
-        .await;
-    let work_branch = format!("zbobr_fix-{task_id}-work-test");
-    env.update_task_branches(task_id, target, "main", &work_branch).await;
-    env.prepare_workspace_via_repo_backend(task_id, target, &work_branch).await;
-
-    env.run_stage(task_id, Stage::Working, scenarios::working_scenario()).await;
-
-    let output = env.show_task(task_id).await;
-    assert!(
-        output.contains("Signal:      go_review"),
-        "[{}] Worker should emit go_review",
-        env.name()
-    );
+    test_helpers::run_repo_backend_working(&env).await;
 }
 
 #[tokio::test]
@@ -270,30 +154,7 @@ async fn test_fs_github_repo_backend_working() {
 async fn test_fs_github_repo_backend_reviewing() {
     let _guard = TEST_LOCK.lock().await;
     let env = get_env().await;
-
-    let target = match env.target_repo.as_deref() {
-        Some(t) => t,
-        None => {
-            eprintln!("[{}] Skipping: target_repo not configured", env.name());
-            return;
-        }
-    };
-
-    let task_id = env
-        .create_task("Repo backend reviewing", "Dummy task description", Stage::Reviewing)
-        .await;
-    let work_branch = format!("zbobr_fix-{task_id}-review-test");
-    env.update_task_branches(task_id, target, "main", &work_branch).await;
-    env.prepare_workspace_via_repo_backend(task_id, target, &work_branch).await;
-
-    env.run_stage(task_id, Stage::Reviewing, scenarios::reviewing_scenario()).await;
-
-    let output = env.show_task(task_id).await;
-    assert!(
-        output.contains("Signal:      go_work"),
-        "[{}] Reviewer should emit go_work when checklist has unchecked items",
-        env.name()
-    );
+    test_helpers::run_repo_backend_reviewing(&env).await;
 }
 
 #[tokio::test]
@@ -301,30 +162,51 @@ async fn test_fs_github_repo_backend_reviewing() {
 async fn test_fs_github_repo_backend_merging() {
     let _guard = TEST_LOCK.lock().await;
     let env = get_env().await;
+    test_helpers::run_repo_backend_merging(&env).await;
+}
 
-    let target = match env.target_repo.as_deref() {
-        Some(t) => t,
-        None => {
-            eprintln!("[{}] Skipping: target_repo not configured", env.name());
-            return;
-        }
-    };
+// ---------------------------------------------------------------------------
+// GitHub repo backend tests — cross-org (fork remote expected)
+// ---------------------------------------------------------------------------
 
-    let task_id = env
-        .create_task("Repo backend merging", "Dummy task description", Stage::Merging)
-        .await;
-    let work_branch = format!("zbobr_fix-{task_id}-merge-test");
-    env.update_task_branches(task_id, target, "main", &work_branch).await;
-    env.prepare_workspace_via_repo_backend(task_id, target, &work_branch).await;
+#[tokio::test]
+#[ignore = "GitHub-backed test; requires zbobr_github_test.toml"]
+async fn test_fs_github_repo_backend_clone_cross_org() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_repo_backend_clone_cross_org(&env).await;
+}
 
-    env.run_stage(task_id, Stage::Merging, scenarios::merging_scenario("report")).await;
+#[tokio::test]
+#[ignore = "GitHub-backed test; requires zbobr_github_test.toml"]
+async fn test_fs_github_repo_backend_planning_cross_org() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_repo_backend_planning_cross_org(&env).await;
+}
 
-    let output = env.show_task(task_id).await;
-    assert!(
-        output.contains("Merger complete."),
-        "[{}] Merger report not found in discussion",
-        env.name()
-    );
+#[tokio::test]
+#[ignore = "GitHub-backed test; requires zbobr_github_test.toml"]
+async fn test_fs_github_repo_backend_working_cross_org() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_repo_backend_working_cross_org(&env).await;
+}
+
+#[tokio::test]
+#[ignore = "GitHub-backed test; requires zbobr_github_test.toml"]
+async fn test_fs_github_repo_backend_reviewing_cross_org() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_repo_backend_reviewing_cross_org(&env).await;
+}
+
+#[tokio::test]
+#[ignore = "GitHub-backed test; requires zbobr_github_test.toml"]
+async fn test_fs_github_repo_backend_merging_cross_org() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_repo_backend_merging_cross_org(&env).await;
 }
 
 // ---------------------------------------------------------------------------
@@ -332,28 +214,9 @@ async fn test_fs_github_repo_backend_merging() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-#[ignore = "GitHub-backed test; requires zbobr_github_test.toml with [tasks.github]"]
+#[ignore = "GitHub-backed test; requires zbobr_github_test.toml"]
 async fn cli_confirm_flag_pauses_on_stage_change() {
     let _guard = TEST_LOCK.lock().await;
     let env = get_env().await;
-
-    let task_id = env
-        .create_task_with_confirm("Confirm test", "desc", Stage::Pending, true)
-        .await;
-
-    // verify confirm field is visible in show output (print_task now prints it)
-    let output = env.show_task(task_id).await;
-    assert!(output.contains("Confirm:"), "confirm should be printed: {}", output);
-
-    // update the stage using CLI; pause should automatically be set because confirm = true
-    env.run_zbobr(
-        "task",
-        &["update", &task_id.to_string(), "--stage", "PLANNING"],
-    )
-    .await;
-    let output2 = env.show_task(task_id).await;
-    assert!(
-        output2.contains("Pause:       true"),
-        "task should be paused after stage change with confirm\n{output2}"
-    );
+    test_helpers::run_cli_confirm_flag(&env).await;
 }

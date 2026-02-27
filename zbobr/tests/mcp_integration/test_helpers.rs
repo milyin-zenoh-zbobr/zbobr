@@ -519,6 +519,343 @@ pub async fn run_conflict_detection(env: &IntegrationTestEnv) {
 }
 
 // ---------------------------------------------------------------------------
+// Repo backend — same-org clone
+// ---------------------------------------------------------------------------
+
+/// A well-known public repository owned by a different organisation than any
+/// typical test user.  Used by the cross-org tests to exercise the fork
+/// creation path (fork_owner != target repo owner).
+const CROSS_ORG_DEST_REPO: &str = "octocat/Spoon-Knife";
+
+/// Test `clone_and_setup` against a same-org target (`env.target_repo`).
+/// Verifies the workspace is cloned and that no "fork" remote is created
+/// (same-org mode: `fork_owner` == target repo owner).
+///
+/// Skipped when the repo backend is not GitHub or `target_repo` is not set.
+pub async fn run_repo_backend_clone(env: &IntegrationTestEnv) {
+    let Some(target) = env.target_repo.as_deref() else {
+        eprintln!(
+            "[{}] Skipping run_repo_backend_clone: target_repo not configured",
+            env.name()
+        );
+        return;
+    };
+    if env.fork_owner().is_none() {
+        eprintln!(
+            "[{}] Skipping run_repo_backend_clone: not a GitHub repo backend",
+            env.name()
+        );
+        return;
+    }
+
+    let repo_name = target.rsplit('/').next().unwrap_or(target);
+    let task_id = env
+        .create_task("Clone test", "Test clone_and_setup via repo backend", Stage::Pending)
+        .await;
+    let work_branch = format!("zbobr_fix-{task_id}-clone-test");
+    env.update_task_branches(task_id, target, "main", &work_branch).await;
+
+    env.run_zbobr("task", &["clone", &task_id.to_string()]).await;
+
+    let workspace_dir = env.workspaces_dir.join(format!("task#{task_id}")).join(repo_name);
+    assert!(
+        workspace_dir.exists(),
+        "[{}] Workspace directory missing after clone: {}",
+        env.name(),
+        workspace_dir.display()
+    );
+    assert!(
+        workspace_dir.join(".git").exists(),
+        "[{}] Workspace is not a git repository",
+        env.name()
+    );
+
+    let origin_url = tokio::process::Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .current_dir(&workspace_dir)
+        .output()
+        .await
+        .expect("failed to run git remote get-url origin");
+    assert!(
+        origin_url.status.success(),
+        "[{}] origin remote not found in workspace",
+        env.name()
+    );
+    let origin = String::from_utf8_lossy(&origin_url.stdout);
+    assert!(
+        origin.contains(repo_name),
+        "[{}] origin remote '{}' does not contain repo name '{}'",
+        env.name(),
+        origin.trim(),
+        repo_name
+    );
+
+    // Same-org mode: no fork remote expected
+    let fork_check = tokio::process::Command::new("git")
+        .args(["remote", "get-url", "fork"])
+        .current_dir(&workspace_dir)
+        .output()
+        .await
+        .expect("failed to run git remote get-url fork");
+    assert!(
+        !fork_check.status.success(),
+        "[{}] Unexpected fork remote found in same-org workspace",
+        env.name()
+    );
+}
+
+/// Test `clone_and_setup` against `octocat/Spoon-Knife` (cross-org).
+/// Verifies the workspace is cloned and that a "fork" remote IS created
+/// (cross-org mode: `fork_owner` != `octocat`).
+///
+/// Skipped when the repo backend is not GitHub.
+pub async fn run_repo_backend_clone_cross_org(env: &IntegrationTestEnv) {
+    if env.fork_owner().is_none() {
+        eprintln!(
+            "[{}] Skipping run_repo_backend_clone_cross_org: not a GitHub repo backend",
+            env.name()
+        );
+        return;
+    }
+
+    let target = CROSS_ORG_DEST_REPO;
+    let repo_name = target.rsplit('/').next().unwrap_or(target);
+
+    let task_id = env
+        .create_task(
+            "Clone cross-org test",
+            "Test clone_and_setup with cross-org repo (octocat/Spoon-Knife)",
+            Stage::Pending,
+        )
+        .await;
+    let work_branch = format!("zbobr_fix-{task_id}-clone-xorg");
+    env.update_task_branches(task_id, target, "main", &work_branch).await;
+
+    env.run_zbobr("task", &["clone", &task_id.to_string()]).await;
+
+    let workspace_dir = env.workspaces_dir.join(format!("task#{task_id}")).join(repo_name);
+    assert!(
+        workspace_dir.exists(),
+        "[{}] Workspace directory missing after cross-org clone: {}",
+        env.name(),
+        workspace_dir.display()
+    );
+    assert!(
+        workspace_dir.join(".git").exists(),
+        "[{}] Workspace is not a git repository after cross-org clone",
+        env.name()
+    );
+
+    let origin_out = tokio::process::Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .current_dir(&workspace_dir)
+        .output()
+        .await
+        .expect("failed to run git remote get-url origin");
+    assert!(
+        origin_out.status.success(),
+        "[{}] origin remote not found in cross-org workspace",
+        env.name()
+    );
+    let origin = String::from_utf8_lossy(&origin_out.stdout);
+    assert!(
+        origin.contains(repo_name),
+        "[{}] origin remote '{}' does not contain repo name '{}'",
+        env.name(),
+        origin.trim(),
+        repo_name
+    );
+
+    // Cross-org mode: fork remote must exist
+    let fork_out = tokio::process::Command::new("git")
+        .args(["remote", "get-url", "fork"])
+        .current_dir(&workspace_dir)
+        .output()
+        .await
+        .expect("failed to run git remote get-url fork");
+    assert!(
+        fork_out.status.success(),
+        "[{}] Fork remote missing in cross-org workspace (expected fork of {} under {})",
+        env.name(),
+        target,
+        env.fork_owner().unwrap_or("<unknown>")
+    );
+    let fork_url = String::from_utf8_lossy(&fork_out.stdout);
+    if let Some(fork_owner) = env.fork_owner() {
+        assert!(
+            fork_url.contains(fork_owner),
+            "[{}] fork remote '{}' does not contain fork owner '{}'",
+            env.name(),
+            fork_url.trim(),
+            fork_owner
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Repo backend — same-org planning / working / reviewing / merging
+// ---------------------------------------------------------------------------
+
+/// Run the Planning stage against `env.target_repo` via the GitHub repo backend.
+/// Skipped when the repo backend is not GitHub or `target_repo` is not set.
+pub async fn run_repo_backend_planning(env: &IntegrationTestEnv) {
+    let Some(target) = env.target_repo.as_deref() else {
+        eprintln!(
+            "[{}] Skipping run_repo_backend_planning: target_repo not configured",
+            env.name()
+        );
+        return;
+    };
+    if env.fork_owner().is_none() {
+        eprintln!(
+            "[{}] Skipping run_repo_backend_planning: not a GitHub repo backend",
+            env.name()
+        );
+        return;
+    }
+    repo_backend_planning_for(env, target, "plan").await;
+}
+
+/// Run the Working stage against `env.target_repo` via the GitHub repo backend.
+/// Skipped when the repo backend is not GitHub or `target_repo` is not set.
+pub async fn run_repo_backend_working(env: &IntegrationTestEnv) {
+    let Some(target) = env.target_repo.as_deref() else {
+        eprintln!(
+            "[{}] Skipping run_repo_backend_working: target_repo not configured",
+            env.name()
+        );
+        return;
+    };
+    if env.fork_owner().is_none() {
+        eprintln!(
+            "[{}] Skipping run_repo_backend_working: not a GitHub repo backend",
+            env.name()
+        );
+        return;
+    }
+    repo_backend_working_for(env, target, "work").await;
+}
+
+/// Run the Reviewing stage against `env.target_repo` via the GitHub repo backend.
+/// Skipped when the repo backend is not GitHub or `target_repo` is not set.
+pub async fn run_repo_backend_reviewing(env: &IntegrationTestEnv) {
+    let Some(target) = env.target_repo.as_deref() else {
+        eprintln!(
+            "[{}] Skipping run_repo_backend_reviewing: target_repo not configured",
+            env.name()
+        );
+        return;
+    };
+    if env.fork_owner().is_none() {
+        eprintln!(
+            "[{}] Skipping run_repo_backend_reviewing: not a GitHub repo backend",
+            env.name()
+        );
+        return;
+    }
+    repo_backend_reviewing_for(env, target, "review").await;
+}
+
+/// Run the Merging stage against `env.target_repo` via the GitHub repo backend.
+/// Skipped when the repo backend is not GitHub or `target_repo` is not set.
+pub async fn run_repo_backend_merging(env: &IntegrationTestEnv) {
+    let Some(target) = env.target_repo.as_deref() else {
+        eprintln!(
+            "[{}] Skipping run_repo_backend_merging: target_repo not configured",
+            env.name()
+        );
+        return;
+    };
+    if env.fork_owner().is_none() {
+        eprintln!(
+            "[{}] Skipping run_repo_backend_merging: not a GitHub repo backend",
+            env.name()
+        );
+        return;
+    }
+    repo_backend_merging_for(env, target, "merge").await;
+}
+
+// ---------------------------------------------------------------------------
+// Repo backend — cross-org planning / working / reviewing / merging
+// ---------------------------------------------------------------------------
+
+/// Run the Planning stage against `octocat/Spoon-Knife` (cross-org fork path).
+/// Skipped when the repo backend is not GitHub.
+pub async fn run_repo_backend_planning_cross_org(env: &IntegrationTestEnv) {
+    if env.fork_owner().is_none() {
+        eprintln!(
+            "[{}] Skipping run_repo_backend_planning_cross_org: not a GitHub repo backend",
+            env.name()
+        );
+        return;
+    }
+    repo_backend_planning_for(env, CROSS_ORG_DEST_REPO, "xorg-plan").await;
+}
+
+/// Run the Working stage against `octocat/Spoon-Knife` (cross-org fork path).
+/// Skipped when the repo backend is not GitHub.
+pub async fn run_repo_backend_working_cross_org(env: &IntegrationTestEnv) {
+    if env.fork_owner().is_none() {
+        eprintln!(
+            "[{}] Skipping run_repo_backend_working_cross_org: not a GitHub repo backend",
+            env.name()
+        );
+        return;
+    }
+    repo_backend_working_for(env, CROSS_ORG_DEST_REPO, "xorg-work").await;
+}
+
+/// Run the Reviewing stage against `octocat/Spoon-Knife` (cross-org fork path).
+/// Skipped when the repo backend is not GitHub.
+pub async fn run_repo_backend_reviewing_cross_org(env: &IntegrationTestEnv) {
+    if env.fork_owner().is_none() {
+        eprintln!(
+            "[{}] Skipping run_repo_backend_reviewing_cross_org: not a GitHub repo backend",
+            env.name()
+        );
+        return;
+    }
+    repo_backend_reviewing_for(env, CROSS_ORG_DEST_REPO, "xorg-review").await;
+}
+
+/// Run the Merging stage against `octocat/Spoon-Knife` (cross-org fork path).
+/// Skipped when the repo backend is not GitHub.
+pub async fn run_repo_backend_merging_cross_org(env: &IntegrationTestEnv) {
+    if env.fork_owner().is_none() {
+        eprintln!(
+            "[{}] Skipping run_repo_backend_merging_cross_org: not a GitHub repo backend",
+            env.name()
+        );
+        return;
+    }
+    repo_backend_merging_for(env, CROSS_ORG_DEST_REPO, "xorg-merge").await;
+}
+
+// ---------------------------------------------------------------------------
+// Confirm flag
+// ---------------------------------------------------------------------------
+
+/// Verify that `--confirm` causes an automatic pause on stage transition.
+pub async fn run_cli_confirm_flag(env: &IntegrationTestEnv) {
+    let task_id = env
+        .create_task_with_confirm("Confirm test", "desc", Stage::Pending, true)
+        .await;
+
+    env.run_zbobr(
+        "task",
+        &["update", &task_id.to_string(), "--stage", "PLANNING"],
+    )
+    .await;
+    let output2 = env.show_task(task_id).await;
+    assert!(
+        output2.contains("Pause:       true"),
+        "[{}] task should be paused after stage change with confirm\n{output2}",
+        env.name()
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
 
@@ -642,6 +979,78 @@ async fn assert_github_pr_has_commits(env: &IntegrationTestEnv, pr_url: &str, de
         "[{}] GitHub PR {pr_url} targets branch '{}', expected '{dest_branch}'",
         env.name(),
         base_ref
+    );
+}
+
+async fn repo_backend_planning_for(env: &IntegrationTestEnv, target: &str, suffix: &str) {
+    let task_id = env
+        .create_task("Repo backend planning", "Dummy task description", Stage::Pending)
+        .await;
+    let work_branch = format!("zbobr_fix-{task_id}-{suffix}-test");
+    env.update_task_branches(task_id, target, "main", &work_branch).await;
+    env.prepare_workspace_via_repo_backend(task_id, target, &work_branch).await;
+
+    env.run_stage(task_id, Stage::Planning, scenarios::planning_scenario()).await;
+
+    let output = env.show_task(task_id).await;
+    assert!(
+        output.contains("Signal:      go_work"),
+        "[{}] Planner should emit go_work after posting plan",
+        env.name()
+    );
+}
+
+async fn repo_backend_working_for(env: &IntegrationTestEnv, target: &str, suffix: &str) {
+    let task_id = env
+        .create_task("Repo backend working", "Dummy task description", Stage::Working)
+        .await;
+    let work_branch = format!("zbobr_fix-{task_id}-{suffix}-test");
+    env.update_task_branches(task_id, target, "main", &work_branch).await;
+    env.prepare_workspace_via_repo_backend(task_id, target, &work_branch).await;
+
+    env.run_stage(task_id, Stage::Working, scenarios::working_scenario()).await;
+
+    let output = env.show_task(task_id).await;
+    assert!(
+        output.contains("Signal:      go_review"),
+        "[{}] Worker should emit go_review",
+        env.name()
+    );
+}
+
+async fn repo_backend_reviewing_for(env: &IntegrationTestEnv, target: &str, suffix: &str) {
+    let task_id = env
+        .create_task("Repo backend reviewing", "Dummy task description", Stage::Reviewing)
+        .await;
+    let work_branch = format!("zbobr_fix-{task_id}-{suffix}-test");
+    env.update_task_branches(task_id, target, "main", &work_branch).await;
+    env.prepare_workspace_via_repo_backend(task_id, target, &work_branch).await;
+
+    env.run_stage(task_id, Stage::Reviewing, scenarios::reviewing_scenario()).await;
+
+    let output = env.show_task(task_id).await;
+    assert!(
+        output.contains("Signal:      go_work"),
+        "[{}] Reviewer should emit go_work when checklist has unchecked items",
+        env.name()
+    );
+}
+
+async fn repo_backend_merging_for(env: &IntegrationTestEnv, target: &str, suffix: &str) {
+    let task_id = env
+        .create_task("Repo backend merging", "Dummy task description", Stage::Merging)
+        .await;
+    let work_branch = format!("zbobr_fix-{task_id}-{suffix}-test");
+    env.update_task_branches(task_id, target, "main", &work_branch).await;
+    env.prepare_workspace_via_repo_backend(task_id, target, &work_branch).await;
+
+    env.run_stage(task_id, Stage::Merging, scenarios::merging_scenario("report")).await;
+
+    let output = env.show_task(task_id).await;
+    assert!(
+        output.contains("Merger complete."),
+        "[{}] Merger report not found in discussion",
+        env.name()
     );
 }
 

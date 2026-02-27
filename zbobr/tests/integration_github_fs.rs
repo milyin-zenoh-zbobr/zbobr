@@ -116,3 +116,103 @@ async fn test_github_fs_reviewing_approval() {
     let env = get_env().await;
     test_helpers::run_reviewing_approval(&env).await;
 }
+
+// ---------------------------------------------------------------------------
+// GitHub repo backend tests — same-org (skipped: not a GitHub repo backend)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[ignore = "GitHub-backed test; requires zbobr_github_test.toml"]
+async fn test_github_fs_repo_backend_clone() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_repo_backend_clone(&env).await;
+}
+
+#[tokio::test]
+#[ignore = "GitHub-backed test; requires zbobr_github_test.toml"]
+async fn test_github_fs_repo_backend_planning() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_repo_backend_planning(&env).await;
+}
+
+#[tokio::test]
+#[ignore = "GitHub-backed test; requires zbobr_github_test.toml"]
+async fn test_github_fs_repo_backend_working() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_repo_backend_working(&env).await;
+}
+
+#[tokio::test]
+#[ignore = "GitHub-backed test; requires zbobr_github_test.toml"]
+async fn test_github_fs_repo_backend_reviewing() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_repo_backend_reviewing(&env).await;
+}
+
+#[tokio::test]
+#[ignore = "GitHub-backed test; requires zbobr_github_test.toml"]
+async fn test_github_fs_repo_backend_merging() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_repo_backend_merging(&env).await;
+}
+
+// ---------------------------------------------------------------------------
+// GitHub repo backend tests — cross-org (skipped: not a GitHub repo backend)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[ignore = "GitHub-backed test; requires zbobr_github_test.toml"]
+async fn test_github_fs_repo_backend_clone_cross_org() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_repo_backend_clone_cross_org(&env).await;
+}
+
+#[tokio::test]
+#[ignore = "GitHub-backed test; requires zbobr_github_test.toml"]
+async fn test_github_fs_repo_backend_planning_cross_org() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_repo_backend_planning_cross_org(&env).await;
+}
+
+#[tokio::test]
+#[ignore = "GitHub-backed test; requires zbobr_github_test.toml"]
+async fn test_github_fs_repo_backend_working_cross_org() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_repo_backend_working_cross_org(&env).await;
+}
+
+#[tokio::test]
+#[ignore = "GitHub-backed test; requires zbobr_github_test.toml"]
+async fn test_github_fs_repo_backend_reviewing_cross_org() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_repo_backend_reviewing_cross_org(&env).await;
+}
+
+#[tokio::test]
+#[ignore = "GitHub-backed test; requires zbobr_github_test.toml"]
+async fn test_github_fs_repo_backend_merging_cross_org() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_repo_backend_merging_cross_org(&env).await;
+}
+
+// ---------------------------------------------------------------------------
+// Confirm flag behaviour
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[ignore = "GitHub-backed test; requires zbobr_github_test.toml"]
+async fn test_github_fs_cli_confirm_flag_pauses_on_stage_change() {
+    let _guard = TEST_LOCK.lock().await;
+    let env = get_env().await;
+    test_helpers::run_cli_confirm_flag(&env).await;
+}

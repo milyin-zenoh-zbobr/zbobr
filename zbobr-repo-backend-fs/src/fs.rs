@@ -24,8 +24,8 @@ struct PrFile {
 ///
 /// - `target_repo` is a local path to a git repository.
 /// - "Forking" is done by `git clone` from the local path.
-/// - When `repos_base_dir` is configured, a single main clone is maintained there,
-///   and worktrees are created for each task/branch in the workspace.
+/// - When `repos_base_dir` is configured, a single bare clone is maintained there and
+///   task-specific worktrees are created inside the workspace.
 /// - PRs are stored as YAML files under `{repos_dir}/prs/{repo_name}/`.
 pub struct FilesystemRepoBackend {
     config: ZbobrRepoBackendFsConfig,
@@ -104,7 +104,11 @@ impl FilesystemRepoBackend {
         fs::create_dir_all(&main_clone).await?;
 
         if !main_clone.join("HEAD").exists() {
-            tracing::info!("Creating bare main clone for {} at {}", repo_name, main_clone.display());
+            tracing::info!(
+                "Creating bare main clone for {} at {}",
+                repo_name,
+                main_clone.display()
+            );
             let status = tokio::process::Command::new("git")
                 .args(["clone", "--bare", target_repo, main_clone.to_str().unwrap()])
                 .status()
@@ -113,7 +117,11 @@ impl FilesystemRepoBackend {
                 anyhow::bail!("Failed to clone {} into main clone", target_repo);
             }
         } else {
-            tracing::info!("Updating main clone for {} at {}", repo_name, main_clone.display());
+            tracing::info!(
+                "Updating main clone for {} at {}",
+                repo_name,
+                main_clone.display()
+            );
             let fetch_status = tokio::process::Command::new("git")
                 .args(["fetch", "origin", "refs/heads/*:refs/heads/*"])
                 .current_dir(&main_clone)
@@ -135,7 +143,8 @@ impl FilesystemRepoBackend {
         &self,
         main_clone: &Path,
         worktree_path: &Path,
-        branch: &str,
+        work_branch: &str,
+        destination_branch: &str,
     ) -> anyhow::Result<()> {
         // Clean up any stale worktree at the target path
         if worktree_path.exists() {
@@ -146,40 +155,40 @@ impl FilesystemRepoBackend {
                 .status()
                 .await?;
             if !remove_status.success() {
-                tracing::warn!(
-                    "Failed to remove worktree, trying to continue anyway"
-                );
+                tracing::warn!("Failed to remove worktree, trying to continue anyway");
             }
         }
 
-        // Create the worktree
+        // Create or attach the worktree
         let status = tokio::process::Command::new("git")
             .args([
                 "worktree",
                 "add",
                 worktree_path.to_str().unwrap(),
-                branch,
+                work_branch,
             ])
             .current_dir(main_clone)
             .status()
             .await?;
 
         if !status.success() {
-            // If branch doesn't exist, create it from HEAD
-            tracing::info!("Creating new branch {} in worktree", branch);
-            let create_status = tokio::process::Command::new("git")
-                .args([
-                    "worktree",
-                    "add",
-                    "-b",
-                    branch,
-                    worktree_path.to_str().unwrap(),
-                ])
-                .current_dir(main_clone)
-                .status()
-                .await?;
+            tracing::info!(
+                "Creating new branch {} in worktree (base: {})",
+                work_branch,
+                destination_branch
+            );
+            let mut cmd = tokio::process::Command::new("git");
+            cmd.arg("worktree")
+                .arg("add")
+                .arg("-b")
+                .arg(work_branch)
+                .arg(worktree_path);
+            if !destination_branch.is_empty() {
+                cmd.arg(destination_branch);
+            }
+            let create_status = cmd.current_dir(main_clone).status().await?;
             if !create_status.success() {
-                anyhow::bail!("Failed to create worktree for branch {}", branch);
+                anyhow::bail!("Failed to create worktree for branch {}", work_branch);
             }
         }
 
@@ -220,6 +229,22 @@ impl FilesystemRepoBackend {
 
         Ok(pr_path.to_string_lossy().to_string())
     }
+
+    /// Get the current branch name in a git working directory.
+    async fn current_branch(work_dir: &Path) -> anyhow::Result<String> {
+        let out = tokio::process::Command::new("git")
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+            .current_dir(work_dir)
+            .output()
+            .await
+            .context("Failed to determine current branch")?;
+
+        if !out.status.success() {
+            anyhow::bail!("Failed to determine current branch");
+        }
+
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    }
 }
 
 /// Simple timestamp without pulling in chrono crate.
@@ -236,7 +261,8 @@ impl RepoBackend for FilesystemRepoBackend {
     async fn clone_and_setup(
         &self,
         target_repo: &str,
-        branch: &str,
+        work_branch: &str,
+        destination_branch: &str,
         workspace_path: &Path,
     ) -> anyhow::Result<PathBuf> {
         let repo_name = Self::repo_name_from_path(target_repo)?;
@@ -244,13 +270,16 @@ impl RepoBackend for FilesystemRepoBackend {
 
         fs::create_dir_all(workspace_path).await?;
 
-        // If repos_base_dir is configured, use worktrees
         if self.config.repos_base_dir.is_some() {
             let main_clone = self.ensure_main_clone(target_repo, &repo_name).await?;
-            self.create_or_attach_worktree(&main_clone, &work_dir, branch)
-                .await?;
+            self.create_or_attach_worktree(
+                &main_clone,
+                &work_dir,
+                work_branch,
+                destination_branch,
+            )
+            .await?;
         } else {
-            // Legacy mode: use full clone
             if !work_dir.exists() {
                 tracing::info!("Cloning {} into {}", target_repo, work_dir.display());
                 let status = tokio::process::Command::new("git")
@@ -273,23 +302,48 @@ impl RepoBackend for FilesystemRepoBackend {
                         target_repo
                     );
                 }
+
+                // Force-reset the local destination branch to match origin exactly.
+                // Only needed when work_branch differs from destination_branch.
+                if work_branch != destination_branch {
+                    let reset_output = tokio::process::Command::new("git")
+                        .args([
+                            "branch",
+                            "-f",
+                            destination_branch,
+                            &format!("origin/{destination_branch}"),
+                        ])
+                        .current_dir(&work_dir)
+                        .output()
+                        .await?;
+                    if !reset_output.status.success() {
+                        let stderr = String::from_utf8_lossy(&reset_output.stderr);
+                        tracing::warn!(
+                            "Failed to reset '{destination_branch}' to origin/{destination_branch}: {stderr}"
+                        );
+                    } else {
+                        tracing::info!(
+                            "Reset local '{destination_branch}' to match origin/{destination_branch}"
+                        );
+                    }
+                }
             }
 
-            // Checkout the requested branch; create from HEAD if it doesn't exist yet.
-            tracing::info!("Checking out branch {}", branch);
+            // Checkout the work branch; create from HEAD if it doesn't exist yet.
+            tracing::info!("Checking out branch {}", work_branch);
             let checkout_status = tokio::process::Command::new("git")
-                .args(["checkout", branch])
+                .args(["checkout", work_branch])
                 .current_dir(&work_dir)
                 .status()
                 .await?;
             if !checkout_status.success() {
                 let create_status = tokio::process::Command::new("git")
-                    .args(["checkout", "-b", branch])
+                    .args(["checkout", "-b", work_branch])
                     .current_dir(&work_dir)
                     .status()
                     .await?;
                 if !create_status.success() {
-                    anyhow::bail!("Failed to checkout or create branch {}", branch);
+                    anyhow::bail!("Failed to checkout or create branch {}", work_branch);
                 }
             }
         }
@@ -303,9 +357,9 @@ impl RepoBackend for FilesystemRepoBackend {
         branch: &str,
         workspace_path: &Path,
     ) -> anyhow::Result<PathBuf> {
-        // In FS mode, clone_readonly is identical to clone_and_setup
-        // (no fork concept to skip)
-        self.clone_and_setup(target_repo, branch, workspace_path)
+        // In FS mode, clone_readonly checks out the requested branch directly.
+        // Use the same branch for both work and destination (no separate dest branch to sync).
+        self.clone_and_setup(target_repo, branch, branch, workspace_path)
             .await
     }
 
@@ -340,7 +394,7 @@ impl RepoBackend for FilesystemRepoBackend {
         _pr_title: &str,
     ) -> anyhow::Result<String> {
         let repo_name = Self::repo_name_from_path(target_repo)?;
-        let work_dir = Self::worktree_dir(workspace_path, &repo_name);
+        let work_dir = workspace_path.join(&repo_name);
 
         if !work_dir.exists() {
             anyhow::bail!("Work directory does not exist: {}", work_dir.display());
@@ -431,13 +485,12 @@ impl RepoBackend for FilesystemRepoBackend {
 
 impl FilesystemRepoBackend {
     /// Remove a worktree if it exists (for cleanup).
-    /// This method is called during task cleanup or when a stale worktree needs removal.
+    /// This method is a no-op when worktrees are disabled.
     pub async fn cleanup_worktree(
         &self,
         target_repo: &str,
         workspace_path: &Path,
     ) -> anyhow::Result<()> {
-        // Only applicable when using worktrees
         if self.config.repos_base_dir.is_none() {
             return Ok(());
         }
@@ -446,7 +499,10 @@ impl FilesystemRepoBackend {
         let worktree_path = Self::worktree_dir(workspace_path, &repo_name);
 
         if !worktree_path.exists() {
-            tracing::debug!("Worktree at {} does not exist, skipping cleanup", worktree_path.display());
+            tracing::debug!(
+                "Worktree at {} does not exist, skipping cleanup",
+                worktree_path.display()
+            );
             return Ok(());
         }
 
@@ -454,7 +510,7 @@ impl FilesystemRepoBackend {
             .main_clone_dir(&repo_name)
             .context("repos_base_dir not configured")?;
 
-        if !main_clone.join(".git").exists() {
+        if !main_clone.join("HEAD").exists() {
             tracing::warn!("Main clone does not exist, cannot remove worktree cleanly");
             return Ok(());
         }
@@ -471,10 +527,28 @@ impl FilesystemRepoBackend {
                 "Failed to remove worktree at {}, attempting fallback cleanup",
                 worktree_path.display()
             );
-            // Fallback: try to remove the directory directly
             let _ = fs::remove_dir_all(&worktree_path).await;
         }
 
         Ok(())
+    }
+
+    /// Get the default branch of origin remote.
+    async fn default_branch(work_dir: &Path) -> anyhow::Result<String> {
+        let out = tokio::process::Command::new("git")
+            .args(["symbolic-ref", "refs/remotes/origin/HEAD", "--short"])
+            .current_dir(work_dir)
+            .output()
+            .await
+            .context("Failed to determine default branch")?;
+
+        if !out.status.success() {
+            anyhow::bail!("Failed to determine default branch");
+        }
+
+        let full_ref = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        // Strip "origin/" prefix
+        let branch = full_ref.strip_prefix("origin/").unwrap_or(&full_ref);
+        Ok(branch.to_string())
     }
 }

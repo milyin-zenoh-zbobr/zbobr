@@ -150,7 +150,6 @@ pub async fn create_test_setup_with_worktrees() -> TestSetup {
         backend: Arc::new(backend),
     }
 }
-
 /// Run a git command, assert success, and return trimmed stdout.
 pub async fn git_command(dir: &Path, args: &[&str]) -> String {
     let output = tokio::process::Command::new("git")

@@ -607,9 +607,15 @@ impl RoleSession {
 
     /// Fork target repo, clone locally, checkout specific branch (for worker).
     pub async fn request_branch(&self, repo: &str, branch: &str) -> anyhow::Result<String> {
+        let task = self.zbobr.get_task(self.task_id).await?;
+        let destination_branch = task
+            .parameters
+            .get(&crate::Parameter::DestinationBranch)
+            .cloned()
+            .unwrap_or_else(|| "main".to_string());
         let path = self
             .zbobr
-            .clone_and_setup(repo, branch, self.task_id)
+            .clone_and_setup(repo, branch, &destination_branch, self.task_id)
             .await?;
         let path_str = path.to_string_lossy().to_string();
         Ok(path_str)
@@ -1155,7 +1161,8 @@ mod tests {
             async fn clone_and_setup(
                 &self,
                 _target_repo: &str,
-                _branch: &str,
+                _work_branch: &str,
+                _destination_branch: &str,
                 _workspace_path: &std::path::Path,
             ) -> anyhow::Result<std::path::PathBuf> {
                 unreachable!()

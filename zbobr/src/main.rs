@@ -909,7 +909,14 @@ async fn main() -> anyhow::Result<()> {
                     .get(&Parameter::DestinationBranch)
                     .cloned()
                     .unwrap_or_else(|| "main".to_string());
-                let path = zbobr.clone_and_setup(&dest_repo, &dest_branch, task).await?;
+                let work_branch_for_clone = t
+                    .parameters
+                    .get(&Parameter::WorkBranch)
+                    .cloned()
+                    .unwrap_or_else(|| dest_branch.clone());
+                let path = zbobr
+                    .clone_and_setup(&dest_repo, &work_branch_for_clone, &dest_branch, task)
+                    .await?;
                 println!("Cloned to {}", path.display());
             }
             TaskSubcommand::Prepare {
@@ -1224,7 +1231,15 @@ async fn run_role_session(
                     anyhow::anyhow!("Task #{task_id} has no work_branch parameter")
                 })?
                 .clone();
-            match zbobr.clone_and_setup(&dest_repo, &work_branch, task_id).await {
+            let dest_branch_for_setup = task
+                .parameters
+                .get(&Parameter::DestinationBranch)
+                .cloned()
+                .unwrap_or_else(|| "main".to_string());
+            match zbobr
+                .clone_and_setup(&dest_repo, &work_branch, &dest_branch_for_setup, task_id)
+                .await
+            {
                 Ok(path) => path,
                 Err(e) => {
                     let msg = format!("Failed to prepare workspace for task #{task_id}: {e}");
@@ -1516,11 +1531,14 @@ async fn process_task_by_stage(
 ) -> anyhow::Result<()> {
     match task.stage {
         Stage::Pending => {
-            // Follow transitions.dot: pause check → conflict check → signal routing
-            if task.pause || task.signal.is_none() {
+            // Follow transitions.dot: pause check → conflict check → signal routing.
+            // Conflict check must come before the signal-None check: when a Reviewer/Worker
+            // detects a merge conflict it clears the signal and sets conflict=true, so the
+            // Merger must be dispatched even without a signal present.
+            if task.pause {
                 println!(
-                    "Task #{} is PENDING (pause={}, signal={:?}) — skipped",
-                    task.id, task.pause, task.signal
+                    "Task #{} is PENDING (paused) — skipped",
+                    task.id
                 );
                 return Ok(());
             }
@@ -1541,6 +1559,12 @@ async fn process_task_by_stage(
                     mcp_tester_executor_config,
                 )
                 .await?;
+            } else if task.signal.is_none() {
+                println!(
+                    "Task #{} is PENDING (no signal, no conflict) — skipped",
+                    task.id
+                );
+                return Ok(());
             } else {
                 let signal = task.signal.unwrap();
                 let role = signal.target_role();
@@ -1729,12 +1753,13 @@ async fn run_manager_loop(
 
         let mut session_run = false;
         for task in pending_tasks {
-            // Step 1: skip if paused or no signal
-            if task.pause || task.signal.is_none() {
+            // Step 1: skip if paused
+            if task.pause {
                 continue;
             }
 
-            // Step 2: conflict flag → run merger
+            // Step 2: conflict flag → run merger (even without a signal,
+            // since the signal is cleared when conflict is first detected)
             if task.conflict {
                 let task_model = task.model.clone().unwrap_or_else(|| model.clone());
                 tracing::info!(
@@ -1762,8 +1787,10 @@ async fn run_manager_loop(
                 break;
             }
 
-            // Step 3/4: route by signal
-            let signal = task.signal.unwrap();
+            // Step 3/4: route by signal (skip if no signal and no conflict)
+            let Some(signal) = task.signal else {
+                continue;
+            };
             let role = signal.target_role();
             let task_model = task.model.clone().unwrap_or_else(|| model.clone());
             let prompt = match role {

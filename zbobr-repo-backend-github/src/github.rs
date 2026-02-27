@@ -137,7 +137,11 @@ impl GitHubRepoBackend {
         })
     }
 
-    async fn ensure_fork(&self, target_repo: &str, branch: &str) -> anyhow::Result<String> {
+    async fn ensure_fork(
+        &self,
+        target_repo: &str,
+        destination_branch: &str,
+    ) -> anyhow::Result<String> {
         let repo = parse_github_repo(target_repo)?;
         let fork_repo = format!("{}/{}", self.backend_config.fork_owner, repo.name());
 
@@ -185,20 +189,29 @@ impl GitHubRepoBackend {
             // Wait a moment for the fork to be ready
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         } else {
-            // Fork exists — sync it with upstream before use
+            // Fork exists — sync it with the destination branch on upstream.
+            // The destination branch (e.g. main) must exist on upstream; if it
+            // somehow doesn't, that is an error we should surface.
             let endpoint = format!("/repos/{}/merge-upstream", fork_repo);
-            let body = serde_json::json!({ "branch": branch });
+            let body = serde_json::json!({ "branch": destination_branch });
 
-            tracing::info!("Syncing fork {fork_repo} from {}/{}", repo.owner(), branch);
+            tracing::info!(
+                "Syncing fork {fork_repo} with upstream {}/{}",
+                repo.full_name,
+                destination_branch
+            );
 
             self.octocrab
                 .post::<serde_json::Value, serde_json::Value>(endpoint, Some(&body))
                 .await
                 .with_context(|| {
-                    format!("Failed to sync fork {fork_repo} with upstream {target_repo}/{branch}")
+                    format!(
+                        "Failed to sync fork {fork_repo} with upstream {}/{destination_branch}",
+                        repo.full_name
+                    )
                 })?;
 
-            tracing::info!("Successfully synced fork {fork_repo}");
+            tracing::info!("Successfully synced fork {fork_repo} with upstream destination branch '{destination_branch}'");
         }
 
         Ok(fork_repo)
@@ -255,7 +268,8 @@ impl RepoBackend for GitHubRepoBackend {
     async fn clone_and_setup(
         &self,
         target_repo: &str,
-        branch: &str,
+        work_branch: &str,
+        destination_branch: &str,
         workspace_path: &std::path::Path,
     ) -> anyhow::Result<PathBuf> {
         let repo = parse_github_repo(target_repo)?;
@@ -265,9 +279,14 @@ impl RepoBackend for GitHubRepoBackend {
 
         tokio::fs::create_dir_all(workspace_path).await?;
 
-        // Clone if not already present
+        // Clone or update the destination repo
         if !work_dir.exists() {
-            tracing::info!("Cloning {target_repo} into {}", work_dir.display());
+            // Fresh clone: always clone the destination branch (not the work branch,
+            // which may not exist on origin yet).
+            tracing::info!(
+                "Cloning {target_repo} (branch '{destination_branch}') into {}",
+                work_dir.display()
+            );
             let status = tokio::process::Command::new("gh")
                 .args([
                     "repo",
@@ -276,7 +295,7 @@ impl RepoBackend for GitHubRepoBackend {
                     work_dir.to_str().unwrap(),
                     "--",
                     "--branch",
-                    branch,
+                    destination_branch,
                     "--single-branch",
                     "--depth",
                     "1",
@@ -286,77 +305,86 @@ impl RepoBackend for GitHubRepoBackend {
                 .status()
                 .await?;
             if !status.success() {
-                // Branch may not exist on remote yet — clone the default branch instead.
-                tracing::info!(
-                    "Branch {branch} not found on remote, cloning default branch of {target_repo}"
+                anyhow::bail!(
+                    "Failed to clone {target_repo} at destination branch '{destination_branch}'"
                 );
-                let fallback_status = tokio::process::Command::new("gh")
-                    .args([
-                        "repo",
-                        "clone",
-                        target_repo,
-                        work_dir.to_str().unwrap(),
-                        "--",
-                        "--depth",
-                        "1",
-                    ])
-                    .env("GH_TOKEN", &self.backend_config.token)
-                    .env("GITHUB_TOKEN", &self.backend_config.token)
-                    .status()
-                    .await?;
-                if !fallback_status.success() {
-                    anyhow::bail!("Failed to clone {target_repo}");
-                }
             }
         } else {
+            // Workspace exists: fetch the destination branch from origin and
+            // force-reset the local branch to match it exactly.
             tracing::info!("Updating {target_repo} in {}", work_dir.display());
-            let fetch_status = tokio::process::Command::new("git")
-                .args(["fetch", "--depth", "1", "origin", branch])
+            let fetch_output = tokio::process::Command::new("git")
+                .args(["fetch", "--depth", "1", "origin", destination_branch])
                 .current_dir(&work_dir)
-                .status()
+                .output()
                 .await?;
-            if !fetch_status.success() {
-                tracing::warn!(
-                    "Failed to fetch latest changes for {target_repo}, using existing state"
+            if !fetch_output.status.success() {
+                let stderr = String::from_utf8_lossy(&fetch_output.stderr);
+                anyhow::bail!(
+                    "Failed to fetch destination branch '{destination_branch}' from \
+                     {target_repo}: {stderr}"
                 );
             }
+
+            // Force-reset the local destination branch so it is identical to origin.
+            // Use `git branch -f` so we don't have to switch branches first.
+            let reset_output = tokio::process::Command::new("git")
+                .args([
+                    "branch",
+                    "-f",
+                    destination_branch,
+                    &format!("origin/{destination_branch}"),
+                ])
+                .current_dir(&work_dir)
+                .output()
+                .await?;
+            if !reset_output.status.success() {
+                let stderr = String::from_utf8_lossy(&reset_output.stderr);
+                anyhow::bail!(
+                    "Failed to reset local branch '{destination_branch}' to \
+                     origin/{destination_branch}: {stderr}"
+                );
+            }
+            tracing::info!(
+                "Reset local '{destination_branch}' to match origin/{destination_branch}"
+            );
         }
 
-        // Checkout the requested branch
-        tracing::info!("Checking out branch {branch}");
+        // Checkout the work branch
+        tracing::info!("Checking out branch {work_branch}");
         let checkout_status = tokio::process::Command::new("git")
-            .args(["checkout", branch])
+            .args(["checkout", work_branch])
             .current_dir(&work_dir)
             .status()
             .await?;
         if !checkout_status.success() {
             let checkout_remote_status = tokio::process::Command::new("git")
-                .args(["checkout", "-b", branch, &format!("origin/{branch}")])
+                .args(["checkout", "-b", work_branch, &format!("origin/{work_branch}")])
                 .current_dir(&work_dir)
                 .status()
                 .await?;
             if !checkout_remote_status.success() {
-                // Branch doesn't exist on remote either — create it fresh from current HEAD.
-                tracing::info!("Creating new local branch {branch}");
+                // Branch doesn't exist on remote — create it fresh from the destination branch.
+                tracing::info!("Creating new local branch {work_branch} from {destination_branch}");
                 let create_status = tokio::process::Command::new("git")
-                    .args(["checkout", "-b", branch])
+                    .args(["checkout", "-b", work_branch])
                     .current_dir(&work_dir)
                     .status()
                     .await?;
                 if !create_status.success() {
-                    anyhow::bail!("Failed to checkout branch {branch}");
+                    anyhow::bail!("Failed to checkout branch {work_branch}");
                 }
             }
         }
 
         // In same-org mode (fork_owner == target repo owner), work directly on
-        // the repo without forking.  In cross-org mode, ensure the fork exists
-        // and add a "fork" remote pointing to it.
+        // the repo without forking.  In cross-org mode, ensure the fork exists,
+        // sync the destination branch in the fork, and add a "fork" remote.
         let same_org = repo.owner().eq_ignore_ascii_case(&self.backend_config.fork_owner);
         if same_org {
             tracing::info!("Same-org mode: skipping fork setup for {target_repo}");
         } else {
-            let fork_repo = self.ensure_fork(target_repo, branch).await?;
+            let fork_repo = self.ensure_fork(target_repo, destination_branch).await?;
 
             // Add fork remote if not present
             let remote_check = tokio::process::Command::new("git")
@@ -537,7 +565,7 @@ impl RepoBackend for GitHubRepoBackend {
 
         tracing::info!("Pushing {work_branch} to {push_remote}");
         let status = tokio::process::Command::new("git")
-            .args(["push", push_remote, "HEAD"])
+            .args(["push", "--force", push_remote, "HEAD"])
             .current_dir(&work_dir)
             .status()
             .await?;
@@ -604,7 +632,7 @@ impl RepoBackend for GitHubRepoBackend {
 
         tracing::info!("Pushing {work_branch} to {push_remote}");
         let status = tokio::process::Command::new("git")
-            .args(["push", push_remote, "HEAD"])
+            .args(["push", "--force", push_remote, "HEAD"])
             .current_dir(&work_dir)
             .status()
             .await?;

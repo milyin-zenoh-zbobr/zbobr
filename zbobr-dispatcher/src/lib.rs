@@ -222,12 +222,13 @@ impl Zbobr {
     pub async fn clone_and_setup(
         &self,
         target_repo: &str,
-        branch: &str,
+        work_branch: &str,
+        destination_branch: &str,
         task_id: u64,
     ) -> anyhow::Result<PathBuf> {
         let workspace_path = self.config.workspaces.join(format!("task#{task_id}"));
         self.repo_backend
-            .clone_and_setup(target_repo, branch, &workspace_path)
+            .clone_and_setup(target_repo, work_branch, destination_branch, &workspace_path)
             .await
     }
 

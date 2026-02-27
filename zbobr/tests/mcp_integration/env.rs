@@ -121,6 +121,15 @@ impl IntegrationTestEnv {
         self.name
     }
 
+    /// Return the fork owner configured for the GitHub repo backend, or `None`
+    /// when the filesystem backend is in use.
+    pub fn fork_owner(&self) -> Option<&str> {
+        match &self.repo_backend {
+            RepoBackendArgs::GitHub { fork_owner, .. } => Some(fork_owner),
+            RepoBackendArgs::Filesystem => None,
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Task utilities
     // -----------------------------------------------------------------------

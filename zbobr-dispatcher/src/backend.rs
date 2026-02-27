@@ -151,12 +151,15 @@ pub trait TaskBackend: Send + Sync {
 pub trait RepoBackend: Send + Sync {
     // -- Clone/checkout --
 
-    /// Clone a repo into the workspace, checkout specific branch, set up fork remote.
+    /// Clone a repo into the workspace, checkout work branch, sync destination branch, set up fork remote.
+    /// Ensures the fork is synced with destination_branch, the local destination_branch is force-reset
+    /// to match origin, and the work_branch is checked out ready for merging.
     /// Returns the local path.
     async fn clone_and_setup(
         &self,
         target_repo: &str,
-        branch: &str,
+        work_branch: &str,
+        destination_branch: &str,
         workspace_path: &std::path::Path,
     ) -> anyhow::Result<PathBuf>;
 
