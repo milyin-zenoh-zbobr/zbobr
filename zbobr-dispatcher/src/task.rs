@@ -369,6 +369,11 @@ impl Model {
             Tool::Claude => match self {
                 Model::Claude35Sonnet => Some("sonnet"),
                 Model::Claude3Opus => Some("opus"),
+                Model::ClaudeSonnet4 => Some("sonnet-4"),
+                Model::ClaudeSonnet4_5 => Some("sonnet-4.5"),
+                Model::ClaudeOpus4_6 => Some("opus-4.6"),
+                Model::ClaudeOpus4_5 => Some("opus-4.5"),
+                Model::ClaudeHaiku4_5 => Some("haiku-4.5"),
                 _ => None,
             },
             Tool::McpTester => None,
